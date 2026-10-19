@@ -34,7 +34,7 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [ ] [V2] Chốt transparency log: Tessera hay Trillian (ghi `DECISIONS`), dựng bản chạy thử
 - [ ] [V3] Temporal worker Python "hello" gọi được qua gateway
 - [ ] [V3] NATS JetStream bật MQTT, gửi thử bản tin cảm biến
-- [ ] [V1] CI: lint/test cho từng thành phần (shellcheck, yamllint, pytest khi có mã Python)
+- [x] [V1] CI: lint/test cho từng thành phần (shellcheck, yamllint, pytest khi có mã Python)
 - [ ] [V1] README song ngữ: hướng dẫn chạy từ máy sạch · Release v0.1.0
 
 ## Tuần 3 · 29/10–04/11 · Luồng nghiệp vụ chính

@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: Apache-2.0
+# Cấu hình yamllint cho docker-compose, cấu hình APISIX và workflow CI.
+# Chạy: make lint (hoặc yamllint .)
+extends: default
+
+ignore: |
+  .git/
+  .claude/
+  node_modules/
+  .venv/
+
+rules:
+  # docker-compose và cấu hình dịch vụ không dùng dấu "---" đầu tài liệu
+  document-start: disable
+  # Lệnh healthcheck một dòng trong docker-compose khá dài: nới giới hạn, chỉ cảnh báo
+  line-length:
+    max: 200
+    level: warning
+  # Khóa "on:" của GitHub Actions không phải giá trị boolean
+  truthy:
+    allowed-values: ["true", "false"]
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable
+  indentation:
+    spaces: 2
+    indent-sequences: consistent
