@@ -9,6 +9,7 @@
 - `docker-compose.yml` profile `core` (PostgreSQL 17 + PostGIS 3.5, Keycloak 26.8.1, APISIX 3.19 standalone) có healthcheck; profile `core-next` khai báo Hasura CE, SeaweedFS, Temporal, NATS (JetStream + MQTT), OpenBao.
 - Realm Keycloak `disaster` (3 vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen`; client `dxos-gateway`, `dxos-web`, `dxos-dev-cli`) và route mẫu APISIX `/api/v1/me` kiểm JWT.
 - `scripts/smoke-jwt.sh`, `make smoke`, `make up-next`.
+- Mẫu PR `.github/PULL_REQUEST_TEMPLATE.md`; CONTRIBUTING mô tả quy trình issue → nhánh → PR → duyệt, đặt tên nhánh, Conventional Commits (#1).
 
 ### Changed
 - Áp D-004: loại immudb (BSL 1.1) → transparency log (đề xuất Tessera, chờ đội chốt); chốt Scorpio làm broker NGSI-LD; Hasura bắt buộc tag `-ce`; Centrifugo OSS; Qwen2.5 chỉ 7B/14B. NOTICE chuyển trạng thái "Đã xác minh 17/10/2026 (D-004)".
