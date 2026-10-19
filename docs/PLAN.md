@@ -26,7 +26,7 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [x] [V1] Tách `core/` (Tầng 1, không chứa nghiệp vụ) và `apps/` (nghiệp vụ thiên tai); cập nhật `docs/architecture.md`
 - [ ] [V1] Gộp Hasura CE, SeaweedFS, Temporal, NATS, OpenBao từ `core-next` vào `core`, chạy được trên laptop 16 GB
 - [ ] [V1] APISIX: route `/graphql`, `/files`, `/workflow` kiểm JWT Keycloak; bật Coraza WAF
-- [ ] [V1] Keycloak: claim vai trò mặc định ổn định cho Hasura (sửa `realm_access.roles[0]`); bật OTP cho `dieu-phoi`
+- [x] [V1] Keycloak: claim vai trò mặc định ổn định cho Hasura (sửa `realm_access.roles[0]`); bật OTP cho `dieu-phoi`
 - [ ] [V1] OpenBao giữ bí mật DB, client Keycloak, khóa S3 (bỏ chế độ dev)
 - [ ] [V2] Schema PostGIS trong `apps/`: incidents, rescue_teams, shelters, supplies, sensors (migration)
 - [ ] [V2] Hasura trên schema `apps/`, phân quyền theo vai trò trong JWT
