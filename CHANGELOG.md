@@ -6,6 +6,9 @@
 ### Added
 - CI thêm job `shellcheck`, `yamllint` (cấu hình `.yamllint.yml`) và `pytest` (tự bỏ qua khi chưa có mã Python); `scripts/lint.sh`, `make lint`; ghim phiên bản action (#31).
 
+### Changed
+- Áp D-007: chốt Tessera (driver POSIX) cho sổ cái minh bạch, Trillian là dự phòng; `docs/architecture.md` thêm mục `core/ledger` (API, không đưa dữ liệu cá nhân lên sổ cái, khóa ký trong OpenBao, trang "Minh bạch cứu trợ"); cập nhật `NOTICE`, `DEPENDENCIES.md`; script SPDX quét thêm `*.go` và `go.mod` (#34).
+
 ### Fixed
 - Sửa cảnh báo lint trong mã cũ: chú thích bỏ qua SC2094 (dương tính giả) ở `scripts/spdx-files.sh`, cho phép dòng `#END` bắt buộc của APISIX trong `core/apisix/apisix.yaml` (#31).
 

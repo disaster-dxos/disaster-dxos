@@ -25,7 +25,7 @@ Giấy phép kiểm tra ngày 17/10/2026 trên file LICENSE ở repo chính th�
 | OpenBao | `openbao/openbao:2.7.1` | MPL-2.0 | github.com/openbao/openbao | Dịch vụ riêng | core-next | ◐ |
 | Coraza WAF (coraza-proxy-wasm) | ghim ở tuần 2 | Apache-2.0 | github.com/corazawaf/coraza-proxy-wasm | Plugin WASM nạp vào APISIX lúc chạy | core | ☐ |
 | Scorpio Broker (NGSI-LD) | ghim ở tuần 4 | BSD-3-Clause | github.com/ScorpioBroker/ScorpioBroker | Dịch vụ riêng, dùng chung postgis | gis | ☐ |
-| Transparency log Tessera (đề xuất) hoặc Trillian | build từ nguồn trong repo, tuần 4 | Apache-2.0 | github.com/transparency-dev/tessera · github.com/google/trillian | Thư viện Go (Tessera) / dịch vụ riêng (Trillian) | sec | ☐ |
+| Sổ cái `core/ledger` (nhúng Tessera, xem mục 2) | build từ nguồn trong repo, tuần 4 | Apache-2.0 | mã của đội | Dịch vụ của đội | sec | ☐ |
 | ClamAV | ghim ở tuần 2+ | GPL-2.0 | github.com/Cisco-Talos/clamav | Dịch vụ riêng | sec | ☐ |
 | Centrifugo **OSS** | ghim ở tuần 3 | Apache-2.0 | github.com/centrifugal/centrifugo | Dịch vụ riêng | core | ☐ |
 | Grafana | ghim ở tuần 4 | AGPL-3.0 | github.com/grafana/grafana | Dịch vụ riêng | bi | ☐ |
@@ -47,8 +47,11 @@ Giấy phép kiểm tra ngày 17/10/2026 trên file LICENSE ở repo chính th�
 | Tailwind CSS | tuần 3 | MIT | github.com/tailwindlabs/tailwindcss | Web điều phối (npm) | ☐ |
 | MapLibre GL JS | tuần 3 | BSD-3-Clause | github.com/maplibre/maplibre-gl-js | Bản đồ thời gian thực (npm) | ☐ |
 | Flutter SDK | tuần 5 | BSD-3-Clause | github.com/flutter/flutter | App hiện trường (pub) | ☐ |
+| Tessera (đã chốt – D-007, driver POSIX) | ghim trong `core/ledger/go.mod`, tuần 2–4 | Apache-2.0 | github.com/transparency-dev/tessera | Sổ cái minh bạch `core/ledger` (Go modules) | ☐ |
 
-Phiên bản thư viện được ghim trong file khai báo của từng ứng dụng (`requirements.txt`/`pyproject.toml`, `package-lock.json`, `pubspec.lock`) khi tạo. Bảng này cập nhật cùng lúc.
+Phiên bản thư viện được ghim trong file khai báo của từng ứng dụng (`requirements.txt`/`pyproject.toml`, `package-lock.json`, `pubspec.lock`, `go.mod`/`go.sum`) khi tạo. Bảng này cập nhật cùng lúc.
+
+**Phụ thuộc Go của `core/ledger`:** Tessera kéo theo nhiều thư viện gián tiếp (AWS SDK, GCP, BadgerDB…). Khi dựng `core/ledger` phải liệt kê các phụ thuộc gián tiếp vào bảng này và chạy công cụ kiểm giấy phép Go (ví dụ `go-licenses`) trong CI, chặn giấy phép không phải OSI.
 
 ## 3. Danh sách không dùng
 
@@ -56,7 +59,7 @@ Phiên bản thư viện được ghim trong file khai báo của từng ứng d
 
 | Thành phần | Lý do | Thay bằng |
 |---|---|---|
-| immudb | BSL 1.1 từ 12/2023, không phải giấy phép OSI | Transparency log Tessera / Trillian (Apache-2.0) |
+| immudb | BSL 1.1 từ 12/2023, không phải giấy phép OSI | Tessera (Apache-2.0, D-007) |
 | MongoDB | SSPL, không phải giấy phép OSI | PostgreSQL |
 | Orion-LD | Cần MongoDB | Scorpio Broker |
 | Stellio | Image CSDL kèm TimescaleDB (thư mục `tsl` dùng Timescale License) | Scorpio Broker |
