@@ -73,14 +73,14 @@ flowchart TB
 ```
 
 Đường liền: luồng dữ liệu. Đường đứt: xác thực, khóa và bí mật.
-Hiện profile `core` có `openbao` (+ 6 bao agent), `postgres` (+ `postgres-roles`), `keycloak`, `apisix`, `hasura`, `seaweedfs`, `temporal` (+ `temporal-ui`), `nats` (#11) và route `/api/v1/me`. Route `/graphql`, `/files`, `/workflow` làm ở #12; các thành phần còn lại tuần 3–5 (xem `docs/PLAN.md`).
+Hiện profile `core` có `openbao` (+ 6 bao agent), `postgres` (+ `postgres-roles`), `keycloak`, `apisix`, `hasura`, `seaweedfs`, `temporal` (+ `temporal-ui`), `nats` (#11) và route gateway `/graphql`, `/files/*`, `/workflow/*`, `/api/v1/me` sau Coraza WAF (#12, mục 3.3); các thành phần còn lại tuần 3–5 (xem `docs/PLAN.md`).
 
 ## 2. Ánh xạ 4 dịch vụ bắt buộc của đề
 
 | Dịch vụ bắt buộc | Thành phần | Vai trò cụ thể | File cấu hình | Trạng thái |
 |---|---|---|---|---|
 | Identity / SSO (+MFA) | **Keycloak 26.8.1** | Realm `disaster`, OIDC, 3 vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen`, client cho gateway, web và CLI dev. Claim `https://hasura.io/jwt/claims` cho Hasura; OTP bắt buộc với vai trò `dieu-phoi` (#13) | `apps/cuu-tro/keycloak/realm.json` (vai trò, client của ứng dụng) | Chạy được (v0.0.1) |
-| API Gateway | **Apache APISIX 3.19** (+ Coraza WAF tuần 2) | Điểm vào duy nhất của Tầng 2. Kiểm chữ ký JWT bằng JWKS của Keycloak, giới hạn tần suất, gắn request-id. Chế độ standalone: route nằm trong git (GitOps) | `core/apisix/config.yaml`, `core/apisix/apisix.yaml` | Chạy được (v0.0.1) |
+| API Gateway | **Apache APISIX 3.19** + **Coraza WAF** (coraza-proxy-wasm 0.6.0, OWASP CRS 4.14) | Điểm vào duy nhất của Tầng 2: `/graphql` → Hasura, `/files/*` → SeaweedFS S3, `/workflow/*` → API workflow (giữ chỗ, #29). WAF chặn ở biên, kiểm chữ ký JWT bằng JWKS của Keycloak, rate limit theo IP, CORS, gắn request-id. Chế độ standalone: route nằm trong git (GitOps) | `core/apisix/config.yaml`, `core/apisix/apisix.yaml`, `core/apisix/Dockerfile` | Chạy trong `core` (#12, mục 3.3) |
 | Dữ liệu có cấu trúc | **PostgreSQL 17 + PostGIS 3.5**, **Hasura CE v2.51** | Sự cố, đội cứu hộ, điểm trú ẩn, kho hàng, cảm biến (có tọa độ). Hasura tự sinh GraphQL + subscription, phân quyền theo claim vai trò trong JWT | `docker-compose.yml` (`postgres`, `postgres-roles`, `hasura`), `core/postgres/sync-roles.sh` | Chạy trong `core` (#11); schema nghiệp vụ ở #25, #26 |
 | Dữ liệu phi cấu trúc | **SeaweedFS 4.48** (S3) + ClamAV | Ảnh hiện trường, tệp đính kèm, file Parquet lịch sử. File tải lên được ClamAV quét trước khi công bố | `docker-compose.yml` (`seaweedfs`), `core/openbao/agent-seaweedfs.hcl` | S3 chạy trong `core`, khóa từ OpenBao (#11); ClamAV sau |
 | Workflow engine | **Temporal 1.29** + Python SDK | Quy trình kêu cứu: tiếp nhận → phân công đội gần nhất → xác nhận → đóng. Cảnh báo vượt ngưỡng → thông báo | `docker-compose.yml` (`temporal`, `temporal-ui`) | Chạy trong `core` (#11); worker ở #29 |
@@ -165,6 +165,47 @@ browser-otp-dieu-phoi
 
 Kiểm thử: `make up && bash scripts/smoke-jwt.sh` (không token → 401, token giả → 401, token Keycloak → 200, claim Hasura đúng cho 3 user mẫu, đăng nhập web `dieuphoi01` bị bắt cài OTP còn `cuuho01` thì không).
 
+### 3.3. Route API Gateway, WAF, rate limit (#12)
+
+Tầng 2 chỉ thấy cổng `9080` của APISIX. Hasura (`8081`), SeaweedFS S3 (`8333`), Temporal (`7233`) chỉ mở trên `127.0.0.1` cho quản trị và smoke test. Route khai báo trong `core/apisix/apisix.yaml`:
+
+| Route | Phương thức | Upstream | JWT | WAF (Coraza + CRS) | Giới hạn | Ghi chú |
+|---|---|---|---|---|---|---|
+| `/graphql` | GET, POST, OPTIONS (+ WebSocket) | `hasura:8080/v1/graphql` | Bắt buộc, chuyển nguyên token cho Hasura kiểm lần 2 | Bộ `api`: đọc body JSON | Body 1 MiB; `GW_RATE_LIMIT_COUNT`/`GW_RATE_LIMIT_WINDOW` theo IP (mặc định 300/60 s) | Bỏ header `X-Hasura-Admin-Secret` của client |
+| `/v1/*`, `/v2/*`, `/console*` | mọi | không | – | – | – | Luôn 403: `/v1/metadata`, `/v2/query`, console Hasura không ra ngoài |
+| `/files/*` | GET, HEAD, PUT, POST, DELETE, OPTIONS | `seaweedfs:8333` (bỏ tiền tố `/files`) | Bắt buộc, rồi **bỏ** header `Authorization` | Bộ `files`: không đọc body, thêm PUT/DELETE và kiểu ảnh/tệp | Body `GW_FILES_MAX_BODY_BYTES` (mặc định 20 MiB, vượt → 413); rate limit như trên | S3 kiểm chữ ký SigV4 dạng presigned (tham số `X-Amz-*`) |
+| `/workflow/*` | GET, POST, OPTIONS | **giữ chỗ**: trả 503 + `Retry-After` | Bắt buộc (không token vẫn 401) | Bộ `api` | Body 1 MiB; rate limit như trên | Thay bằng upstream API workflow khi #29 xong |
+| `/api/v1/me` | GET, OPTIONS | Keycloak userinfo | Bắt buộc | Bộ `api` | rate limit như trên | Route mẫu v0.0.1 |
+| `/healthz` | GET | không (APISIX tự trả) | Không | – | 20 request / 10 s / IP | Healthcheck; smoke dùng để kiểm `limit-count` |
+
+Thứ tự xử lý một request (priority của plugin trong APISIX):
+
+```mermaid
+flowchart LR
+  R["Request từ Tầng 2"] --> CC{"client-control<br/>body quá lớn?"}
+  CC -->|có| E413["413"]
+  CC -->|không| CORS{"cors<br/>preflight?"}
+  CORS -->|OPTIONS| P200["200 + Access-Control-*"]
+  CORS -->|không| WAF{"Coraza WAF<br/>OWASP CRS<br/>(URI, tham số, header, body JSON)"}
+  WAF -->|vượt ngưỡng| E403["403"]
+  WAF -->|qua| JWT{"openid-connect<br/>chữ ký JWKS, exp, iss"}
+  JWT -->|sai/thiếu| E401["401"]
+  JWT -->|đúng| RL{"limit-count<br/>theo IP"}
+  RL -->|vượt| E429["429"]
+  RL -->|trong hạn| UP["proxy-rewrite → upstream<br/>(Hasura kiểm JWT lần 2)"]
+```
+
+- **WAF ở chế độ chặn.** Image APISIX của đội (`core/apisix/Dockerfile`) = `apache/apisix:3.19.0-debian` + file `coraza-proxy-wasm.wasm` của bản phát hành 0.6.0 (zip tải từ GitHub Release, kiểm SHA-256 lúc build, không chép mã Coraza vào repo). OWASP CRS 4.14 nằm sẵn trong file wasm. Plugin chạy ở pha `rewrite` với priority 7999, trước `openid-connect` (2599): request độc bị chặn 403 trước cả bước kiểm token. Bộ luật: `@recommended-conf` + `SecRuleEngine On` + `@crs-setup-conf` + `@owasp_crs/*.conf`, paranoia 1, chặn theo điểm bất thường (anomaly score).
+- **Body cho WAF.** APISIX chỉ đưa body cho plugin wasm khi biến `wasm_process_req_body` được bật, còn coraza-proxy-wasm (viết cho Envoy) không tự bật. Route API có `serverless-pre-function` bật biến này trước Coraza, nên body JSON/GraphQL được kiểm (smoke: XSS trong body, SQLi trong biến GraphQL → 403). Route `/files` cố ý không đọc body (ảnh nhị phân, tránh báo nhầm và tốn RAM); tệp tải lên sẽ do ClamAV quét (#27).
+- **Log WAF.** Coraza ghi mỗi luật khớp vào log lỗi APISIX ở mức `emerg` (`docker compose logs apisix | grep Coraza`), kèm id luật CRS để tinh chỉnh khi báo nhầm.
+- **`/files` và chữ ký S3.** Header `Authorization` dành cho JWT ở gateway, S3 không nhận được. Client dùng URL presigned (chữ ký trên query string) do dịch vụ của #27 cấp theo quyền người dùng. SeaweedFS tính chữ ký theo `X-Forwarded-Host` APISIX gửi, nên URL được ký cho **host công khai của gateway** (vd `localhost:9080`) với path S3 `/<bucket>/<key>` (không có `/files`). Thiếu JWT → 401; có JWT mà không có chữ ký S3 → 403 từ S3.
+- **Rate limit.** `limit-count` chạy ở pha `access`, sau kiểm JWT: request không token bị từ chối 401 ở gateway mà không tới upstream, request có token bị đếm theo IP. Các header `X-RateLimit-Limit/Remaining/Reset` được trả về (và mở cho CORS). Bộ đếm là `local` (mỗi node APISIX một bộ đếm); chạy nhiều node thì chuyển sang `redis`.
+- **CORS.** Chỉ origin trong `GW_CORS_ALLOW_ORIGINS` (mặc định `http://localhost:3000`, dev server Nuxt) nhận `Access-Control-Allow-Origin`; origin lạ không có header này nên trình duyệt chặn. Không dùng `*`.
+- **Biến môi trường trong route.** APISIX standalone thay `${{TÊN:=mặc định}}` trong `apisix.yaml` khi nạp file (biến phải khai báo ở `nginx_config.envs`). Tên realm (`KEYCLOAK_REALM`), CORS, rate limit, giới hạn body đều lấy theo cách này.
+- **WebSocket.** `/graphql` bật `enable_websocket` cho subscription của Hasura, nhưng `openid-connect` vẫn đòi header `Authorization` lúc bắt tay. Trình duyệt không đặt được header này cho WebSocket, nên realtime phía web sẽ đi qua Centrifugo (tuần 3) hoặc cấu hình riêng khi làm #26.
+
+Kiểm thử: `make up && bash scripts/smoke-gateway.sh` (cũng trong `make smoke`): mỗi route không token/token giả → 401, token Keycloak → 200 (`/workflow` → 503 giữ chỗ); `/v1/metadata`, `/v2/query`, `/v1/query`, `/console` → 403; PUT/GET ảnh qua `/files` bằng URL presigned + JWT; vượt kích thước → 413; SQLi/XSS trong query hoặc body → 403, request thường vẫn 200; CORS; 25 request vào `/healthz` trong 10 giây → 20 lần 200, 5 lần 429.
+
 ## 4. Chia profile docker-compose
 
 ```mermaid
@@ -189,7 +230,7 @@ flowchart LR
 
 | Profile | Dịch vụ | Lệnh | RAM |
 |---|---|---|---|
-| `core` | openbao, openbao-unseal (dev), 6 bao agent, postgres, postgres-roles (chạy một lần rồi thoát), keycloak, apisix, hasura, seaweedfs, temporal, temporal-ui, nats | `make up` | **Đo 19/10/2026** (`docker stats --no-stream`, Mac Apple Silicon, PostGIS chạy giả lập amd64): ~1,4 GB ngay sau khi mọi dịch vụ healthy; ~1,9 GB sau `make smoke` (bảng dưới) |
+| `core` | openbao, openbao-unseal (dev), 6 bao agent, postgres, postgres-roles (chạy một lần rồi thoát), keycloak, apisix, hasura, seaweedfs, temporal, temporal-ui, nats | `make up` | **Đo 19/10/2026** (`docker stats --no-stream`, Mac Apple Silicon, PostGIS chạy giả lập amd64): ~1,5 GB ngay sau khi mọi dịch vụ healthy; ~2,1 GB sau `make smoke` (bảng dưới; APISIX đo lại sau #12) |
 | `gis` | Scorpio (dùng chung postgis), mô phỏng cảm biến | tuần 4 | |
 | `sec` | ClamAV, `ledger` (Tessera) | tuần 2–4 | ClamAV ~1,5 GB; `ledger` nhỏ, giới hạn bằng `GOMEMLIMIT` |
 | `ai` | Ollama, Qdrant, agent | tuần 5 | Qwen2.5 7B ~5 GB |
@@ -204,12 +245,14 @@ RAM từng dịch vụ của `core` (MiB; "sau smoke" = sau khi chạy `make smo
 | hasura | 72 | 185 | 512 | `mem_limit`, `HASURA_GRAPHQL_PG_CONNECTIONS=10` |
 | temporal | 76 | 238 | 512 | `mem_limit`, `GOMEMLIMIT=400MiB`, `SQL_MAX_CONNS=10`, `SQL_VIS_MAX_CONNS=5` |
 | seaweedfs | 153 | 193 | 384 | `mem_limit`, `GOMEMLIMIT=300MiB`, volume 256 MB |
-| apisix | 156 | 183 | 512 | `mem_limit` |
+| apisix (+ Coraza WAF, #12) | 242 | 352 | 768 | `mem_limit`, `worker_processes: 2` (mỗi worker giữ một bản Coraza + CRS); ~370 sau thêm 560 request |
 | openbao | 33 | 145 | 256 | `mem_limit` |
 | nats | 12 | 25 | 256 | `mem_limit`, `GOMEMLIMIT=200MiB`, JetStream bộ nhớ 64 MB |
 | temporal-ui | 11 | 33 | 128 | `mem_limit`, `GOMEMLIMIT=100MiB` |
 | 6 bao agent + openbao-unseal | ~100 | ~115 | 64 mỗi cái | `mem_limit` |
-| **Tổng** | **~1392** | **~1956** | | |
+| **Tổng** | **~1478** | **~2125** | | |
+
+Đo lại 19/10/2026 sau #12 (sau `make smoke` và 560 request qua gateway): tổng ~1,7 GB, APISIX ~376 MiB. Cột "Sau khởi động"/"Sau smoke" của các dịch vụ khác giữ số đo của #11.
 
 Image của profile `core` chiếm khoảng 5,4 GB ổ (Keycloak, APISIX, PostGIS, Hasura, Temporal lớn nhất). Chạy xong trên laptop ít ổ: `make down` (giữ volume) rồi `docker image prune -a -f`.
 
@@ -311,7 +354,7 @@ Cách cắm ứng dụng vào lõi: đặt biến `DXOS_APP` trong `.env` là t�
 Lợi ích: cùng một lõi, cắm thêm ứng dụng khác chỉ bằng cấu hình, không sửa `core/`. Đây là bằng chứng lõi dùng lại được, sẽ trình bày trong phần demo.
 
 Còn ràng buộc (tuần 2 xử lý):
-- Tên realm (`KEYCLOAK_REALM`, mặc định `disaster`) là cấu hình triển khai, không phải nghiệp vụ. Nhưng APISIX chế độ standalone chưa đọc được biến môi trường trong URL, nên `core/apisix/apisix.yaml` đang ghi cứng tên realm. Tuần 2 sẽ sinh file này lúc khởi động từ mẫu của lõi + `apps/<DXOS_APP>/gateway/routes.yaml`.
+- Tên realm (`KEYCLOAK_REALM`, mặc định `disaster`) là cấu hình triển khai, không phải nghiệp vụ. Từ #12, `core/apisix/apisix.yaml` đọc tên realm qua `${{KEYCLOAK_REALM:=disaster}}`, không còn ghi cứng. Còn lại: gộp route của ứng dụng (`apps/<DXOS_APP>/gateway/routes.yaml`) với route lõi lúc khởi động.
 - `scripts/smoke-jwt.sh` dùng người dùng mẫu của `apps/cuu-tro` để kiểm thử lõi.
 
 ## 8. Quản lý bí mật: OpenBao (#14)
@@ -417,4 +460,4 @@ sequenceDiagram
 
 - `scripts/smoke-core.sh` (#11, cũng trong `make smoke`): Hasura dùng admin secret từ OpenBao và role DB riêng; SeaweedFS chạy bằng khóa S3 từ OpenBao (so băm), ký SigV4 bằng khóa đó tạo bucket/ghi/đọc/xóa được, khóa sai → 403; compose không truyền mật khẩu DB, admin secret, khóa S3.
 
-Việc còn lại: route `/graphql`, `/files`, `/workflow` qua APISIX + Coraza WAF (#12); quyền S3 theo bucket cho ứng dụng (#27); `secret_id` có hạn và TLS khi lên VPS (tuần 4).
+Việc còn lại: quyền S3 theo bucket và dịch vụ cấp URL presigned cho ứng dụng (#27); `secret_id` có hạn và TLS khi lên VPS (tuần 4).
