@@ -9,7 +9,7 @@ spdx_files() {
     '*.py' '*.sh' '*.sql' \
     '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.vue' \
     '*.dart' '*.go' ':(glob)**/go.mod' \
-    '*.yml' '*.yaml' '*.toml' '*.conf' \
+    '*.yml' '*.yaml' '*.toml' '*.conf' '*.hcl' \
     ':(glob)**/Dockerfile' ':(glob)**/Dockerfile.*' ':(glob)**/*.Dockerfile' \
     ':(glob)**/Makefile' ':(glob)**/.env.example' \
   | while read -r f; do [ -f "$f" ] && echo "$f"; done

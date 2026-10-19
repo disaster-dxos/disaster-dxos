@@ -1,10 +1,10 @@
 # Kiến trúc Disaster DX-OS
 
-> Phiên bản tài liệu: v0.0.1 (cập nhật 19/10/2026). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
+> Phiên bản tài liệu: v0.0.1 + #14 (cập nhật 19/10/2026). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
 
 Disaster DX-OS gồm hai tầng, đúng mô hình Open-Core của đề:
 
-- **Tầng 1 – lõi headless** (thư mục `core/`): chỉ có API, không có giao diện cho người dùng cuối. Giao diện quản trị của dịch vụ lõi (Keycloak Admin, Temporal UI) chỉ dành cho quản trị viên, đặt sau xác thực, không mở ra cổng công khai. Mọi dịch vụ chạy bằng image Docker gốc, cấu hình bằng file trong `core/` và biến trong `.env`. Lõi **không chứa nghiệp vụ thiên tai** (xem mục 7).
+- **Tầng 1 – lõi headless** (thư mục `core/`): chỉ có API, không có giao diện cho người dùng cuối. Giao diện quản trị của dịch vụ lõi (Keycloak Admin, Temporal UI) chỉ dành cho quản trị viên, đặt sau xác thực, không mở ra cổng công khai. Mọi dịch vụ chạy bằng image Docker gốc, cấu hình bằng file trong `core/` và biến trong `.env`; bí mật của dịch vụ lõi nằm trong OpenBao, không nằm trong `.env` (mục 8). Lõi **không chứa nghiệp vụ thiên tai** (xem mục 7).
 - **Tầng 2 – ứng dụng** (thư mục `apps/<tên>/`, hiện có `apps/cuu-tro/`): realm và vai trò, schema, workflow, dữ liệu mẫu, web điều phối, app hiện trường, bot thông báo. Tầng 2 **chỉ** gọi lõi qua API Gateway (APISIX), không kết nối thẳng CSDL, kho file hay workflow.
 
 ## 1. Sơ đồ tổng thể
@@ -60,6 +60,8 @@ flowchart TB
   SW --> AV
   NATS --> WK
   NATS --> SC
+  BAO -.->|"bao agent: mật khẩu DB, admin"| KC
+  BAO -.->|"bao agent: client secret"| GW
   BAO -.->|"cấp bí mật"| WK
   BAO -.-> HS
   BAO -.->|"khóa ký checkpoint"| TL
@@ -68,7 +70,7 @@ flowchart TB
 ```
 
 Đường liền: luồng dữ liệu. Đường đứt: xác thực, khóa và bí mật.
-Ở v0.0.1 mới có `postgres`, `keycloak`, `apisix` và route `/api/v1/me`. Các route còn lại làm ở tuần 2–4 (xem `docs/PLAN.md`).
+Hiện profile `core` có `openbao` (+ bao agent), `postgres`, `keycloak`, `apisix` và route `/api/v1/me`. Các route còn lại làm ở tuần 2–4 (xem `docs/PLAN.md`).
 
 ## 2. Ánh xạ 4 dịch vụ bắt buộc của đề
 
@@ -80,7 +82,7 @@ flowchart TB
 | Dữ liệu phi cấu trúc | **SeaweedFS 4.48** (S3) + ClamAV | Ảnh hiện trường, tệp đính kèm, file Parquet lịch sử. File tải lên được ClamAV quét trước khi công bố | `docker-compose.yml` (`seaweedfs`) | Khai báo (tuần 2) |
 | Workflow engine | **Temporal 1.29** + Python SDK | Quy trình kêu cứu: tiếp nhận → phân công đội gần nhất → xác nhận → đóng. Cảnh báo vượt ngưỡng → thông báo | `docker-compose.yml` (`temporal`) | Khai báo (tuần 2) |
 
-Thành phần hỗ trợ: OpenBao (bí mật), NATS JetStream + MQTT (sự kiện, IoT), Scorpio (NGSI-LD, bản sao số trạm đo), sổ cái minh bạch `core/ledger` (transparency log Tessera, D-007) cho tiền/hàng cứu trợ.
+Thành phần hỗ trợ: OpenBao (bí mật, chạy chế độ server trong profile `core` – mục 8), NATS JetStream + MQTT (sự kiện, IoT), Scorpio (NGSI-LD, bản sao số trạm đo), sổ cái minh bạch `core/ledger` (transparency log Tessera, D-007) cho tiền/hàng cứu trợ.
 
 ## 3. Luồng xác thực JWT
 
@@ -114,7 +116,7 @@ sequenceDiagram
 Chi tiết cấu hình:
 
 - Keycloak đặt `KC_HOSTNAME=${KEYCLOAK_PUBLIC_URL}` nên `iss` của token luôn là URL công khai, dù token lấy từ đâu. `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true` cho phép APISIX và Hasura tải JWKS qua mạng nội bộ `http://keycloak:8080`.
-- APISIX dùng plugin `openid-connect` với `bearer_only: true`, `use_jwks: true`: kiểm token tại gateway, không gọi introspection mỗi request. Secret của client `dxos-gateway` lấy từ biến môi trường qua `$env://KC_GATEWAY_CLIENT_SECRET`, không ghi trong file.
+- APISIX dùng plugin `openid-connect` với `bearer_only: true`, `use_jwks: true`: kiểm token tại gateway, không gọi introspection mỗi request. Secret của client `dxos-gateway` lấy từ biến môi trường qua `$env://KC_GATEWAY_CLIENT_SECRET`, không ghi trong file; biến này do `bao agent` đọc từ OpenBao (`secret/core/gateway`), không nằm trong `.env` (mục 8).
 - Hasura (tuần 2) kiểm lại cùng JWT bằng `HASURA_GRAPHQL_JWT_SECRET.jwk_url`, nên dịch vụ phía sau vẫn tự kiểm tra (Zero-Trust, không tin mù gateway).
 - Client `dxos-dev-cli` (cho phép lấy token bằng mật khẩu) **chỉ dùng khi dev** để chạy `scripts/smoke-jwt.sh`. Phải xóa trước khi triển khai công khai.
 
@@ -164,11 +166,11 @@ Kiểm thử: `make up && bash scripts/smoke-jwt.sh` (không token → 401, toke
 
 ```mermaid
 flowchart LR
-  subgraph core["profile core · v0.0.1"]
-    pg[(postgres)] --> kc[keycloak] --> gw[apisix]
+  subgraph core["profile core"]
+    bao[openbao + bao agent] --> pg[(postgres)] --> kc[keycloak] --> gw[apisix]
   end
-  subgraph next["profile core-next · tuần 2 (gộp vào core)"]
-    hs[hasura] --- sw[seaweedfs] --- tp[temporal + temporal-ui] --- nt[nats] --- bao[openbao]
+  subgraph next["profile core-next · gộp vào core ở #11"]
+    hs[hasura] --- sw[seaweedfs] --- tp[temporal + temporal-ui] --- nt[nats]
   end
   subgraph later["profile sau"]
     gis["gis · Scorpio, mô phỏng cảm biến"]
@@ -181,8 +183,8 @@ flowchart LR
 
 | Profile | Dịch vụ | Lệnh | RAM ước tính |
 |---|---|---|---|
-| `core` | postgres, keycloak, apisix | `make up` | ~0,8 GB (đo 17/10/2026: Keycloak 546 MB, APISIX 156 MB, PostgreSQL 103 MB) |
-| `core-next` | core + hasura, seaweedfs, temporal, temporal-ui, nats, openbao | `make up-next` | ~1,4 GB lúc rỗi (đo 17/10/2026) |
+| `core` | openbao, openbao-unseal (dev), bao-agent-keycloak, bao-agent-apisix, postgres, keycloak, apisix | `make up` | ~0,8 GB (đo 19/10/2026: Keycloak 507 MB, APISIX 157 MB, PostgreSQL 68 MB, OpenBao 30 MB, 2 agent 16–18 MB) |
+| `core-next` | core + hasura, seaweedfs, temporal, temporal-ui, nats | `make up-next` | ~1,4 GB lúc rỗi (đo 17/10/2026) |
 | `gis` | Scorpio (dùng chung postgis), mô phỏng cảm biến | tuần 4 | |
 | `sec` | ClamAV, `ledger` (Tessera) | tuần 2–4 | ClamAV ~1,5 GB; `ledger` nhỏ, giới hạn bằng `GOMEMLIMIT` |
 | `ai` | Ollama, Qdrant, agent | tuần 5 | Qwen2.5 7B ~5 GB |
@@ -255,7 +257,7 @@ flowchart LR
 
 | Thư mục | Chứa | Không chứa |
 |---|---|---|
-| `core/` (Tầng 1) | Cấu hình dịch vụ dùng chung: gateway (`core/apisix/`), khởi tạo CSDL dùng chung + PostGIS (`core/postgres/init/`), sự kiện/MQTT (`core/nats/`); sau này: cơ chế tự sinh API, lưu trữ, workflow engine, sổ cái `core/ledger` | Bảng, vai trò, quy trình, dữ liệu mẫu hay giao diện của đề tài thiên tai |
+| `core/` (Tầng 1) | Cấu hình dịch vụ dùng chung: bí mật (`core/openbao/`), gateway (`core/apisix/`), khởi tạo CSDL dùng chung + PostGIS (`core/postgres/init/`), sự kiện/MQTT (`core/nats/`); sau này: cơ chế tự sinh API, lưu trữ, workflow engine, sổ cái `core/ledger` | Bảng, vai trò, quy trình, dữ liệu mẫu hay giao diện của đề tài thiên tai |
 | `apps/cuu-tro/` (Tầng 2) | Realm Keycloak với vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen` (`keycloak/realm.json`); từ tuần 2: migration bảng `incidents`, `rescue_teams`, `shelters`, `supplies`, `sensors`, workflow Temporal, seed, web Nuxt, app Flutter | Cấu hình dịch vụ lõi |
 
 ```mermaid
@@ -288,3 +290,81 @@ Lợi ích: cùng một lõi, cắm thêm ứng dụng khác chỉ bằng cấu 
 Còn ràng buộc (tuần 2 xử lý):
 - Tên realm (`KEYCLOAK_REALM`, mặc định `disaster`) là cấu hình triển khai, không phải nghiệp vụ. Nhưng APISIX chế độ standalone chưa đọc được biến môi trường trong URL, nên `core/apisix/apisix.yaml` đang ghi cứng tên realm. Tuần 2 sẽ sinh file này lúc khởi động từ mẫu của lõi + `apps/<DXOS_APP>/gateway/routes.yaml`.
 - `scripts/smoke-jwt.sh` dùng người dùng mẫu của `apps/cuu-tro` để kiểm thử lõi.
+
+## 8. Quản lý bí mật: OpenBao (#14)
+
+OpenBao 2.7.1 (MPL-2.0, nhánh nguồn mở của Vault) chạy như dịch vụ riêng bằng image gốc trong profile `core`, **chế độ server** (không `-dev`): lưu trữ raft trên volume `baodata`, tắt UI (Tầng 1 headless), chỉ mở cổng `127.0.0.1:8200`. Cấu hình: `core/openbao/openbao.hcl`. TLS tắt trên laptop; bật khi lên VPS (tuần 4).
+
+### 8.1. Bí mật nằm ở đâu
+
+| Đường dẫn KV v2 | Khóa | Dùng bởi | Trạng thái |
+|---|---|---|---|
+| `secret/core/keycloak-db` | `password` | Keycloak (`KC_DB_PASSWORD`), PostgreSQL (tạo role `keycloak` lần đầu) | ✔ đã chuyển |
+| `secret/core/keycloak-admin` | `password` | Keycloak (`KC_BOOTSTRAP_ADMIN_PASSWORD`, chỉ khi tạo CSDL lần đầu) | ✔ đã chuyển |
+| `secret/core/gateway` | `client_secret` | APISIX (`$env://KC_GATEWAY_CLIENT_SECRET`), Keycloak (realm import) | ✔ đã chuyển |
+| `secret/core/s3` | `access_key`, `secret_key` | SeaweedFS | Đã sinh, nối vào dịch vụ ở #11 |
+| `secret/core/ledger` | `signing_key` | `core/ledger` (khóa ký checkpoint Tessera, D-007) | Chỗ trống, sinh khi có `core/ledger` (#28) |
+
+Còn trong `.env` cho tới #11: `POSTGRES_PASSWORD` (superuser, Hasura và Temporal của `core-next` dùng chung), `HASURA_GRAPHQL_ADMIN_SECRET`. `KC_DEMO_USER_PASSWORD` là mật khẩu của user mẫu (dữ liệu giả của `apps/cuu-tro`, dùng cho `make smoke`), không phải bí mật của dịch vụ lõi.
+
+### 8.2. Policy và AppRole
+
+Mỗi dịch vụ một AppRole, mỗi AppRole một policy **chỉ đọc** đúng đường dẫn nó cần (`core/openbao/policies/<dịch vụ>.hcl` → policy `core-<dịch vụ>`; policy nằm trong git, GitOps):
+
+| AppRole | Policy | Đọc được |
+|---|---|---|
+| `keycloak` | `core-keycloak` | `core/keycloak-db`, `core/keycloak-admin`, `core/gateway` |
+| `apisix` | `core-apisix` | `core/gateway` |
+| `seaweedfs` | `core-seaweedfs` | `core/s3` (#11) |
+| `ledger` | `core-ledger` | `core/ledger` (#28) |
+
+Token AppRole sống 1 giờ (tối đa 24 giờ), agent tự gia hạn hoặc đăng nhập lại. `secret_id` không hết hạn: chỉ chấp nhận trên máy dev; trên VPS cấp `secret_id` có hạn/giới hạn số lần dùng. `make smoke` kiểm AppRole `apisix` đọc được `core/gateway` nhưng bị từ chối (403) với `core/keycloak-db` và `core/s3`.
+
+### 8.3. Dịch vụ nhận bí mật thế nào
+
+```mermaid
+flowchart LR
+  BAO[("OpenBao<br/>KV v2 secret/")] -->|"AppRole keycloak"| AK["bao-agent-keycloak"]
+  BAO -->|"AppRole apisix"| AA["bao-agent-apisix"]
+  AK -->|"render file"| VK[["tmpfs secrets-keycloak"]] --> KC["keycloak"]
+  AK -->|"render file"| VP[["tmpfs secrets-postgres"]] --> PG[("postgres")]
+  AA -->|"render file"| VA[["tmpfs secrets-apisix"]] --> GW["apisix"]
+```
+
+- Mỗi dịch vụ đọc bí mật có một `bao agent` riêng (`core/openbao/agent-<dịch vụ>.hcl`), đăng nhập bằng `role_id`/`secret_id` của AppRole tương ứng, render mỗi bí mật thành một file trên volume **tmpfs** (nằm trong RAM, mất khi dừng). Agent đọc lại KV mỗi 5 phút.
+- Dịch vụ mount volume đó read-only. `core/openbao/env-from-files.sh` bọc lệnh khởi động gốc: chờ đủ file (`SECRETS_REQUIRED`), export mỗi file thành một biến (tên file = tên biến), rồi `exec` entrypoint gốc của image. Image vẫn là image gốc, không sửa.
+- Kết quả: `docker compose config` và `docker inspect` không còn chứa các bí mật đã chuyển; chúng chỉ có trong môi trường của tiến trình dịch vụ.
+- Đổi một bí mật: `bao kv put` giá trị mới → agent render lại trong ≤ 5 phút → khởi động lại dịch vụ (`docker compose restart keycloak`). Mật khẩu DB còn phải `ALTER ROLE` trong PostgreSQL; secret client còn phải đổi trong Keycloak (realm chỉ import lần đầu).
+
+### 8.4. Khởi tạo và mở khóa
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant M as make up
+  participant B as OpenBao
+  participant S as scripts/openbao-init.sh
+  participant A as bao agent
+  participant D as postgres / keycloak / apisix
+  M->>B: up -d openbao (sealed)
+  M->>S: chạy script (idempotent)
+  S->>B: chưa init? → sys/init (Shamir 3 mảnh, ngưỡng 2)
+  S->>S: ghi unseal key, root token vào .data/openbao/ (ngoài git)
+  S->>B: sys/unseal (2 key)
+  S->>B: bật KV v2 secret/, nạp bí mật còn thiếu (cas=0, không ghi đè)
+  S->>B: ghi policy, AppRole; lưu role_id/secret_id vào .data/openbao/approle/
+  M->>A: up -d (chờ OpenBao healthy = đã mở khóa)
+  A->>B: đăng nhập AppRole, đọc KV
+  A->>D: render file trên tmpfs
+  D->>D: env-from-files.sh → entrypoint gốc
+```
+
+- **Lần đầu:** `cp .env.example .env && make up`. Script sinh ngẫu nhiên mọi bí mật lõi (`openssl rand`). Nâng cấp từ bản trước #14 có volume `pgdata` cũ: để nguyên 3 biến cũ (`KEYCLOAK_DB_PASSWORD`, `KC_BOOTSTRAP_ADMIN_PASSWORD`, `KC_GATEWAY_CLIENT_SECRET`) trong `.env` cho lần chạy đầu; script nạp đúng giá trị đó vào OpenBao để khớp dữ liệu cũ, sau đó xóa chúng khỏi `.env`.
+- **Chạy lại:** `make up`/`make bao-init` bao nhiêu lần cũng được: chỉ tạo phần còn thiếu, không đổi key, bí mật hay `secret_id` đã có. Ghi KV dùng `cas=0` nên không bao giờ ghi đè.
+- **Sau khi khởi động lại** (reboot, `make down` rồi `docker compose up`): OpenBao luôn khởi động ở trạng thái **sealed**, healthcheck báo unhealthy, các dịch vụ phụ thuộc chờ.
+  - Dev: container `openbao-unseal` (`core/openbao/dev-auto-unseal.sh`) tự mở khóa bằng key trong `.data/openbao/unseal/` khi `OPENBAO_DEV_AUTO_UNSEAL=true`. **Chỉ dùng cho dev:** key nằm cùng máy với dữ liệu thì seal mất tác dụng.
+  - VPS/production: đặt `OPENBAO_DEV_AUTO_UNSEAL=false`, mở khóa thủ công `make bao-unseal` (hoặc `docker compose exec openbao bao operator unseal` nhập từng mảnh key do người giữ khác nhau cầm), về sau dùng auto-unseal bằng KMS/transit.
+- **Thư mục `.data/openbao/`** (đổi bằng `OPENBAO_LOCAL_DIR`): `init.json`, `unseal/unseal.keys`, `root.token`, `approle/<dịch vụ>/`. Đã nằm trong `.gitignore`. Mất thư mục này thì không mở khóa được volume `baodata`. Root token chỉ dùng quản trị trên máy dev; khi triển khai thật: thu hồi root token sau khi cấu hình, cần lại thì `bao operator generate-root`.
+- **Kiểm tra:** `make bao-status`, `make smoke` (`scripts/smoke-openbao.sh`: không phải dev/raft, đã mở khóa, phân quyền AppRole, APISIX và Keycloak đang chạy bằng đúng bí mật trong OpenBao, compose không truyền bí mật qua `environment`).
+
+Việc còn lại ở #11: chuyển `POSTGRES_PASSWORD`, `HASURA_GRAPHQL_ADMIN_SECRET` vào OpenBao, nối `secret/core/s3` vào SeaweedFS (`-s3.config` render bằng agent), thêm agent cho Hasura/Temporal khi gộp vào `core`.

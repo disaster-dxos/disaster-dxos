@@ -4,11 +4,14 @@
 
 ## [Unreleased]
 ### Added
+- OpenBao chạy chế độ server (raft trên volume `baodata`, tắt UI) trong profile `core`; `scripts/openbao-init.sh` (`make bao-init`, gọi tự động trong `make up`) khởi tạo Shamir, lưu key/token ra `.data/openbao/` ngoài git, mở khóa, bật KV v2 `secret/`, nạp bí mật lõi, tạo policy chỉ đọc + AppRole cho từng dịch vụ; chạy lại không ghi đè (#14).
+- `bao agent` cho Keycloak và APISIX render bí mật lên volume tmpfs, `core/openbao/env-from-files.sh` export trước entrypoint gốc; container `openbao-unseal` tự mở khóa khi dev (`OPENBAO_DEV_AUTO_UNSEAL`), `make bao-unseal`, `make bao-status`; `scripts/smoke-openbao.sh` chạy trong `make smoke` (#14).
 - Keycloak: claim `https://hasura.io/jwt/claims` (`x-hasura-allowed-roles`, `x-hasura-default-role` từ thuộc tính user `hasura_default_role`, `x-hasura-user-id`) bằng mapper có sẵn trên client `dxos-web`, `dxos-dev-cli`; thuộc tính khai báo trong user profile của realm (#13).
 - Keycloak: flow trình duyệt `browser-otp-dieu-phoi` bắt cài/nhập OTP với vai trò `dieu-phoi`; `scripts/smoke-jwt.sh` kiểm claim Hasura của 3 user mẫu và luồng OTP qua đăng nhập web (#13).
 - CI thêm job `shellcheck`, `yamllint` (cấu hình `.yamllint.yml`) và `pytest` (tự bỏ qua khi chưa có mã Python); `scripts/lint.sh`, `make lint`; ghim phiên bản action (#31).
 
 ### Changed
+- Mật khẩu DB và admin của Keycloak, secret client `dxos-gateway` chuyển từ `.env` sang OpenBao (`secret/core/*`); `.env.example` bỏ `KEYCLOAK_DB_PASSWORD`, `KC_BOOTSTRAP_ADMIN_PASSWORD`, `KC_GATEWAY_CLIENT_SECRET`, `OPENBAO_DEV_ROOT_TOKEN`, thêm biến khởi động OpenBao. Bản cũ nâng cấp: giữ 3 biến cũ cho lần init đầu để nạp đúng giá trị. `POSTGRES_PASSWORD`, secret Hasura, khóa S3 cho SeaweedFS làm ở #11. Script SPDX quét thêm `*.hcl` (#14).
 - Áp D-007: chốt Tessera (driver POSIX) cho sổ cái minh bạch, Trillian là dự phòng; `docs/architecture.md` thêm mục `core/ledger` (API, không đưa dữ liệu cá nhân lên sổ cái, khóa ký trong OpenBao, trang "Minh bạch cứu trợ"); cập nhật `NOTICE`, `DEPENDENCIES.md`; script SPDX quét thêm `*.go` và `go.mod` (#34).
 
 ### Fixed

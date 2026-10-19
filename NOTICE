@@ -11,7 +11,7 @@ Trạng thái: Đã xác minh 17/10/2026 (D-004) — đọc LICENSE ở repo ch�
 |---|---|---|---|
 | SSO/MFA | Keycloak | `quay.io/keycloak/keycloak:26.8.1` | Apache-2.0 |
 | API Gateway | Apache APISIX (+ Coraza WAF, coraza-proxy-wasm) | `apache/apisix:3.19.0-debian` | Apache-2.0 |
-| Bí mật | OpenBao | `openbao/openbao:2.7.1` | MPL-2.0 |
+| Bí mật | OpenBao (dịch vụ riêng, image gốc không sửa; server + bao agent) | `openbao/openbao:2.7.1` | MPL-2.0 |
 | CSDL + GIS | PostgreSQL + PostGIS (dịch vụ riêng) | `postgis/postgis:17-3.5` | PostgreSQL / GPL-2.0 |
 | Tự sinh API | Hasura GraphQL Engine v2 **Community Edition** (chỉ tag `-ce`, không dùng image EE) | `hasura/graphql-engine:v2.51.0-ce` | Apache-2.0 |
 | Object storage | SeaweedFS (S3) | `chrislusf/seaweedfs:4.48` | Apache-2.0 |
