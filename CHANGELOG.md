@@ -14,3 +14,4 @@
 ### Changed
 - Áp D-004: loại immudb (BSL 1.1) → transparency log (đề xuất Tessera, chờ đội chốt); chốt Scorpio làm broker NGSI-LD; Hasura bắt buộc tag `-ce`; Centrifugo OSS; Qwen2.5 chỉ 7B/14B. NOTICE chuyển trạng thái "Đã xác minh 17/10/2026 (D-004)".
 - `make check` kiểm mọi profile compose, dùng `.env.example` khi chưa có `.env`; kiểm SPDX mở rộng sang `*.yml`, `*.yaml`, `*.conf`, `Makefile`, `.env.example`.
+- Script SPDX quét thêm `.vue`, `.dart`, `.toml`, `.cjs`, `Dockerfile*` và `Makefile`/`.env.example` ở mọi thư mục; danh sách loại file dùng chung trong `scripts/spdx-files.sh`; giữ nguyên shebang và chỉ thị `# syntax=` của Dockerfile khi chèn header (#2).
