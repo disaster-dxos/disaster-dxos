@@ -23,7 +23,7 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [ ] [V1] Release v0.0.1 (`.tar.gz`)
 
 ## Tuần 2 · 22–28/10 · Lõi headless → v0.1.0
-- [ ] [V1] Tách `core/` (Tầng 1, không chứa nghiệp vụ) và `apps/` (nghiệp vụ thiên tai); cập nhật `docs/architecture.md`
+- [x] [V1] Tách `core/` (Tầng 1, không chứa nghiệp vụ) và `apps/` (nghiệp vụ thiên tai); cập nhật `docs/architecture.md`
 - [ ] [V1] Gộp Hasura CE, SeaweedFS, Temporal, NATS, OpenBao từ `core-next` vào `core`, chạy được trên laptop 16 GB
 - [ ] [V1] APISIX: route `/graphql`, `/files`, `/workflow` kiểm JWT Keycloak; bật Coraza WAF
 - [ ] [V1] Keycloak: claim vai trò mặc định ổn định cho Hasura (sửa `realm_access.roles[0]`); bật OTP cho `dieu-phoi`
