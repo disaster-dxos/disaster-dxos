@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0
+# APISIX chế độ standalone: route khai báo trong apisix.yaml (GitOps), không cần etcd.
+deployment:
+  role: data_plane
+  role_data_plane:
+    config_provider: yaml
+
+apisix:
+  node_listen: 9080
+  enable_ipv6: false
+
+nginx_config:
+  # Cho phép plugin đọc biến môi trường qua tham chiếu $env://TÊN_BIẾN
+  envs:
+    - KC_GATEWAY_CLIENT_SECRET
+
+plugins:
+  - real-ip
+  - cors
+  - request-id
+  - openid-connect
+  - proxy-rewrite
+  - limit-count
+  - response-rewrite
+  - serverless-pre-function

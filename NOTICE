@@ -1,0 +1,31 @@
+Disaster DX-OS
+Copyright 2026 <Tên đội> — OLP PMNM 2026
+
+Sản phẩm được cấp phép theo Apache License 2.0 (xem LICENSE).
+Các thành phần nguồn mở dưới đây được dùng dưới dạng thư viện qua trình quản lý gói
+hoặc image Docker gốc, không sửa đổi mã nguồn. Thành phần AGPL/GPL chạy như dịch vụ
+độc lập, không liên kết vào mã của dự án.
+Trạng thái: Đã xác minh 17/10/2026 (D-004) — đọc LICENSE ở repo chính thức, tag image trên Docker Hub/Quay.
+
+| Lớp | Thành phần | Image / phiên bản ghim | Giấy phép |
+|---|---|---|---|
+| SSO/MFA | Keycloak | `quay.io/keycloak/keycloak:26.8.1` | Apache-2.0 |
+| API Gateway | Apache APISIX (+ Coraza WAF, coraza-proxy-wasm) | `apache/apisix:3.19.0-debian` | Apache-2.0 |
+| Bí mật | OpenBao | `openbao/openbao:2.7.1` | MPL-2.0 |
+| CSDL + GIS | PostgreSQL + PostGIS (dịch vụ riêng) | `postgis/postgis:17-3.5` | PostgreSQL / GPL-2.0 |
+| Tự sinh API | Hasura GraphQL Engine v2 **Community Edition** (chỉ tag `-ce`, không dùng image EE) | `hasura/graphql-engine:v2.51.0-ce` | Apache-2.0 |
+| Object storage | SeaweedFS (S3) | `chrislusf/seaweedfs:4.48` | Apache-2.0 |
+| Workflow | Temporal + Python SDK | `temporalio/auto-setup:1.29.7`, `temporalio/ui:2.56.0` | MIT |
+| Event + IoT | NATS JetStream (MQTT tích hợp) | `nats:2.15.1-alpine` | Apache-2.0 |
+| NGSI-LD broker | Scorpio Broker (chạy với `postgis/postgis`) | ghim tag ở tuần 4 | BSD-3-Clause |
+| Sổ cái minh bạch | Transparency log: Tessera (đề xuất, chờ đội chốt) hoặc Trillian — thay immudb (BSL 1.1, không OSI) | build từ nguồn, tuần 4 | Apache-2.0 |
+| Quét mã độc | ClamAV (dịch vụ riêng) | ghim tag ở tuần 2+ | GPL-2.0 |
+| Web điều phối | Vue 3 / Nuxt 3 + Tailwind + MapLibre GL JS | npm | MIT / BSD-3-Clause |
+| App hiện trường | Flutter, offline-first | pub | BSD-3-Clause |
+| Realtime | Centrifugo OSS (không dùng Centrifugo PRO) | ghim tag ở tuần 3 | Apache-2.0 |
+| Dữ liệu lịch sử | Parquet trên SeaweedFS + DuckDB | PyPI | MIT |
+| Dashboard | Grafana (dịch vụ riêng) | ghim tag ở tuần 4 | AGPL-3.0 |
+| AI | Ollama + Qwen2.5 7B/14B (không dùng 3B), FastAPI + LangGraph, Qdrant | ghim tag ở tuần 5 | MIT / Apache-2.0 (Qwen2.5 7B/14B: Apache-2.0) |
+
+Không dùng: immudb (BSL 1.1 từ 12/2023), Stellio (image DB kèm TimescaleDB TSL),
+Orion-LD (cần MongoDB – SSPL), Hasura image không có hậu tố `-ce`, Centrifugo PRO, Qwen2.5 3B.

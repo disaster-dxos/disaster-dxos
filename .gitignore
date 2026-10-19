@@ -1,0 +1,17 @@
+.env
+!.env.example
+node_modules/
+dist/
+build/
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+# Dữ liệu chạy local và model — không đưa lên repo
+.data/
+models/
+*.gguf
+*.tar.gz
+
+# Claude Code – cấu hình riêng máy
+.claude/settings.local.json

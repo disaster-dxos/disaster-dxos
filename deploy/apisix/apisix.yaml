@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: Apache-2.0
+# Route của API Gateway (standalone). APISIX tự nạp lại khi file đổi.
+# Quy ước: mọi API nghiệp vụ nằm dưới /api/, bắt buộc Bearer JWT do Keycloak realm "disaster" ký.
+# File PHẢI kết thúc bằng dòng "#END".
+
+upstreams:
+  - id: keycloak
+    type: roundrobin
+    nodes:
+      "keycloak:8080": 1
+
+routes:
+  # Route mẫu v0.0.1: trả thông tin người dùng từ token (Keycloak userinfo).
+  # Không token / token sai → APISIX trả 401, request không tới upstream.
+  - id: api-me
+    uri: /api/v1/me
+    methods: [GET]
+    upstream_id: keycloak
+    plugins:
+      request-id: {}
+      openid-connect:
+        client_id: dxos-gateway
+        client_secret: $env://KC_GATEWAY_CLIENT_SECRET
+        discovery: http://keycloak:8080/realms/disaster/.well-known/openid-configuration
+        bearer_only: true
+        use_jwks: true
+        set_userinfo_header: false
+        set_access_token_header: true
+        access_token_in_authorization_header: true
+      proxy-rewrite:
+        uri: /realms/disaster/protocol/openid-connect/userinfo
+      limit-count:
+        count: 120
+        time_window: 60
+        key_type: var
+        key: remote_addr
+        rejected_code: 429
+
+  # Kiểm tra sống của gateway, không cần token
+  - id: health
+    uri: /healthz
+    methods: [GET]
+    plugins:
+      serverless-pre-function:
+        phase: rewrite
+        functions:
+          - "return function(conf, ctx) local core = require('apisix.core'); core.response.exit(200, {status = 'ok'}) end"
+
+  # TODO tuần 2: /graphql → hasura:8080, /files → seaweedfs:8333, /workflow → dịch vụ Temporal
+  # TODO tuần 2: Coraza WAF (coraza-proxy-wasm) trước các route /api
+#END

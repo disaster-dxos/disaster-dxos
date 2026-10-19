@@ -1,0 +1,241 @@
+# SPDX-License-Identifier: Apache-2.0
+# Disaster DX-OS — lõi headless Tầng 1. Kiến trúc: docs/architecture.md
+#
+# Profile:
+#   core       PostgreSQL+PostGIS, Keycloak, APISIX (v0.0.1, chạy được trên laptop 16 GB)
+#   core-next  Hasura CE, SeaweedFS, Temporal, NATS, OpenBao (khai báo sẵn; tuần 2 gộp vào core)
+#   gis, ai, bi, sec   xem TODO cuối file
+#
+# Chạy: cp .env.example .env && make up
+# Quy tắc: mọi image ghim phiên bản cụ thể, lấy từ nguồn gốc, KHÔNG dùng "latest".
+
+name: ${COMPOSE_PROJECT_NAME:-disaster-dxos}
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  # ======================= profile: core =======================
+  postgres:
+    <<: *restart
+    image: postgis/postgis:17-3.5
+    platform: ${POSTGIS_PLATFORM:-linux/amd64}
+    profiles: [core, core-next]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Thiếu POSTGRES_USER trong .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Thiếu POSTGRES_PASSWORD trong .env}
+      POSTGRES_DB: ${POSTGRES_DB:-disaster}
+      KEYCLOAK_DB: ${KEYCLOAK_DB:-keycloak}
+      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER:-keycloak}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Thiếu KEYCLOAK_DB_PASSWORD trong .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres/init/20-create-databases.sh:/docker-entrypoint-initdb.d/20-create-databases.sh:ro
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-15432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    mem_limit: 1g
+
+  keycloak:
+    <<: *restart
+    image: quay.io/keycloak/keycloak:26.8.1
+    profiles: [core, core-next]
+    command: ["start-dev", "--import-realm"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${KEYCLOAK_DB:-keycloak}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Thiếu KEYCLOAK_DB_PASSWORD trong .env}
+      # "iss" của token luôn là URL công khai; URL nội bộ (jwks, token) theo host gọi tới
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?Thiếu KC_BOOTSTRAP_ADMIN_PASSWORD trong .env}
+      # Giá trị thay vào placeholder ${...} trong realm-disaster.json khi import
+      KC_GATEWAY_CLIENT_SECRET: ${KC_GATEWAY_CLIENT_SECRET:?Thiếu KC_GATEWAY_CLIENT_SECRET trong .env}
+      KC_DEMO_USER_PASSWORD: ${KC_DEMO_USER_PASSWORD:?Thiếu KC_DEMO_USER_PASSWORD trong .env}
+      KC_REALM_SSL_REQUIRED: ${KC_REALM_SSL_REQUIRED:-external}
+      JAVA_OPTS_KC_HEAP: "-XX:MaxRAMPercentage=70"
+    volumes:
+      - ./deploy/keycloak/realm-disaster.json:/opt/keycloak/data/import/realm-disaster.json:ro
+    ports:
+      - "${KEYCLOAK_PORT:-8080}:8080"
+    healthcheck:
+      # Image Keycloak không có curl: gọi /health/ready ở cổng quản trị 9000 bằng bash (/dev/tcp)
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"UP\"' <&3"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    mem_limit: 1536m
+
+  apisix:
+    <<: *restart
+    image: apache/apisix:3.19.0-debian
+    profiles: [core, core-next]
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    environment:
+      KC_GATEWAY_CLIENT_SECRET: ${KC_GATEWAY_CLIENT_SECRET:?Thiếu KC_GATEWAY_CLIENT_SECRET trong .env}
+    volumes:
+      - ./deploy/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./deploy/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+    ports:
+      - "${APISIX_PORT:-9080}:9080"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9080 && printf 'GET /healthz HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    mem_limit: 512m
+
+  # ===================== profile: core-next (tuần 2) =====================
+  hasura:
+    <<: *restart
+    # BẮT BUỘC tag -ce (D-004): image không có -ce kèm thành phần EE độc quyền
+    image: hasura/graphql-engine:v2.51.0-ce
+    profiles: [core-next]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    environment:
+      HASURA_GRAPHQL_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-disaster}
+      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET:?Thiếu HASURA_GRAPHQL_ADMIN_SECRET trong .env}
+      # Tầng 1 headless: tắt console
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "false"
+      HASURA_GRAPHQL_DEV_MODE: "false"
+      HASURA_GRAPHQL_UNAUTHORIZED_ROLE: anonymous
+      # Vai trò lấy từ realm_access.roles trong JWT của Keycloak.
+      # TODO tuần 2: roles[0] KHÔNG ổn định (có thể là offline_access). Thêm mapper Keycloak
+      # sinh claim vai trò nghiệp vụ mặc định rồi đổi x-hasura-default-role sang claim đó.
+      HASURA_GRAPHQL_JWT_SECRET: >-
+        {"jwk_url":"http://keycloak:8080/realms/${KEYCLOAK_REALM:-disaster}/protocol/openid-connect/certs",
+        "issuer":"${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}/realms/${KEYCLOAK_REALM:-disaster}",
+        "claims_map":{"x-hasura-allowed-roles":{"path":"$$.realm_access.roles"},
+        "x-hasura-default-role":{"path":"$$.realm_access.roles[0]"},
+        "x-hasura-user-id":{"path":"$$.sub"}}}
+    ports:
+      - "127.0.0.1:${HASURA_PORT:-8081}:8080"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /healthz HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 512m
+
+  seaweedfs:
+    <<: *restart
+    image: chrislusf/seaweedfs:4.48
+    profiles: [core-next]
+    # TODO tuần 2: cấu hình khóa S3 (-s3.config) lấy từ OpenBao
+    command: ["server", "-dir=/data", "-s3", "-master.volumeSizeLimitMB=1024", "-volume.max=0"]
+    volumes:
+      - seaweeddata:/data
+    ports:
+      - "127.0.0.1:${SEAWEEDFS_S3_PORT:-8333}:8333"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9333/cluster/status >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    mem_limit: 512m
+
+  temporal:
+    <<: *restart
+    # auto-setup tự tạo schema trên PostgreSQL; chỉ dùng cho dev. Tuần 2 cân nhắc temporalio/server + admin-tools.
+    image: temporalio/auto-setup:1.29.7
+    profiles: [core-next]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_SEEDS: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:${TEMPORAL_PORT:-7233}:7233"
+    healthcheck:
+      test: ["CMD-SHELL", "temporal operator cluster health --address $$(hostname -i):7233 | grep -q SERVING"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    mem_limit: 1g
+
+  temporal-ui:
+    <<: *restart
+    # Giao diện quản trị cho dev, chỉ mở trên 127.0.0.1 (không thuộc Tầng 2)
+    image: temporalio/ui:2.56.0
+    profiles: [core-next]
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    ports:
+      - "127.0.0.1:${TEMPORAL_UI_PORT:-8088}:8080"
+    mem_limit: 256m
+
+  nats:
+    <<: *restart
+    image: nats:2.15.1-alpine
+    profiles: [core-next]
+    command: ["-c", "/etc/nats/nats.conf"]
+    volumes:
+      - ./deploy/nats/nats.conf:/etc/nats/nats.conf:ro
+      - natsdata:/data
+    ports:
+      - "127.0.0.1:${NATS_PORT:-4222}:4222"
+      - "127.0.0.1:${NATS_MQTT_PORT:-1883}:1883"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz?js-enabled-only=true >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 256m
+
+  openbao:
+    <<: *restart
+    # Chế độ dev (dữ liệu trong RAM). TODO tuần 2: chế độ server + lưu trữ raft, auto-unseal.
+    image: openbao/openbao:2.7.1
+    profiles: [core-next]
+    command: ["server", "-dev"]
+    environment:
+      BAO_DEV_ROOT_TOKEN_ID: ${OPENBAO_DEV_ROOT_TOKEN:?Thiếu OPENBAO_DEV_ROOT_TOKEN trong .env}
+      BAO_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      BAO_ADDR: http://127.0.0.1:8200
+    ports:
+      - "127.0.0.1:${OPENBAO_PORT:-8200}:8200"
+    healthcheck:
+      test: ["CMD", "bao", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 256m
+
+  # ===================== TODO các profile sau =====================
+  # gis (tuần 4): Scorpio Broker (BSD-3-Clause) dùng chung postgis/postgis + mô phỏng cảm biến MQTT
+  # sec (tuần 2-4): ClamAV (GPL-2.0, dịch vụ riêng) + transparency log Tessera/Trillian (build từ nguồn)
+  # ai  (tuần 5):   Ollama + Qwen2.5 7B/14B, Qdrant, agent FastAPI + LangGraph
+  # bi  (tuần 4):   Grafana (AGPL-3.0, dịch vụ riêng)
+
+volumes:
+  pgdata:
+  seaweeddata:
+  natsdata:

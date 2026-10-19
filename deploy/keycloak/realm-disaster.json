@@ -1,0 +1,131 @@
+{
+  "realm": "disaster",
+  "displayName": "Disaster DX-OS",
+  "enabled": true,
+  "sslRequired": "${KC_REALM_SSL_REQUIRED}",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 900,
+  "roles": {
+    "realm": [
+      {
+        "name": "dieu-phoi",
+        "description": "Cán bộ xã điều phối cứu trợ"
+      },
+      {
+        "name": "cuu-ho",
+        "description": "Thành viên đội cứu hộ"
+      },
+      {
+        "name": "tinh-nguyen",
+        "description": "Tình nguyện viên"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "dxos-gateway",
+      "name": "APISIX API Gateway",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_GATEWAY_CLIENT_SECRET}",
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "implicitFlowEnabled": false
+    },
+    {
+      "clientId": "dxos-web",
+      "name": "Web điều phối (Nuxt)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "redirectUris": [
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*"
+      }
+    },
+    {
+      "clientId": "dxos-dev-cli",
+      "name": "CHỈ DÙNG KHI DEV: lấy token bằng mật khẩu để thử API",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "implicitFlowEnabled": false
+    }
+  ],
+  "users": [
+    {
+      "username": "dieuphoi01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Điều phối",
+      "lastName": "Mẫu",
+      "email": "dieuphoi01@example.invalid",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_DEMO_USER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-disaster",
+        "dieu-phoi"
+      ]
+    },
+    {
+      "username": "cuuho01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Cứu hộ",
+      "lastName": "Mẫu",
+      "email": "cuuho01@example.invalid",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_DEMO_USER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-disaster",
+        "cuu-ho"
+      ]
+    },
+    {
+      "username": "tinhnguyen01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Tình nguyện",
+      "lastName": "Mẫu",
+      "email": "tinhnguyen01@example.invalid",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_DEMO_USER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-disaster",
+        "tinh-nguyen"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+# Yêu cầu PoF: license đầy đủ (#1) và build được 100% từ mã nguồn (#3).
+name: ci
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  license:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/check-license.sh
+
+  build-from-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose --profile '*' config --quiet
+      - run: docker compose build
