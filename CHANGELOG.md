@@ -17,3 +17,4 @@
 - `make check` kiểm mọi profile compose, dùng `.env.example` khi chưa có `.env`; kiểm SPDX mở rộng sang `*.yml`, `*.yaml`, `*.conf`, `Makefile`, `.env.example`.
 - Script SPDX quét thêm `.vue`, `.dart`, `.toml`, `.cjs`, `Dockerfile*` và `Makefile`/`.env.example` ở mọi thư mục; danh sách loại file dùng chung trong `scripts/spdx-files.sh`; giữ nguyên shebang và chỉ thị `# syntax=` của Dockerfile khi chèn header (#2).
 - Tách `core/` (Tầng 1, không chứa nghiệp vụ) và `apps/cuu-tro/` (Tầng 2): `deploy/apisix`, `deploy/nats`, `deploy/postgres` → `core/`; realm Keycloak → `apps/cuu-tro/keycloak/realm.json`; chọn ứng dụng bằng biến `DXOS_APP`; `docs/architecture.md` thêm mục 7 giải thích vì sao lõi độc lập với nghiệp vụ (#3).
+- `docs/PLAN.md` theo lộ trình mới: VPS + tên miền tuần 4, tuần UX tuần 6, 2 lần tập trình bày, công bố bộ mô phỏng cảm biến và mô hình NGSI-LD; gán vai V1/V2/V3 cho từng việc (#5).
