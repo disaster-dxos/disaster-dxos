@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 ### Added
+- Keycloak: claim `https://hasura.io/jwt/claims` (`x-hasura-allowed-roles`, `x-hasura-default-role` từ thuộc tính user `hasura_default_role`, `x-hasura-user-id`) bằng mapper có sẵn trên client `dxos-web`, `dxos-dev-cli`; thuộc tính khai báo trong user profile của realm (#13).
+- Keycloak: flow trình duyệt `browser-otp-dieu-phoi` bắt cài/nhập OTP với vai trò `dieu-phoi`; `scripts/smoke-jwt.sh` kiểm claim Hasura của 3 user mẫu và luồng OTP qua đăng nhập web (#13).
 - CI thêm job `shellcheck`, `yamllint` (cấu hình `.yamllint.yml`) và `pytest` (tự bỏ qua khi chưa có mã Python); `scripts/lint.sh`, `make lint`; ghim phiên bản action (#31).
 
 ### Changed
