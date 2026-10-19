@@ -3,6 +3,8 @@
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [SemVer](https://semver.org/lang/vi/).
 
 ## [Unreleased]
+
+## [0.0.1] - 2026-10-19
 ### Added
 - Khung dự án: LICENSE (Apache-2.0), NOTICE, CONTRIBUTING, CODE_OF_CONDUCT, CI kiểm tra giấy phép, mẫu issue.
 - `docs/architecture.md`: sơ đồ Mermaid Tầng 1/Tầng 2, ánh xạ 4 dịch vụ bắt buộc, luồng xác thực JWT, chia profile compose, so sánh Tessera/Trillian.
@@ -18,3 +20,6 @@
 - Script SPDX quét thêm `.vue`, `.dart`, `.toml`, `.cjs`, `Dockerfile*` và `Makefile`/`.env.example` ở mọi thư mục; danh sách loại file dùng chung trong `scripts/spdx-files.sh`; giữ nguyên shebang và chỉ thị `# syntax=` của Dockerfile khi chèn header (#2).
 - Tách `core/` (Tầng 1, không chứa nghiệp vụ) và `apps/cuu-tro/` (Tầng 2): `deploy/apisix`, `deploy/nats`, `deploy/postgres` → `core/`; realm Keycloak → `apps/cuu-tro/keycloak/realm.json`; chọn ứng dụng bằng biến `DXOS_APP`; `docs/architecture.md` thêm mục 7 giải thích vì sao lõi độc lập với nghiệp vụ (#3).
 - `docs/PLAN.md` theo lộ trình mới: VPS + tên miền tuần 4, tuần UX tuần 6, 2 lần tập trình bày, công bố bộ mô phỏng cảm biến và mô hình NGSI-LD; gán vai V1/V2/V3 cho từng việc (#5).
+
+[Unreleased]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.0.1
