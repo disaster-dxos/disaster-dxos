@@ -124,12 +124,17 @@ do_setup() {
     log "đã bật KV v2 tại secret/"
   fi
 
-  # Bí mật lõi. Mật khẩu superuser PostgreSQL và secret Hasura còn ở .env tới #11.
+  # Bí mật lõi. Biến bên phải là tên biến cũ trong .env (bản trước #14/#11): còn thì nạp đúng
+  # giá trị đó để khớp volume cũ, không còn thì sinh ngẫu nhiên.
+  kv_seed core/postgres       password=POSTGRES_PASSWORD
   kv_seed core/keycloak-db    password=KEYCLOAK_DB_PASSWORD
   kv_seed core/keycloak-admin password=KC_BOOTSTRAP_ADMIN_PASSWORD
   kv_seed core/gateway        client_secret=KC_GATEWAY_CLIENT_SECRET
-  # Chỗ cho SeaweedFS (#11) và khóa ký checkpoint Tessera (#28, sinh bằng core/ledger)
+  kv_seed core/hasura-db      password=@rand:24
+  kv_seed core/hasura         admin_secret=HASURA_GRAPHQL_ADMIN_SECRET
+  kv_seed core/temporal-db    password=@rand:24
   kv_seed core/s3             access_key=@rand:10 secret_key=@rand:24
+  # Khóa ký checkpoint Tessera (#28, sinh bằng core/ledger)
   kv_seed core/ledger         signing_key=@empty
 
   # AppRole

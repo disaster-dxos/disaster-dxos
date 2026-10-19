@@ -5,12 +5,12 @@ Trạng thái: ☐ chưa làm · ◐ đang làm · ☑ xong (ghi đường dẫn
 ## A. Yêu cầu bắt buộc của đề
 | # | Yêu cầu | Thành phần | Trạng thái | Bằng chứng |
 |---|---|---|---|---|
-| A1 | Lõi headless Tầng 1, không có UI | Keycloak, APISIX, PostgreSQL+PostGIS, OpenBao chế độ server tắt UI (core); Hasura CE tắt console, Temporal, SeaweedFS, NATS (core-next). Két sắt bí mật: mật khẩu DB/admin Keycloak, client secret gateway lấy từ OpenBao qua bao agent + AppRole chỉ đọc, không nằm trong `.env` (#14) | ◐ | `docker-compose.yml`, `core/openbao/`, `scripts/openbao-init.sh`, `scripts/smoke-openbao.sh`, `docs/architecture.md` mục 8 |
+| A1 | Lõi headless Tầng 1, không có UI | Keycloak, APISIX, PostgreSQL+PostGIS, OpenBao chế độ server tắt UI (core); Hasura CE tắt console, Temporal, SeaweedFS, NATS cùng profile `core` (#11). Két sắt bí mật: mọi mật khẩu DB (superuser + role riêng từng dịch vụ), admin Keycloak/Hasura, client secret gateway, khóa S3 lấy từ OpenBao qua bao agent + AppRole chỉ đọc, không nằm trong `.env` (#14, #11) | ◐ | `docker-compose.yml`, `core/openbao/`, `scripts/openbao-init.sh`, `scripts/smoke-openbao.sh`, `scripts/smoke-core.sh`, `docs/architecture.md` mục 8 |
 | A2 | Identity / SSO (+MFA) | Keycloak 26.8.1, realm `disaster`, 3 vai trò `dieu-phoi`/`cuu-ho`/`tinh-nguyen`, client gateway/web/dev-cli. MFA: flow `browser-otp-dieu-phoi` bắt OTP với vai trò `dieu-phoi` (#13). Claim `https://hasura.io/jwt/claims` có vai trò mặc định ổn định. Mật khẩu DB, admin và secret client của Keycloak nằm trong OpenBao (#14) | ☑ | `apps/cuu-tro/keycloak/realm.json`, `scripts/smoke-jwt.sh` |
 | A3 | API Gateway | APISIX 3.19 standalone (route trong git), `openid-connect` kiểm JWT bằng JWKS Keycloak, limit-count. Mới có route mẫu `/api/v1/me`; chưa có Coraza WAF | ◐ | `core/apisix/`, `scripts/smoke-jwt.sh` (401 không token / 200 có token) |
-| A4 | Quản trị dữ liệu có cấu trúc | PostgreSQL 17 + PostGIS 3.5 chạy; Hasura CE v2.51.0-ce khai báo (core-next) | ◐ | `docker-compose.yml` |
-| A5 | Quản trị dữ liệu phi cấu trúc | SeaweedFS 4.48 (S3) khai báo (core-next) | ☐ | |
-| A6 | Workflow engine | Temporal 1.29.7 khai báo (core-next) | ☐ | |
+| A4 | Quản trị dữ liệu có cấu trúc | PostgreSQL 17 + PostGIS 3.5; Hasura CE v2.51.0-ce chạy trong `core` bằng role `hasura` riêng (không superuser), console tắt, kiểm lại JWT Keycloak qua JWKS, đọc claim `https://hasura.io/jwt/claims`, chặn tự nâng vai trò (#11). Chưa có schema nghiệp vụ (#25, #26), chưa có route `/graphql` (#12) | ◐ | `docker-compose.yml` (`hasura`, `postgres-roles`), `core/postgres/sync-roles.sh`, `scripts/smoke-core.sh` |
+| A5 | Quản trị dữ liệu phi cấu trúc | SeaweedFS 4.48 (S3) chạy trong `core`, bật xác thực S3 bằng khóa lấy từ OpenBao (`secret/core/s3`); smoke tạo bucket, ghi/đọc/xóa object, khóa sai → 403 (#11). Chưa có API tải ảnh (#27), route `/files` (#12), ClamAV | ◐ | `docker-compose.yml` (`seaweedfs`), `core/openbao/agent-seaweedfs.hcl`, `scripts/smoke-core.sh` |
+| A6 | Workflow engine | Temporal 1.29.7 chạy trong `core` (CSDL riêng thuộc role `temporal`, namespace `default`), Temporal UI chỉ cho admin trên 127.0.0.1 (#11). Chưa có worker/workflow (#29), route `/workflow` (#12) | ◐ | `docker-compose.yml` (`temporal`, `temporal-ui`), `scripts/smoke-core.sh` |
 | A7 | ≥1 ứng dụng Tầng 2 có giao diện (H-P-D-I) | | ☐ | |
 
 ## B. 4 nguyên lý kỹ thuật (điểm cộng nguyên gốc)

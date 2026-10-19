@@ -45,10 +45,3 @@ template {
   perms       = "0444"
   contents    = "{{ with secret \"secret/data/core/gateway\" }}{{ .Data.data.client_secret }}{{ end }}"
 }
-
-# --- PostgreSQL: core/postgres/init tạo role keycloak bằng mật khẩu này (chỉ lần đầu) ---
-template {
-  destination = "/out/postgres/KEYCLOAK_DB_PASSWORD"
-  perms       = "0444"
-  contents    = "{{ with secret \"secret/data/core/keycloak-db\" }}{{ .Data.data.password }}{{ end }}"
-}
