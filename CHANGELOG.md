@@ -3,6 +3,11 @@
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [SemVer](https://semver.org/lang/vi/).
 
 ## [Unreleased]
+### Added
+- CI thêm job `shellcheck`, `yamllint` (cấu hình `.yamllint.yml`) và `pytest` (tự bỏ qua khi chưa có mã Python); `scripts/lint.sh`, `make lint`; ghim phiên bản action (#31).
+
+### Fixed
+- Sửa cảnh báo lint trong mã cũ: chú thích bỏ qua SC2094 (dương tính giả) ở `scripts/spdx-files.sh`, cho phép dòng `#END` bắt buộc của APISIX trong `core/apisix/apisix.yaml` (#31).
 
 ## [0.0.1] - 2026-10-19
 ### Added

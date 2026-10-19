@@ -48,4 +48,6 @@ routes:
 
   # TODO tuần 2: /graphql → hasura:8080, /files → seaweedfs:8333, /workflow → dịch vụ Temporal
   # TODO tuần 2: Coraza WAF (coraza-proxy-wasm) trước các route /api
+# APISIX standalone bắt buộc dòng "#END" cuối file
+# yamllint disable-line rule:comments
 #END

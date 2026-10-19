@@ -27,6 +27,7 @@ spdx_comment() {
 
 # Số dòng đầu file phải giữ nguyên trước header:
 # shebang (#!) và chỉ thị parser của Dockerfile (# syntax=, # escape=, # check=)
+# shellcheck disable=SC2094 # basename chỉ xử lý chuỗi tên file, không ghi vào "$f"
 spdx_keep_lines() {
   local f="$1" n=0 line
   while IFS= read -r line || [ -n "$line" ]; do

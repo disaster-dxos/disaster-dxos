@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: up up-next up-bi down logs ps seed license check smoke
+.PHONY: up up-next up-bi down logs ps seed license check lint smoke
 
 # Dùng .env nếu có, nếu không thì .env.example (để CI/máy sạch vẫn kiểm được compose)
 ENV_FILE := $(if $(wildcard .env),.env,.env.example)
@@ -30,6 +30,9 @@ seed:          ## Bơm dữ liệu mẫu — điền lệnh khi có script (npm 
 
 license:       ## Thêm header SPDX cho file mới
 	bash scripts/add-license-header.sh
+
+lint:          ## shellcheck + yamllint (cần cài sẵn 2 công cụ; CI chạy như nhau)
+	bash scripts/lint.sh all
 
 check:         ## Kiểm tra trước khi nộp: license + compose hợp lệ
 	bash scripts/check-license.sh
