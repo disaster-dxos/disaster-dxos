@@ -24,10 +24,10 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 
 ## Tuần 2 · 22–28/10 · Lõi headless → v0.1.0
 - [x] [V1] Tách `core/` (Tầng 1, không chứa nghiệp vụ) và `apps/` (nghiệp vụ thiên tai); cập nhật `docs/architecture.md`
-- [ ] [V1] Gộp Hasura CE, SeaweedFS, Temporal, NATS từ `core-next` vào `core` (OpenBao đã vào `core` ở #14), chạy được trên laptop 16 GB; chuyển `POSTGRES_PASSWORD`, secret Hasura, khóa S3 sang OpenBao (#11)
+- [x] [V1] Gộp Hasura CE, SeaweedFS, Temporal, NATS từ `core-next` vào `core` (OpenBao đã vào `core` ở #14), chạy được trên laptop 16 GB; chuyển `POSTGRES_PASSWORD`, secret Hasura, khóa S3 sang OpenBao (#11; RAM đo ~1,4–1,9 GB)
 - [ ] [V1] APISIX: route `/graphql`, `/files`, `/workflow` kiểm JWT Keycloak; bật Coraza WAF
 - [x] [V1] Keycloak: claim vai trò mặc định ổn định cho Hasura (sửa `realm_access.roles[0]`); bật OTP cho `dieu-phoi`
-- [ ] [V1] OpenBao giữ bí mật DB, client Keycloak, khóa S3 (bỏ chế độ dev) (#14: OpenBao server + AppRole, Keycloak/APISIX/PostgreSQL đọc từ OpenBao; nối khóa S3 vào SeaweedFS ở #11)
+- [x] [V1] OpenBao giữ bí mật DB, client Keycloak, khóa S3 (bỏ chế độ dev) (#14: OpenBao server + AppRole; #11: superuser PostgreSQL, role Hasura/Temporal, admin secret Hasura, khóa S3)
 - [ ] [V2] Schema PostGIS trong `apps/`: incidents, rescue_teams, shelters, supplies, sensors (migration)
 - [ ] [V2] Hasura trên schema `apps/`, phân quyền theo vai trò trong JWT
 - [ ] [V2] SeaweedFS S3 + API tải ảnh hiện trường qua gateway

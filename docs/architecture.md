@@ -1,6 +1,6 @@
 # Kiến trúc Disaster DX-OS
 
-> Phiên bản tài liệu: v0.0.1 + #14 (cập nhật 19/10/2026). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
+> Phiên bản tài liệu: v0.0.1 + #14, #11 (cập nhật 19/10/2026). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
 
 Disaster DX-OS gồm hai tầng, đúng mô hình Open-Core của đề:
 
@@ -63,14 +63,17 @@ flowchart TB
   BAO -.->|"bao agent: mật khẩu DB, admin"| KC
   BAO -.->|"bao agent: client secret"| GW
   BAO -.->|"cấp bí mật"| WK
-  BAO -.-> HS
+  BAO -.->|"role DB hasura, admin secret"| HS
+  BAO -.->|"superuser, role từng dịch vụ"| PG
+  BAO -.->|"role DB temporal"| TP
+  BAO -.->|"khóa S3"| SW
   BAO -.->|"khóa ký checkpoint"| TL
   GW -.->|"JWKS"| KC
   HS -.->|"JWKS"| KC
 ```
 
 Đường liền: luồng dữ liệu. Đường đứt: xác thực, khóa và bí mật.
-Hiện profile `core` có `openbao` (+ bao agent), `postgres`, `keycloak`, `apisix` và route `/api/v1/me`. Các route còn lại làm ở tuần 2–4 (xem `docs/PLAN.md`).
+Hiện profile `core` có `openbao` (+ 6 bao agent), `postgres` (+ `postgres-roles`), `keycloak`, `apisix`, `hasura`, `seaweedfs`, `temporal` (+ `temporal-ui`), `nats` (#11) và route `/api/v1/me`. Route `/graphql`, `/files`, `/workflow` làm ở #12; các thành phần còn lại tuần 3–5 (xem `docs/PLAN.md`).
 
 ## 2. Ánh xạ 4 dịch vụ bắt buộc của đề
 
@@ -78,9 +81,9 @@ Hiện profile `core` có `openbao` (+ bao agent), `postgres`, `keycloak`, `apis
 |---|---|---|---|---|
 | Identity / SSO (+MFA) | **Keycloak 26.8.1** | Realm `disaster`, OIDC, 3 vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen`, client cho gateway, web và CLI dev. Claim `https://hasura.io/jwt/claims` cho Hasura; OTP bắt buộc với vai trò `dieu-phoi` (#13) | `apps/cuu-tro/keycloak/realm.json` (vai trò, client của ứng dụng) | Chạy được (v0.0.1) |
 | API Gateway | **Apache APISIX 3.19** (+ Coraza WAF tuần 2) | Điểm vào duy nhất của Tầng 2. Kiểm chữ ký JWT bằng JWKS của Keycloak, giới hạn tần suất, gắn request-id. Chế độ standalone: route nằm trong git (GitOps) | `core/apisix/config.yaml`, `core/apisix/apisix.yaml` | Chạy được (v0.0.1) |
-| Dữ liệu có cấu trúc | **PostgreSQL 17 + PostGIS 3.5**, **Hasura CE v2.51** | Sự cố, đội cứu hộ, điểm trú ẩn, kho hàng, cảm biến (có tọa độ). Hasura tự sinh GraphQL + subscription, phân quyền theo claim vai trò trong JWT | `docker-compose.yml` (`postgres`, `hasura`) | PostgreSQL chạy; Hasura khai báo (tuần 2) |
-| Dữ liệu phi cấu trúc | **SeaweedFS 4.48** (S3) + ClamAV | Ảnh hiện trường, tệp đính kèm, file Parquet lịch sử. File tải lên được ClamAV quét trước khi công bố | `docker-compose.yml` (`seaweedfs`) | Khai báo (tuần 2) |
-| Workflow engine | **Temporal 1.29** + Python SDK | Quy trình kêu cứu: tiếp nhận → phân công đội gần nhất → xác nhận → đóng. Cảnh báo vượt ngưỡng → thông báo | `docker-compose.yml` (`temporal`) | Khai báo (tuần 2) |
+| Dữ liệu có cấu trúc | **PostgreSQL 17 + PostGIS 3.5**, **Hasura CE v2.51** | Sự cố, đội cứu hộ, điểm trú ẩn, kho hàng, cảm biến (có tọa độ). Hasura tự sinh GraphQL + subscription, phân quyền theo claim vai trò trong JWT | `docker-compose.yml` (`postgres`, `postgres-roles`, `hasura`), `core/postgres/sync-roles.sh` | Chạy trong `core` (#11); schema nghiệp vụ ở #25, #26 |
+| Dữ liệu phi cấu trúc | **SeaweedFS 4.48** (S3) + ClamAV | Ảnh hiện trường, tệp đính kèm, file Parquet lịch sử. File tải lên được ClamAV quét trước khi công bố | `docker-compose.yml` (`seaweedfs`), `core/openbao/agent-seaweedfs.hcl` | S3 chạy trong `core`, khóa từ OpenBao (#11); ClamAV sau |
+| Workflow engine | **Temporal 1.29** + Python SDK | Quy trình kêu cứu: tiếp nhận → phân công đội gần nhất → xác nhận → đóng. Cảnh báo vượt ngưỡng → thông báo | `docker-compose.yml` (`temporal`, `temporal-ui`) | Chạy trong `core` (#11); worker ở #29 |
 
 Thành phần hỗ trợ: OpenBao (bí mật, chạy chế độ server trong profile `core` – mục 8), NATS JetStream + MQTT (sự kiện, IoT), Scorpio (NGSI-LD, bản sao số trạm đo), sổ cái minh bạch `core/ledger` (transparency log Tessera, D-007) cho tiền/hàng cứu trợ.
 
@@ -117,7 +120,7 @@ Chi tiết cấu hình:
 
 - Keycloak đặt `KC_HOSTNAME=${KEYCLOAK_PUBLIC_URL}` nên `iss` của token luôn là URL công khai, dù token lấy từ đâu. `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true` cho phép APISIX và Hasura tải JWKS qua mạng nội bộ `http://keycloak:8080`.
 - APISIX dùng plugin `openid-connect` với `bearer_only: true`, `use_jwks: true`: kiểm token tại gateway, không gọi introspection mỗi request. Secret của client `dxos-gateway` lấy từ biến môi trường qua `$env://KC_GATEWAY_CLIENT_SECRET`, không ghi trong file; biến này do `bao agent` đọc từ OpenBao (`secret/core/gateway`), không nằm trong `.env` (mục 8).
-- Hasura (tuần 2) kiểm lại cùng JWT bằng `HASURA_GRAPHQL_JWT_SECRET.jwk_url`, nên dịch vụ phía sau vẫn tự kiểm tra (Zero-Trust, không tin mù gateway).
+- Hasura kiểm lại cùng JWT bằng `HASURA_GRAPHQL_JWT_SECRET` (`jwk_url` nội bộ + `issuer` công khai, không `claims_map`), nên dịch vụ phía sau vẫn tự kiểm tra (Zero-Trust, không tin mù gateway). `make smoke` kiểm: token Keycloak → truy vấn được; token giả → `invalid-jwt`; xin `X-Hasura-Role: admin` ngoài `x-hasura-allowed-roles` → `access-denied`.
 - Client `dxos-dev-cli` (cho phép lấy token bằng mật khẩu) **chỉ dùng khi dev** để chạy `scripts/smoke-jwt.sh`. Phải xóa trước khi triển khai công khai.
 
 ### 3.1. Claim vai trò cho Hasura (#13)
@@ -140,7 +143,7 @@ Client `dxos-web` và `dxos-dev-cli` có 3 protocol mapper có sẵn của Keycl
 
 - Tên claim có dấu chấm thì Keycloak tách thành JSON lồng nhau; dấu chấm trong `hasura.io` được thoát bằng `\.` (trong JSON viết `https://hasura\\.io/jwt/claims.x-hasura-default-role`).
 - **Vì sao không dùng `realm_access.roles[0]`:** thứ tự mảng không cố định. Đo thật 19/10/2026: `roles[0]` của `dieuphoi01` là `offline_access`, của `cuuho01` là `cuu-ho`. Vai trò mặc định nay lấy từ thuộc tính `hasura_default_role`, khai báo trong user profile của realm (chỉ admin xem/sửa, giá trị chỉ được là `dieu-phoi`, `cuu-ho`, `tinh-nguyen`). Tạo user mới phải đặt thuộc tính này; thiếu thì token không có `x-hasura-default-role` và Hasura từ chối.
-- Hasura đọc mặc định namespace `https://hasura.io/jwt/claims`, nên khi đưa Hasura vào profile `core` (#11) chỉ cần bỏ `claims_map` trong `HASURA_GRAPHQL_JWT_SECRET`.
+- Hasura đọc mặc định namespace `https://hasura.io/jwt/claims`, nên `HASURA_GRAPHQL_JWT_SECRET` không có `claims_map` (#11).
 
 ### 3.2. MFA: OTP bắt buộc cho `dieu-phoi` (#13)
 
@@ -166,11 +169,14 @@ Kiểm thử: `make up && bash scripts/smoke-jwt.sh` (không token → 401, toke
 
 ```mermaid
 flowchart LR
-  subgraph core["profile core"]
-    bao[openbao + bao agent] --> pg[(postgres)] --> kc[keycloak] --> gw[apisix]
-  end
-  subgraph next["profile core-next · gộp vào core ở #11"]
-    hs[hasura] --- sw[seaweedfs] --- tp[temporal + temporal-ui] --- nt[nats]
+  subgraph core["profile core (#11)"]
+    direction TB
+    bao[openbao + 6 bao agent] --> pg[(postgres)] --> roles[postgres-roles<br/>một lần]
+    roles --> kc[keycloak] --> gw[apisix]
+    roles --> hs[hasura]
+    roles --> tp[temporal] --> tui[temporal-ui]
+    bao --> sw[seaweedfs]
+    nt[nats]
   end
   subgraph later["profile sau"]
     gis["gis · Scorpio, mô phỏng cảm biến"]
@@ -178,17 +184,34 @@ flowchart LR
     ai["ai · Ollama + Qwen2.5 7B/14B, Qdrant, agent"]
     bi["bi · Grafana"]
   end
-  core --> next --> later
+  core --> later
 ```
 
-| Profile | Dịch vụ | Lệnh | RAM ước tính |
+| Profile | Dịch vụ | Lệnh | RAM |
 |---|---|---|---|
-| `core` | openbao, openbao-unseal (dev), bao-agent-keycloak, bao-agent-apisix, postgres, keycloak, apisix | `make up` | ~0,8 GB (đo 19/10/2026: Keycloak 507 MB, APISIX 157 MB, PostgreSQL 68 MB, OpenBao 30 MB, 2 agent 16–18 MB) |
-| `core-next` | core + hasura, seaweedfs, temporal, temporal-ui, nats | `make up-next` | ~1,4 GB lúc rỗi (đo 17/10/2026) |
+| `core` | openbao, openbao-unseal (dev), 6 bao agent, postgres, postgres-roles (chạy một lần rồi thoát), keycloak, apisix, hasura, seaweedfs, temporal, temporal-ui, nats | `make up` | **Đo 19/10/2026** (`docker stats --no-stream`, Mac Apple Silicon, PostGIS chạy giả lập amd64): ~1,4 GB ngay sau khi mọi dịch vụ healthy; ~1,9 GB sau `make smoke` (bảng dưới) |
 | `gis` | Scorpio (dùng chung postgis), mô phỏng cảm biến | tuần 4 | |
 | `sec` | ClamAV, `ledger` (Tessera) | tuần 2–4 | ClamAV ~1,5 GB; `ledger` nhỏ, giới hạn bằng `GOMEMLIMIT` |
 | `ai` | Ollama, Qdrant, agent | tuần 5 | Qwen2.5 7B ~5 GB |
 | `bi` | Grafana | tuần 4 | |
+
+RAM từng dịch vụ của `core` (MiB; "sau smoke" = sau khi chạy `make smoke` khoảng 10 phút):
+
+| Dịch vụ | Sau khởi động | Sau smoke | Giới hạn | Cách giới hạn |
+|---|---|---|---|---|
+| keycloak | 537 | 525 | 1536 | `mem_limit`, heap `-XX:MaxRAMPercentage=70` |
+| postgres | 240 | 315 | 1024 | `mem_limit`, `shared_buffers=128MB`, `max_connections=100`; Hasura 10 + Temporal 15 kết nối |
+| hasura | 72 | 185 | 512 | `mem_limit`, `HASURA_GRAPHQL_PG_CONNECTIONS=10` |
+| temporal | 76 | 238 | 512 | `mem_limit`, `GOMEMLIMIT=400MiB`, `SQL_MAX_CONNS=10`, `SQL_VIS_MAX_CONNS=5` |
+| seaweedfs | 153 | 193 | 384 | `mem_limit`, `GOMEMLIMIT=300MiB`, volume 256 MB |
+| apisix | 156 | 183 | 512 | `mem_limit` |
+| openbao | 33 | 145 | 256 | `mem_limit` |
+| nats | 12 | 25 | 256 | `mem_limit`, `GOMEMLIMIT=200MiB`, JetStream bộ nhớ 64 MB |
+| temporal-ui | 11 | 33 | 128 | `mem_limit`, `GOMEMLIMIT=100MiB` |
+| 6 bao agent + openbao-unseal | ~100 | ~115 | 64 mỗi cái | `mem_limit` |
+| **Tổng** | **~1392** | **~1956** | | |
+
+Image của profile `core` chiếm khoảng 5,4 GB ổ (Keycloak, APISIX, PostGIS, Hasura, Temporal lớn nhất). Chạy xong trên laptop ít ổ: `make down` (giữ volume) rồi `docker image prune -a -f`.
 
 Nguyên tắc:
 
@@ -299,13 +322,31 @@ OpenBao 2.7.1 (MPL-2.0, nhánh nguồn mở của Vault) chạy như dịch vụ
 
 | Đường dẫn KV v2 | Khóa | Dùng bởi | Trạng thái |
 |---|---|---|---|
-| `secret/core/keycloak-db` | `password` | Keycloak (`KC_DB_PASSWORD`), PostgreSQL (tạo role `keycloak` lần đầu) | ✔ đã chuyển |
-| `secret/core/keycloak-admin` | `password` | Keycloak (`KC_BOOTSTRAP_ADMIN_PASSWORD`, chỉ khi tạo CSDL lần đầu) | ✔ đã chuyển |
-| `secret/core/gateway` | `client_secret` | APISIX (`$env://KC_GATEWAY_CLIENT_SECRET`), Keycloak (realm import) | ✔ đã chuyển |
-| `secret/core/s3` | `access_key`, `secret_key` | SeaweedFS | Đã sinh, nối vào dịch vụ ở #11 |
+| `secret/core/postgres` | `password` | Superuser PostgreSQL: `initdb` lần đầu và `postgres-roles`. Không dịch vụ nào kết nối bằng superuser | ✔ (#11) |
+| `secret/core/keycloak-db` | `password` | Keycloak (`KC_DB_PASSWORD`), `postgres-roles` (role `keycloak`) | ✔ (#14) |
+| `secret/core/keycloak-admin` | `password` | Keycloak (`KC_BOOTSTRAP_ADMIN_PASSWORD`, chỉ khi tạo CSDL lần đầu) | ✔ (#14) |
+| `secret/core/gateway` | `client_secret` | APISIX (`$env://KC_GATEWAY_CLIENT_SECRET`), Keycloak (realm import) | ✔ (#14) |
+| `secret/core/hasura-db` | `password` | Hasura (`HASURA_GRAPHQL_DATABASE_URL` do agent ghép), `postgres-roles` (role `hasura`) | ✔ (#11) |
+| `secret/core/hasura` | `admin_secret` | Hasura (`HASURA_GRAPHQL_ADMIN_SECRET`) | ✔ (#11) |
+| `secret/core/temporal-db` | `password` | Temporal (`POSTGRES_PWD`), `postgres-roles` (role `temporal`) | ✔ (#11) |
+| `secret/core/s3` | `access_key`, `secret_key` | SeaweedFS (`-s3.config` do agent render) | ✔ (#11) |
 | `secret/core/ledger` | `signing_key` | `core/ledger` (khóa ký checkpoint Tessera, D-007) | Chỗ trống, sinh khi có `core/ledger` (#28) |
 
-Còn trong `.env` cho tới #11: `POSTGRES_PASSWORD` (superuser, Hasura và Temporal của `core-next` dùng chung), `HASURA_GRAPHQL_ADMIN_SECRET`. `KC_DEMO_USER_PASSWORD` là mật khẩu của user mẫu (dữ liệu giả của `apps/cuu-tro`, dùng cho `make smoke`), không phải bí mật của dịch vụ lõi.
+`.env` không còn bí mật của dịch vụ lõi. `KC_DEMO_USER_PASSWORD` là mật khẩu của user mẫu (dữ liệu giả của `apps/cuu-tro`, dùng cho `make smoke`), không phải bí mật của dịch vụ lõi.
+
+**Superuser PostgreSQL** chỉ có tác dụng ở lần `initdb` đầu (volume `pgdata` trống): image `postgis/postgis` đặt mật khẩu superuser theo `POSTGRES_PASSWORD` lúc đó, về sau đổi giá trị trong OpenBao **không** đổi mật khẩu trong CSDL. Muốn đổi: `ALTER ROLE` bằng superuser rồi `bao kv put secret/core/postgres` cùng giá trị. Mật khẩu role `keycloak`, `hasura`, `temporal` thì khác: `postgres-roles` chạy `ALTER ROLE ... PASSWORD` mỗi lần `make up`, nên chỉ cần đổi trong OpenBao rồi `make up`.
+
+### 8.1a. Role PostgreSQL của từng dịch vụ (#11)
+
+Container một lần `postgres-roles` (image postgis có sẵn, script `core/postgres/sync-roles.sh`) chạy sau khi `postgres` healthy và trước Keycloak, Hasura, Temporal; chạy lại bao nhiêu lần cũng được:
+
+| Role | Quyền | Ghi chú |
+|---|---|---|
+| `keycloak` | Chủ CSDL `keycloak` | Tạo lần đầu bởi `core/postgres/init/20-create-databases.sh` |
+| `hasura` | Chủ schema `hdb_catalog` (metadata); `CONNECT, CREATE, TEMPORARY` trên CSDL `disaster`; `USAGE, CREATE` trên `public`; đọc `information_schema`, `pg_catalog`, `spatial_ref_sys` | Quyền tối thiểu theo tài liệu Hasura, thêm quyền tạo schema để migration ứng dụng (#25, #26) chạy bằng role này. Bảng `hdb_catalog` có sẵn từ trước thì chuyển chủ sở hữu |
+| `temporal` | Chủ CSDL `temporal`, `temporal_visibility` (script tạo sẵn) | Không cần `CREATEDB`: Temporal chạy với `SKIP_DB_CREATE=true`, auto-setup chỉ tạo schema |
+
+Không role nào là superuser hay có `CREATEROLE`. `make smoke` kiểm Hasura kết nối bằng `hasura` (`rolsuper = false`) và 2 CSDL Temporal thuộc `temporal`.
 
 ### 8.2. Policy và AppRole
 
@@ -313,9 +354,12 @@ Mỗi dịch vụ một AppRole, mỗi AppRole một policy **chỉ đọc** đ�
 
 | AppRole | Policy | Đọc được |
 |---|---|---|
-| `keycloak` | `core-keycloak` | `core/keycloak-db`, `core/keycloak-admin`, `core/gateway` |
+| `keycloak` | `core-keycloak` | `core/keycloak-db`, `core/keycloak-admin`, `core/gateway` (#11: thôi render cho PostgreSQL) |
 | `apisix` | `core-apisix` | `core/gateway` |
-| `seaweedfs` | `core-seaweedfs` | `core/s3` (#11) |
+| `postgres` | `core-postgres` | `core/postgres`, `core/keycloak-db`, `core/hasura-db`, `core/temporal-db` |
+| `hasura` | `core-hasura` | `core/hasura-db`, `core/hasura` |
+| `temporal` | `core-temporal` | `core/temporal-db` |
+| `seaweedfs` | `core-seaweedfs` | `core/s3` |
 | `ledger` | `core-ledger` | `core/ledger` (#28) |
 
 Token AppRole sống 1 giờ (tối đa 24 giờ), agent tự gia hạn hoặc đăng nhập lại. `secret_id` không hết hạn: chỉ chấp nhận trên máy dev; trên VPS cấp `secret_id` có hạn/giới hạn số lần dùng. `make smoke` kiểm AppRole `apisix` đọc được `core/gateway` nhưng bị từ chối (403) với `core/keycloak-db` và `core/s3`.
@@ -324,16 +368,19 @@ Token AppRole sống 1 giờ (tối đa 24 giờ), agent tự gia hạn hoặc �
 
 ```mermaid
 flowchart LR
-  BAO[("OpenBao<br/>KV v2 secret/")] -->|"AppRole keycloak"| AK["bao-agent-keycloak"]
-  BAO -->|"AppRole apisix"| AA["bao-agent-apisix"]
-  AK -->|"render file"| VK[["tmpfs secrets-keycloak"]] --> KC["keycloak"]
-  AK -->|"render file"| VP[["tmpfs secrets-postgres"]] --> PG[("postgres")]
-  AA -->|"render file"| VA[["tmpfs secrets-apisix"]] --> GW["apisix"]
+  BAO[("OpenBao<br/>KV v2 secret/")]
+  BAO -->|"AppRole keycloak"| AK["bao-agent-keycloak"] --> VK[["tmpfs secrets-keycloak"]] --> KC["keycloak"]
+  BAO -->|"AppRole apisix"| AA["bao-agent-apisix"] --> VA[["tmpfs secrets-apisix"]] --> GW["apisix"]
+  BAO -->|"AppRole postgres"| AP["bao-agent-postgres"] --> VP[["tmpfs secrets-postgres"]] --> PG[("postgres<br/>+ postgres-roles")]
+  BAO -->|"AppRole hasura"| AH["bao-agent-hasura"] --> VH[["tmpfs secrets-hasura"]] --> HS["hasura"]
+  BAO -->|"AppRole temporal"| AT["bao-agent-temporal"] --> VT[["tmpfs secrets-temporal"]] --> TP["temporal"]
+  BAO -->|"AppRole seaweedfs"| AS["bao-agent-seaweedfs"] --> VS[["tmpfs secrets-seaweedfs<br/>s3.json"]] --> SW["seaweedfs"]
 ```
 
 - Mỗi dịch vụ đọc bí mật có một `bao agent` riêng (`core/openbao/agent-<dịch vụ>.hcl`), đăng nhập bằng `role_id`/`secret_id` của AppRole tương ứng, render mỗi bí mật thành một file trên volume **tmpfs** (nằm trong RAM, mất khi dừng). Agent đọc lại KV mỗi 5 phút.
 - Dịch vụ mount volume đó read-only. `core/openbao/env-from-files.sh` bọc lệnh khởi động gốc: chờ đủ file (`SECRETS_REQUIRED`), export mỗi file thành một biến (tên file = tên biến), rồi `exec` entrypoint gốc của image. Image vẫn là image gốc, không sửa.
-- Kết quả: `docker compose config` và `docker inspect` không còn chứa các bí mật đã chuyển; chúng chỉ có trong môi trường của tiến trình dịch vụ.
+- Hasura cần chuỗi kết nối chứa mật khẩu: agent ghép `HASURA_GRAPHQL_DATABASE_URL` từ `secret/core/hasura-db` và biến `HASURA_DB_USER`, `POSTGRES_DB` của agent. SeaweedFS đọc file định danh S3 (`s3.json`, cờ `-s3.config`) thay vì biến môi trường.
+- Kết quả: `docker compose config` và `docker inspect` không còn chứa các bí mật đã chuyển; chúng chỉ có trong môi trường của tiến trình dịch vụ (hoặc file trên tmpfs với SeaweedFS).
 - Đổi một bí mật: `bao kv put` giá trị mới → agent render lại trong ≤ 5 phút → khởi động lại dịch vụ (`docker compose restart keycloak`). Mật khẩu DB còn phải `ALTER ROLE` trong PostgreSQL; secret client còn phải đổi trong Keycloak (realm chỉ import lần đầu).
 
 ### 8.4. Khởi tạo và mở khóa
@@ -359,7 +406,8 @@ sequenceDiagram
   D->>D: env-from-files.sh → entrypoint gốc
 ```
 
-- **Lần đầu:** `cp .env.example .env && make up`. Script sinh ngẫu nhiên mọi bí mật lõi (`openssl rand`). Nâng cấp từ bản trước #14 có volume `pgdata` cũ: để nguyên 3 biến cũ (`KEYCLOAK_DB_PASSWORD`, `KC_BOOTSTRAP_ADMIN_PASSWORD`, `KC_GATEWAY_CLIENT_SECRET`) trong `.env` cho lần chạy đầu; script nạp đúng giá trị đó vào OpenBao để khớp dữ liệu cũ, sau đó xóa chúng khỏi `.env`.
+- **Lần đầu:** `cp .env.example .env && make up`. Script sinh ngẫu nhiên mọi bí mật lõi (`openssl rand`), kể cả mật khẩu superuser PostgreSQL. Đã chạy thử từ volume trống (project compose riêng) 19/10/2026: `make up` + `make smoke` 41/41.
+- **Nâng cấp từ bản cũ có volume `pgdata`:** để nguyên các biến cũ trong `.env` cho lần chạy đầu: trước #14 là `KEYCLOAK_DB_PASSWORD`, `KC_BOOTSTRAP_ADMIN_PASSWORD`, `KC_GATEWAY_CLIENT_SECRET`; trước #11 là `POSTGRES_PASSWORD` (bắt buộc, vì superuser trong `pgdata` đã đặt bằng giá trị này) và `HASURA_GRAPHQL_ADMIN_SECRET`. Script nạp đúng giá trị đó vào OpenBao (chỉ khi đường dẫn chưa có), sau đó xóa chúng khỏi `.env`. CSDL `temporal`/`temporal_visibility` cũ do superuser tạo: `postgres-roles` chuyển chủ CSDL cho `temporal`, nhưng bảng bên trong vẫn thuộc superuser; với dữ liệu dev thì xóa 2 CSDL đó để Temporal tạo lại.
 - **Chạy lại:** `make up`/`make bao-init` bao nhiêu lần cũng được: chỉ tạo phần còn thiếu, không đổi key, bí mật hay `secret_id` đã có. Ghi KV dùng `cas=0` nên không bao giờ ghi đè.
 - **Sau khi khởi động lại** (reboot, `make down` rồi `docker compose up`): OpenBao luôn khởi động ở trạng thái **sealed**, healthcheck báo unhealthy, các dịch vụ phụ thuộc chờ.
   - Dev: container `openbao-unseal` (`core/openbao/dev-auto-unseal.sh`) tự mở khóa bằng key trong `.data/openbao/unseal/` khi `OPENBAO_DEV_AUTO_UNSEAL=true`. **Chỉ dùng cho dev:** key nằm cùng máy với dữ liệu thì seal mất tác dụng.
@@ -367,4 +415,6 @@ sequenceDiagram
 - **Thư mục `.data/openbao/`** (đổi bằng `OPENBAO_LOCAL_DIR`): `init.json`, `unseal/unseal.keys`, `root.token`, `approle/<dịch vụ>/`. Đã nằm trong `.gitignore`. Mất thư mục này thì không mở khóa được volume `baodata`. Root token chỉ dùng quản trị trên máy dev; khi triển khai thật: thu hồi root token sau khi cấu hình, cần lại thì `bao operator generate-root`.
 - **Kiểm tra:** `make bao-status`, `make smoke` (`scripts/smoke-openbao.sh`: không phải dev/raft, đã mở khóa, phân quyền AppRole, APISIX và Keycloak đang chạy bằng đúng bí mật trong OpenBao, compose không truyền bí mật qua `environment`).
 
-Việc còn lại ở #11: chuyển `POSTGRES_PASSWORD`, `HASURA_GRAPHQL_ADMIN_SECRET` vào OpenBao, nối `secret/core/s3` vào SeaweedFS (`-s3.config` render bằng agent), thêm agent cho Hasura/Temporal khi gộp vào `core`.
+- `scripts/smoke-core.sh` (#11, cũng trong `make smoke`): Hasura dùng admin secret từ OpenBao và role DB riêng; SeaweedFS chạy bằng khóa S3 từ OpenBao (so băm), ký SigV4 bằng khóa đó tạo bucket/ghi/đọc/xóa được, khóa sai → 403; compose không truyền mật khẩu DB, admin secret, khóa S3.
+
+Việc còn lại: route `/graphql`, `/files`, `/workflow` qua APISIX + Coraza WAF (#12); quyền S3 theo bucket cho ứng dụng (#27); `secret_id` có hạn và TLS khi lên VPS (tuần 4).

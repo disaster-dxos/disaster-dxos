@@ -1,18 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: up up-next up-bi down logs ps seed license check lint smoke bao-init bao-unseal bao-status
+.PHONY: up up-bi down logs ps seed license check lint smoke bao-init bao-unseal bao-status
 
 # Dùng .env nếu có, nếu không thì .env.example (để CI/máy sạch vẫn kiểm được compose)
 ENV_FILE := $(if $(wildcard .env),.env,.env.example)
 
-up:            ## Chạy lõi headless (profile core): OpenBao trước, init/unseal, rồi các dịch vụ còn lại
+up:            ## Chạy lõi headless (profile core): OpenBao trước, init/unseal, rồi các dịch vụ còn lại (#11)
 	docker compose --profile core up -d openbao
 	bash scripts/openbao-init.sh
 	docker compose --profile core up -d --build
-
-up-next:       ## Lõi + dịch vụ tuần 2 (Hasura, SeaweedFS, Temporal, NATS)
-	docker compose --profile core-next up -d openbao
-	bash scripts/openbao-init.sh
-	docker compose --profile core-next up -d --build
 
 bao-init:      ## Khởi tạo OpenBao + nạp bí mật, policy, AppRole (idempotent, cần OpenBao đang chạy)
 	bash scripts/openbao-init.sh
@@ -26,9 +21,10 @@ bao-status:    ## Trạng thái seal của OpenBao
 up-bi:         ## Grafana (tuần 4)
 	docker compose --profile bi up -d --build
 
-smoke:         ## Kiểm thử OpenBao + JWT qua APISIX (cần make up trước)
+smoke:         ## Kiểm thử OpenBao, JWT qua APISIX, Hasura/SeaweedFS/Temporal/NATS (cần make up trước)
 	bash scripts/smoke-openbao.sh
 	bash scripts/smoke-jwt.sh
+	bash scripts/smoke-core.sh
 
 down:
 	docker compose --profile '*' down
