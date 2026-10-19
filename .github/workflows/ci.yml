@@ -23,7 +23,8 @@ jobs:
       - uses: actions/checkout@v4.2.2
       - run: cp .env.example .env
       - run: docker compose --profile '*' config --quiet
-      - run: docker compose build
+      # --profile '*': dựng mọi image build từ nguồn trong repo (vd core/apisix: APISIX + Coraza WAF)
+      - run: docker compose --profile '*' build
 
   shellcheck:
     runs-on: ubuntu-24.04

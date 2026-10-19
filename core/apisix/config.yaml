@@ -10,12 +10,23 @@ apisix:
   enable_ipv6: false
 
 nginx_config:
-  # Cho phép plugin đọc biến môi trường qua tham chiếu $env://TÊN_BIẾN
+  # Mỗi worker giữ một bản Coraza + OWASP CRS trong bộ nhớ: 2 worker là đủ cho laptop
+  worker_processes: 2
+  # Biến môi trường worker được đọc: tham chiếu $env://TÊN trong plugin và ${{TÊN}} trong apisix.yaml
   envs:
     - KC_GATEWAY_CLIENT_SECRET
+    - KEYCLOAK_REALM
+    - GW_CORS_ALLOW_ORIGINS
+    - GW_RATE_LIMIT_COUNT
+    - GW_RATE_LIMIT_WINDOW
+    - GW_FILES_MAX_BODY_BYTES
+  http:
+    # Trần cứng của nginx; route /files đặt giới hạn thấp hơn bằng plugin client-control
+    client_max_body_size: 64m
 
 plugins:
   - real-ip
+  - client-control
   - cors
   - request-id
   - openid-connect
@@ -23,3 +34,14 @@ plugins:
   - limit-count
   - response-rewrite
   - serverless-pre-function
+  - serverless-post-function
+
+# Coraza WAF (coraza-proxy-wasm, OWASP CRS v4 nhúng sẵn), file .wasm nằm trong image (core/apisix/Dockerfile).
+# Chạy ở pha rewrite với priority 7999, tức trước openid-connect (rewrite, 2599) và limit-count
+# (access): request độc bị chặn ngay ở biên, trước cả bước kiểm token.
+wasm:
+  plugins:
+    - name: coraza-filter
+      priority: 7999
+      http_request_phase: rewrite
+      file: /usr/local/apisix/wasm/coraza-proxy-wasm.wasm

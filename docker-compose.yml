@@ -265,7 +265,11 @@ services:
 
   apisix:
     <<: *restart
-    image: apache/apisix:3.19.0-debian
+    # Image gốc apache/apisix:3.19.0-debian + coraza-proxy-wasm 0.6.0 (OWASP CRS v4), kiểm SHA-256
+    # lúc build (core/apisix/Dockerfile, #12). Tên image cục bộ, không đẩy lên registry.
+    build:
+      context: ./core/apisix
+    image: disaster-dxos/apisix:3.19.0-coraza0.6.0
     profiles: [core]
     # KC_GATEWAY_CLIENT_SECRET lấy từ OpenBao (secret/core/gateway) qua bao-agent-apisix
     entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos", "/docker-entrypoint.sh"]
@@ -277,6 +281,12 @@ services:
         condition: service_healthy
     environment:
       SECRETS_REQUIRED: KC_GATEWAY_CLIENT_SECRET
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-disaster}
+      # CORS cho web Tầng 2 (danh sách origin cách nhau bởi dấu phẩy) và rate limit theo IP (#12)
+      GW_CORS_ALLOW_ORIGINS: ${GW_CORS_ALLOW_ORIGINS:-http://localhost:3000}
+      GW_RATE_LIMIT_COUNT: ${GW_RATE_LIMIT_COUNT:-300}
+      GW_RATE_LIMIT_WINDOW: ${GW_RATE_LIMIT_WINDOW:-60}
+      GW_FILES_MAX_BODY_BYTES: ${GW_FILES_MAX_BODY_BYTES:-20971520}
     volumes:
       - ./core/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
       - ./core/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
@@ -290,7 +300,8 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
-    mem_limit: 512m
+    # Coraza + OWASP CRS nạp trong mỗi worker nginx: đo ~240 MB lúc khởi động, ~370 MB sau smoke + 560 request
+    mem_limit: 768m
 
   hasura:
     <<: *restart
