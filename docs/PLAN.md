@@ -31,7 +31,8 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [ ] [V2] Schema PostGIS trong `apps/`: incidents, rescue_teams, shelters, supplies, sensors (migration)
 - [ ] [V2] Hasura trên schema `apps/`, phân quyền theo vai trò trong JWT
 - [ ] [V2] SeaweedFS S3 + API tải ảnh hiện trường qua gateway
-- [ ] [V2] Chốt transparency log: Tessera hay Trillian (ghi `DECISIONS`), dựng bản chạy thử
+- [x] [V1] Chốt transparency log: Tessera, driver POSIX (D-007); tài liệu + SPDX cho Go (#34)
+- [ ] [V2] Dựng bản chạy thử `core/ledger` (Go + Tessera): ghi 1 phiếu, lấy proof, xác minh (#28)
 - [ ] [V3] Temporal worker Python "hello" gọi được qua gateway
 - [ ] [V3] NATS JetStream bật MQTT, gửi thử bản tin cảm biến
 - [x] [V1] CI: lint/test cho từng thành phần (shellcheck, yamllint, pytest khi có mã Python)

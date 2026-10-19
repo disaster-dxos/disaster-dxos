@@ -29,7 +29,7 @@ flowchart TB
       HS["Hasura CE<br/>GraphQL + subscriptions"]
       SW[("SeaweedFS S3<br/>phi cấu trúc: ảnh, file")]
       AV["ClamAV<br/>quét mã độc"]
-      TL["Transparency log<br/>Tessera / Trillian"]
+      TL["core/ledger (Go)<br/>Tessera · driver POSIX"]
     end
 
     subgraph FLOW["Quy trình & sự kiện"]
@@ -49,6 +49,7 @@ flowchart TB
   GW -->|"/files"| SW
   GW -->|"/workflow"| WK
   GW -->|"/ngsi-ld"| SC
+  GW -->|"/ledger"| TL
 
   HS --> PG
   SC --> PG
@@ -61,6 +62,7 @@ flowchart TB
   NATS --> SC
   BAO -.->|"cấp bí mật"| WK
   BAO -.-> HS
+  BAO -.->|"khóa ký checkpoint"| TL
   GW -.->|"JWKS"| KC
   HS -.->|"JWKS"| KC
 ```
@@ -78,7 +80,7 @@ flowchart TB
 | Dữ liệu phi cấu trúc | **SeaweedFS 4.48** (S3) + ClamAV | Ảnh hiện trường, tệp đính kèm, file Parquet lịch sử. File tải lên được ClamAV quét trước khi công bố | `docker-compose.yml` (`seaweedfs`) | Khai báo (tuần 2) |
 | Workflow engine | **Temporal 1.29** + Python SDK | Quy trình kêu cứu: tiếp nhận → phân công đội gần nhất → xác nhận → đóng. Cảnh báo vượt ngưỡng → thông báo | `docker-compose.yml` (`temporal`) | Khai báo (tuần 2) |
 
-Thành phần hỗ trợ: OpenBao (bí mật), NATS JetStream + MQTT (sự kiện, IoT), Scorpio (NGSI-LD, bản sao số trạm đo), transparency log (sổ cái tiền/hàng cứu trợ).
+Thành phần hỗ trợ: OpenBao (bí mật), NATS JetStream + MQTT (sự kiện, IoT), Scorpio (NGSI-LD, bản sao số trạm đo), sổ cái minh bạch `core/ledger` (transparency log Tessera, D-007) cho tiền/hàng cứu trợ.
 
 ## 3. Luồng xác thực JWT
 
@@ -130,7 +132,7 @@ flowchart LR
   end
   subgraph later["profile sau"]
     gis["gis · Scorpio, mô phỏng cảm biến"]
-    sec["sec · ClamAV, transparency log"]
+    sec["sec · ClamAV, core/ledger (Tessera)"]
     ai["ai · Ollama + Qwen2.5 7B/14B, Qdrant, agent"]
     bi["bi · Grafana"]
   end
@@ -142,7 +144,7 @@ flowchart LR
 | `core` | postgres, keycloak, apisix | `make up` | ~0,8 GB (đo 17/10/2026: Keycloak 546 MB, APISIX 156 MB, PostgreSQL 103 MB) |
 | `core-next` | core + hasura, seaweedfs, temporal, temporal-ui, nats, openbao | `make up-next` | ~1,4 GB lúc rỗi (đo 17/10/2026) |
 | `gis` | Scorpio (dùng chung postgis), mô phỏng cảm biến | tuần 4 | |
-| `sec` | ClamAV, transparency log | tuần 2–4 | ClamAV ~1,5 GB |
+| `sec` | ClamAV, `ledger` (Tessera) | tuần 2–4 | ClamAV ~1,5 GB; `ledger` nhỏ, giới hạn bằng `GOMEMLIMIT` |
 | `ai` | Ollama, Qdrant, agent | tuần 5 | Qwen2.5 7B ~5 GB |
 | `bi` | Grafana | tuần 4 | |
 
@@ -153,7 +155,7 @@ Nguyên tắc:
 - Cổng của dịch vụ nội bộ chỉ mở trên `127.0.0.1`. Chỉ Keycloak (đăng nhập) và APISIX đối diện người dùng.
 - `postgis/postgis` chỉ có image amd64. Trên Mac Apple Silicon, Docker chạy giả lập (biến `POSTGIS_PLATFORM`).
 
-## 5. Sổ cái tiền/hàng cứu trợ: thay immudb
+## 5. Sổ cái tiền/hàng cứu trợ: Tessera (đã chốt – D-007)
 
 immudb chuyển sang BSL 1.1 từ 12/2023, không còn là giấy phép OSI (D-004), nên bị loại. Thay bằng transparency log của dự án transparency-dev / Google, đều Apache-2.0.
 
@@ -164,17 +166,35 @@ Yêu cầu: mỗi lần nhập/xuất hàng hoặc nhận/chi tiền được gh
 | Giấy phép | Apache-2.0 | Apache-2.0 |
 | Tình trạng | Thế hệ mới, đang phát triển tích cực (v1.0.4, 07/2026) | **Chế độ bảo trì**. README khuyên log mới nên thử Tessera trước (v1.8.0, 09/2026) |
 | Dạng | Thư viện Go. Đội viết một dịch vụ nhỏ ("personality") nhận bản ghi qua HTTP | Máy chủ gRPC có sẵn (log server + log signer). Đội viết personality gọi gRPC |
-| Lưu trữ | POSIX (thư mục file), MySQL, AWS (MySQL + S3), GCP | MySQL/MariaDB (chính), có thư mục driver PostgreSQL, CockroachDB, Spanner |
+| Lưu trữ | Driver GA: POSIX (thư mục file), AWS (S3), GCP. Driver MySQL đã bị gỡ sau v1.0.2 | MySQL/MariaDB (chính), có thư mục driver PostgreSQL, CockroachDB, Spanner |
 | Độ nhẹ | 1 tiến trình Go + 1 volume. Không cần CSDL với driver POSIX | 2 tiến trình + CSDL. Driver PostgreSQL ít người dùng hơn MySQL |
 | Kiểm chứng | API chuẩn tlog-tiles (C2SP): tile tĩnh, ai cũng tải về để tự kiểm. Hỗ trợ witness đồng ký checkpoint | API gRPC riêng, cần client gọi để lấy proof |
 | Docker | Build image từ mã của đội (Dockerfile nhiều tầng, base distroless) | Image chính thức chủ yếu phục vụ CI. Nên build từ nguồn |
 | Ngôn ngữ | Thêm Go vào repo (dịch vụ ~200–300 dòng) | Personality viết Python qua gRPC stub |
 
-**Đề xuất (chờ đội chốt ở tuần 2): Tessera + driver POSIX.**
+**Đã chốt (D-007, 19/10/2026): Tessera + driver POSIX.**
 Lý do: nhẹ nhất (không thêm CSDL), đúng hướng mà chính nhóm Trillian khuyên dùng, và tile tĩnh cho phép người dân hoặc nhà tài trợ tự tải log về đối chiếu. Đây là điểm mạnh khi trình bày tính minh bạch cứu trợ. Dịch vụ Go nhỏ build từ nguồn trong repo cũng là bằng chứng "build từ mã nguồn" cho PoF. Chi phí: đội phải viết khoảng 200–300 dòng Go.
-Phương án dự phòng: Trillian với driver PostgreSQL, nếu đội không muốn thêm Go. Khi đó cần chạy thử driver PostgreSQL trước khi chốt.
+Phương án dự phòng: Trillian với driver PostgreSQL (dùng chung PostgreSQL), chỉ dùng nếu đội không theo được Go.
 
-Luồng dự kiến (tuần 4): worker Temporal ghi giao dịch kho/tiền vào PostgreSQL → gửi băm bản ghi (SHA-256, kèm mã giao dịch) sang dịch vụ log → lưu `log_index` vào PostgreSQL → endpoint `/api/v1/ledger/verify/{id}` qua APISIX trả inclusion proof.
+### 5.1. Dịch vụ lõi `core/ledger`
+
+Sổ cái là dịch vụ **Tầng 1**, không gắn nghiệp vụ (theo mục 7): `core/ledger` viết bằng Go, nhúng thư viện Tessera (khai báo qua `go.mod`, không vendor, không chép mã mẫu). Ghi nội dung gì (phiếu nhập/xuất kho, khoản tiền cứu trợ) do `apps/cuu-tro` quyết định.
+
+| API (qua APISIX) | Quyền | Mô tả |
+|---|---|---|
+| `POST /ledger/entries` | JWT Keycloak; vai trò được phép ghi do cấu hình quyết định | Thêm một lá vào log, trả về `index` |
+| `GET /ledger/checkpoint`, `GET /ledger/tile/...` | Công khai | Checkpoint đã ký và tile tĩnh theo chuẩn [tlog-tiles](https://c2sp.org/tlog-tiles) (C2SP), cache được, ai cũng tải về tự kiểm |
+| `GET /ledger/proof/{index}` | Công khai | Inclusion proof của lá tại `index` so với checkpoint hiện tại |
+
+Nguyên tắc:
+
+- **Không đưa dữ liệu cá nhân lên sổ cái công khai.** Lá chỉ chứa mã giao dịch + SHA-256 của bản ghi chuẩn hóa (JSON chuẩn tắc), loại giao dịch, số lượng/số tiền, thời điểm. Bản ghi đầy đủ (người nhận, SĐT…) nằm trong PostgreSQL của `apps/cuu-tro`. Xác minh = băm lại bản ghi trong CSDL, so với lá và kiểm proof.
+- **Khóa ký checkpoint** (Ed25519, định dạng note) lưu trong OpenBao, nạp lúc khởi động; không nằm trong repo hay `.env.example`.
+- **Lưu trữ:** driver POSIX trên Docker volume riêng (filesystem thật, không dùng s3fs/NFS). Chỉ một tiến trình ghi tại một thời điểm (lock file), đủ cho quy mô demo. Đặt `GOMEMLIMIT` để giới hạn bộ nhớ của phần chống trùng (BadgerDB).
+- **Tầng 2:** trang công khai **"Minh bạch cứu trợ"** trong web điều phối: người dân nhập mã phiếu → hiển thị bản ghi đã băm và trạng thái "đã xác minh trong sổ cái".
+- **Mở rộng (tuần 6, nếu kịp):** gửi checkpoint tới witness công khai của transparency.dev.
+
+Luồng (tuần 4): worker Temporal ghi giao dịch kho/tiền vào PostgreSQL → gửi lá (mã giao dịch + SHA-256 bản ghi chuẩn hóa) tới `POST /ledger/entries` → lưu `index` vào PostgreSQL → trang "Minh bạch cứu trợ" lấy `GET /ledger/proof/{index}` và checkpoint để xác minh.
 
 ## 6. Luồng nghiệp vụ chính (đích tuần 3–5)
 
@@ -186,7 +206,7 @@ flowchart LR
   A2["Tin nhắn tự do"] --> AI["AI bóc tách (Qwen2.5 7B)"] --> H["Người điều phối duyệt (HITL)"] --> C
   C --> D["Phân công đội gần nhất (PostGIS)"] --> E["Đội cứu hộ xác nhận"] --> F["Đóng sự cố"]
   S["Cảm biến mực nước"] -->|"MQTT → NATS"| N["Scorpio: bản sao số trạm đo"] -->|"vượt ngưỡng"| W["Temporal: cảnh báo"] --> T["Telegram / Centrifugo"]
-  F --> L["Ghi nhận hàng/tiền đã cấp → transparency log"]
+  F --> L["Ghi nhận hàng/tiền đã cấp → core/ledger (Tessera)"]
 ```
 
 ## 7. Vì sao lõi độc lập với nghiệp vụ (`core/` và `apps/`)
@@ -195,7 +215,7 @@ flowchart LR
 
 | Thư mục | Chứa | Không chứa |
 |---|---|---|
-| `core/` (Tầng 1) | Cấu hình dịch vụ dùng chung: gateway (`core/apisix/`), khởi tạo CSDL dùng chung + PostGIS (`core/postgres/init/`), sự kiện/MQTT (`core/nats/`); sau này: cơ chế tự sinh API, lưu trữ, workflow engine, sổ cái | Bảng, vai trò, quy trình, dữ liệu mẫu hay giao diện của đề tài thiên tai |
+| `core/` (Tầng 1) | Cấu hình dịch vụ dùng chung: gateway (`core/apisix/`), khởi tạo CSDL dùng chung + PostGIS (`core/postgres/init/`), sự kiện/MQTT (`core/nats/`); sau này: cơ chế tự sinh API, lưu trữ, workflow engine, sổ cái `core/ledger` | Bảng, vai trò, quy trình, dữ liệu mẫu hay giao diện của đề tài thiên tai |
 | `apps/cuu-tro/` (Tầng 2) | Realm Keycloak với vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen` (`keycloak/realm.json`); từ tuần 2: migration bảng `incidents`, `rescue_teams`, `shelters`, `supplies`, `sensors`, workflow Temporal, seed, web Nuxt, app Flutter | Cấu hình dịch vụ lõi |
 
 ```mermaid

@@ -18,7 +18,7 @@ Trạng thái: Đã xác minh 17/10/2026 (D-004) — đọc LICENSE ở repo ch�
 | Workflow | Temporal + Python SDK | `temporalio/auto-setup:1.29.7`, `temporalio/ui:2.56.0` | MIT |
 | Event + IoT | NATS JetStream (MQTT tích hợp) | `nats:2.15.1-alpine` | Apache-2.0 |
 | NGSI-LD broker | Scorpio Broker (chạy với `postgis/postgis`) | ghim tag ở tuần 4 | BSD-3-Clause |
-| Sổ cái minh bạch | Transparency log: Tessera (đề xuất, chờ đội chốt) hoặc Trillian — thay immudb (BSL 1.1, không OSI) | build từ nguồn, tuần 4 | Apache-2.0 |
+| Sổ cái minh bạch | Tessera (transparency-dev/tessera, Apache-2.0) – đã chốt D-007, thư viện Go khai báo qua go.mod, nhúng trong dịch vụ `core/ledger`; thay immudb (BSL 1.1, không OSI) | build từ nguồn, tuần 4 | Apache-2.0 |
 | Quét mã độc | ClamAV (dịch vụ riêng) | ghim tag ở tuần 2+ | GPL-2.0 |
 | Web điều phối | Vue 3 / Nuxt 3 + Tailwind + MapLibre GL JS | npm | MIT / BSD-3-Clause |
 | App hiện trường | Flutter, offline-first | pub | BSD-3-Clause |
