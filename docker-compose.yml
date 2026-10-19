@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Disaster DX-OS — lõi headless Tầng 1. Kiến trúc: docs/architecture.md
 #
+# Cấu hình lõi (không chứa nghiệp vụ) nằm trong core/. Ứng dụng Tầng 2 cắm vào lõi
+# nằm trong apps/<tên>/, chọn bằng biến DXOS_APP (mặc định: cuu-tro).
+#
 # Profile:
 #   core       PostgreSQL+PostGIS, Keycloak, APISIX (v0.0.1, chạy được trên laptop 16 GB)
 #   core-next  Hasura CE, SeaweedFS, Temporal, NATS, OpenBao (khai báo sẵn; tuần 2 gộp vào core)
@@ -30,7 +33,7 @@ services:
       KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Thiếu KEYCLOAK_DB_PASSWORD trong .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./deploy/postgres/init/20-create-databases.sh:/docker-entrypoint-initdb.d/20-create-databases.sh:ro
+      - ./core/postgres/init/20-create-databases.sh:/docker-entrypoint-initdb.d/20-create-databases.sh:ro
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-15432}:5432"
     healthcheck:
@@ -61,13 +64,14 @@ services:
       KC_HEALTH_ENABLED: "true"
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?Thiếu KC_BOOTSTRAP_ADMIN_PASSWORD trong .env}
-      # Giá trị thay vào placeholder ${...} trong realm-disaster.json khi import
+      # Giá trị thay vào placeholder ${...} trong apps/<app>/keycloak/realm.json khi import
       KC_GATEWAY_CLIENT_SECRET: ${KC_GATEWAY_CLIENT_SECRET:?Thiếu KC_GATEWAY_CLIENT_SECRET trong .env}
       KC_DEMO_USER_PASSWORD: ${KC_DEMO_USER_PASSWORD:?Thiếu KC_DEMO_USER_PASSWORD trong .env}
       KC_REALM_SSL_REQUIRED: ${KC_REALM_SSL_REQUIRED:-external}
       JAVA_OPTS_KC_HEAP: "-XX:MaxRAMPercentage=70"
     volumes:
-      - ./deploy/keycloak/realm-disaster.json:/opt/keycloak/data/import/realm-disaster.json:ro
+      # Realm (vai trò, client, người dùng mẫu) do ứng dụng cung cấp, không thuộc lõi
+      - ./apps/${DXOS_APP:-cuu-tro}/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
     ports:
       - "${KEYCLOAK_PORT:-8080}:8080"
     healthcheck:
@@ -89,8 +93,8 @@ services:
     environment:
       KC_GATEWAY_CLIENT_SECRET: ${KC_GATEWAY_CLIENT_SECRET:?Thiếu KC_GATEWAY_CLIENT_SECRET trong .env}
     volumes:
-      - ./deploy/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
-      - ./deploy/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+      - ./core/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+      - ./core/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
     ports:
       - "${APISIX_PORT:-9080}:9080"
     healthcheck:
@@ -198,7 +202,7 @@ services:
     profiles: [core-next]
     command: ["-c", "/etc/nats/nats.conf"]
     volumes:
-      - ./deploy/nats/nats.conf:/etc/nats/nats.conf:ro
+      - ./core/nats/nats.conf:/etc/nats/nats.conf:ro
       - natsdata:/data
     ports:
       - "127.0.0.1:${NATS_PORT:-4222}:4222"
