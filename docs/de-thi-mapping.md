@@ -5,8 +5,8 @@ Trạng thái: ☐ chưa làm · ◐ đang làm · ☑ xong (ghi đường dẫn
 ## A. Yêu cầu bắt buộc của đề
 | # | Yêu cầu | Thành phần | Trạng thái | Bằng chứng |
 |---|---|---|---|---|
-| A1 | Lõi headless Tầng 1, không có UI | Keycloak, APISIX, PostgreSQL+PostGIS (core); Hasura CE tắt console, Temporal, SeaweedFS, NATS, OpenBao (core-next) | ◐ | `docker-compose.yml`, `docs/architecture.md` |
-| A2 | Identity / SSO (+MFA) | Keycloak 26.8.1, realm `disaster`, 3 vai trò `dieu-phoi`/`cuu-ho`/`tinh-nguyen`, client gateway/web/dev-cli. MFA: flow `browser-otp-dieu-phoi` bắt OTP với vai trò `dieu-phoi` (#13). Claim `https://hasura.io/jwt/claims` có vai trò mặc định ổn định | ☑ | `apps/cuu-tro/keycloak/realm.json`, `scripts/smoke-jwt.sh` |
+| A1 | Lõi headless Tầng 1, không có UI | Keycloak, APISIX, PostgreSQL+PostGIS, OpenBao chế độ server tắt UI (core); Hasura CE tắt console, Temporal, SeaweedFS, NATS (core-next). Két sắt bí mật: mật khẩu DB/admin Keycloak, client secret gateway lấy từ OpenBao qua bao agent + AppRole chỉ đọc, không nằm trong `.env` (#14) | ◐ | `docker-compose.yml`, `core/openbao/`, `scripts/openbao-init.sh`, `scripts/smoke-openbao.sh`, `docs/architecture.md` mục 8 |
+| A2 | Identity / SSO (+MFA) | Keycloak 26.8.1, realm `disaster`, 3 vai trò `dieu-phoi`/`cuu-ho`/`tinh-nguyen`, client gateway/web/dev-cli. MFA: flow `browser-otp-dieu-phoi` bắt OTP với vai trò `dieu-phoi` (#13). Claim `https://hasura.io/jwt/claims` có vai trò mặc định ổn định. Mật khẩu DB, admin và secret client của Keycloak nằm trong OpenBao (#14) | ☑ | `apps/cuu-tro/keycloak/realm.json`, `scripts/smoke-jwt.sh` |
 | A3 | API Gateway | APISIX 3.19 standalone (route trong git), `openid-connect` kiểm JWT bằng JWKS Keycloak, limit-count. Mới có route mẫu `/api/v1/me`; chưa có Coraza WAF | ◐ | `core/apisix/`, `scripts/smoke-jwt.sh` (401 không token / 200 có token) |
 | A4 | Quản trị dữ liệu có cấu trúc | PostgreSQL 17 + PostGIS 3.5 chạy; Hasura CE v2.51.0-ce khai báo (core-next) | ◐ | `docker-compose.yml` |
 | A5 | Quản trị dữ liệu phi cấu trúc | SeaweedFS 4.48 (S3) khai báo (core-next) | ☐ | |
@@ -19,7 +19,7 @@ Trạng thái: ☐ chưa làm · ◐ đang làm · ☑ xong (ghi đường dẫn
 | B1 | Tách dữ liệu nóng / lịch sử (lakehouse) | | ☐ |
 | B2 | Hội tụ IT/OT, bản sao số | | ☐ |
 | B3 | Phả hệ & chất lượng dữ liệu | | ☐ |
-| B4 | Zero-Trust + GitOps | Gateway kiểm JWT + Hasura kiểm lại JWT; route APISIX khai báo trong git (standalone) | ◐ |
+| B4 | Zero-Trust + GitOps | Gateway kiểm JWT + Hasura kiểm lại JWT; route APISIX khai báo trong git (standalone); bí mật trong OpenBao, mỗi dịch vụ một AppRole chỉ đọc phần của mình, policy nằm trong git (#14) | ◐ |
 
 ## C. Không gian H-P-D-I trong ứng dụng
 | Không gian | Tính năng | Trạng thái |

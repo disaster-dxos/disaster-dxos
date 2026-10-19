@@ -5,11 +5,13 @@
 # nằm trong apps/<tên>/, chọn bằng biến DXOS_APP (mặc định: cuu-tro).
 #
 # Profile:
-#   core       PostgreSQL+PostGIS, Keycloak, APISIX (v0.0.1, chạy được trên laptop 16 GB)
-#   core-next  Hasura CE, SeaweedFS, Temporal, NATS, OpenBao (khai báo sẵn; tuần 2 gộp vào core)
+#   core       OpenBao, PostgreSQL+PostGIS, Keycloak, APISIX (chạy được trên laptop 16 GB)
+#   core-next  Hasura CE, SeaweedFS, Temporal, NATS (khai báo sẵn; gộp vào core ở #11)
 #   gis, ai, bi, sec   xem TODO cuối file
 #
-# Chạy: cp .env.example .env && make up
+# Chạy: cp .env.example .env && make up   (make up tự khởi tạo/mở khóa OpenBao lần đầu)
+# Bí mật của dịch vụ lõi nằm trong OpenBao, không nằm trong .env (#14). bao agent render
+# thành file trên volume tmpfs, core/openbao/env-from-files.sh export trước khi chạy dịch vụ.
 # Quy tắc: mọi image ghim phiên bản cụ thể, lấy từ nguồn gốc, KHÔNG dùng "latest".
 
 name: ${COMPOSE_PROJECT_NAME:-disaster-dxos}
@@ -17,22 +19,117 @@ name: ${COMPOSE_PROJECT_NAME:-disaster-dxos}
 x-restart: &restart
   restart: unless-stopped
 
+# Một bao agent cho mỗi dịch vụ đọc bí mật: mỗi agent có AppRole + policy chỉ đọc riêng
+x-bao-agent: &bao-agent
+  <<: *restart
+  image: openbao/openbao:2.7.1
+  profiles: [core, core-next]
+  depends_on:
+    openbao:
+      condition: service_healthy
+  mem_limit: 64m
+
+# Volume tmpfs chứa bí mật đã render: nằm trong RAM, mất khi dừng container
+x-secrets-tmpfs: &secrets-tmpfs
+  driver: local
+  driver_opts:
+    type: tmpfs
+    device: tmpfs
+    # uid/gid của user openbao trong image (agent ghi); dịch vụ chỉ mount read-only
+    o: "uid=100,gid=1000,mode=0755,size=1m"
+
 services:
   # ======================= profile: core =======================
+  openbao:
+    <<: *restart
+    # Chế độ server, lưu trữ raft trên volume baodata. Khởi động ở trạng thái sealed:
+    # make bao-init (lần đầu) hoặc openbao-unseal (dev) / make bao-unseal (thủ công).
+    image: openbao/openbao:2.7.1
+    profiles: [core, core-next]
+    command: ["server"]
+    environment:
+      BAO_ADDR: http://127.0.0.1:8200
+    volumes:
+      - ./core/openbao/openbao.hcl:/openbao/config/openbao.hcl:ro
+      - baodata:/openbao/file
+    ports:
+      - "127.0.0.1:${OPENBAO_PORT:-8200}:8200"
+    healthcheck:
+      # bao status: 0 = đã mở khóa; 2 = sealed/chưa init → unhealthy, dịch vụ phụ thuộc chờ
+      test: ["CMD", "bao", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+    mem_limit: 256m
+
+  openbao-unseal:
+    # CHỈ DÙNG CHO DEV: tự mở khóa sau khi khởi động lại bằng key trong ${OPENBAO_LOCAL_DIR}/unseal.
+    # Tắt: OPENBAO_DEV_AUTO_UNSEAL=false (bắt buộc trên VPS). Xem core/openbao/dev-auto-unseal.sh
+    restart: on-failure
+    image: openbao/openbao:2.7.1
+    profiles: [core, core-next]
+    entrypoint: ["/bin/sh", "/opt/dxos/dev-auto-unseal.sh"]
+    depends_on:
+      - openbao
+    environment:
+      BAO_ADDR: http://openbao:8200
+      OPENBAO_DEV_AUTO_UNSEAL: ${OPENBAO_DEV_AUTO_UNSEAL:-false}
+    volumes:
+      - ./core/openbao/dev-auto-unseal.sh:/opt/dxos/dev-auto-unseal.sh:ro
+      - ${OPENBAO_LOCAL_DIR:-./.data/openbao}/unseal:/openbao/unseal:ro
+    mem_limit: 64m
+
+  bao-agent-keycloak:
+    <<: *bao-agent
+    command: ["agent", "-config=/openbao/config/agent.hcl"]
+    volumes:
+      - ./core/openbao/agent-keycloak.hcl:/openbao/config/agent.hcl:ro
+      - ${OPENBAO_LOCAL_DIR:-./.data/openbao}/approle/keycloak:/openbao/approle:ro
+      - secrets-keycloak:/out/keycloak
+      - secrets-postgres:/out/postgres
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /out/keycloak/KC_DB_PASSWORD && test -s /out/keycloak/KC_GATEWAY_CLIENT_SECRET && test -s /out/postgres/KEYCLOAK_DB_PASSWORD"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
+  bao-agent-apisix:
+    <<: *bao-agent
+    command: ["agent", "-config=/openbao/config/agent.hcl"]
+    volumes:
+      - ./core/openbao/agent-apisix.hcl:/openbao/config/agent.hcl:ro
+      - ${OPENBAO_LOCAL_DIR:-./.data/openbao}/approle/apisix:/openbao/approle:ro
+      - secrets-apisix:/out/apisix
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /out/apisix/KC_GATEWAY_CLIENT_SECRET"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
   postgres:
     <<: *restart
     image: postgis/postgis:17-3.5
     platform: ${POSTGIS_PLATFORM:-linux/amd64}
     profiles: [core, core-next]
+    # KEYCLOAK_DB_PASSWORD lấy từ OpenBao (secret/core/keycloak-db) qua bao-agent-keycloak
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos", "docker-entrypoint.sh"]
+    command: ["postgres"]
+    depends_on:
+      bao-agent-keycloak:
+        condition: service_healthy
     environment:
+      SECRETS_REQUIRED: KEYCLOAK_DB_PASSWORD
+      # Mật khẩu superuser vẫn ở .env vì Hasura/Temporal (core-next) dùng chung; chuyển ở #11
       POSTGRES_USER: ${POSTGRES_USER:?Thiếu POSTGRES_USER trong .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Thiếu POSTGRES_PASSWORD trong .env}
       POSTGRES_DB: ${POSTGRES_DB:-disaster}
       KEYCLOAK_DB: ${KEYCLOAK_DB:-keycloak}
       KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER:-keycloak}
-      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Thiếu KEYCLOAK_DB_PASSWORD trong .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - secrets-postgres:/run/secrets/dxos:ro
       - ./core/postgres/init/20-create-databases.sh:/docker-entrypoint-initdb.d/20-create-databases.sh:ro
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-15432}:5432"
@@ -48,30 +145,35 @@ services:
     <<: *restart
     image: quay.io/keycloak/keycloak:26.8.1
     profiles: [core, core-next]
+    # KC_DB_PASSWORD, KC_BOOTSTRAP_ADMIN_PASSWORD, KC_GATEWAY_CLIENT_SECRET lấy từ OpenBao
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos", "/opt/keycloak/bin/kc.sh"]
     command: ["start-dev", "--import-realm"]
     depends_on:
       postgres:
         condition: service_healthy
+      bao-agent-keycloak:
+        condition: service_healthy
     environment:
+      SECRETS_REQUIRED: KC_DB_PASSWORD KC_BOOTSTRAP_ADMIN_PASSWORD KC_GATEWAY_CLIENT_SECRET
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/${KEYCLOAK_DB:-keycloak}
       KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
-      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Thiếu KEYCLOAK_DB_PASSWORD trong .env}
       # "iss" của token luôn là URL công khai; URL nội bộ (jwks, token) theo host gọi tới
       KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       KC_HTTP_ENABLED: "true"
       KC_HEALTH_ENABLED: "true"
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?Thiếu KC_BOOTSTRAP_ADMIN_PASSWORD trong .env}
       # Giá trị thay vào placeholder ${...} trong apps/<app>/keycloak/realm.json khi import
-      KC_GATEWAY_CLIENT_SECRET: ${KC_GATEWAY_CLIENT_SECRET:?Thiếu KC_GATEWAY_CLIENT_SECRET trong .env}
+      # (KC_GATEWAY_CLIENT_SECRET đến từ OpenBao; mật khẩu user mẫu là dữ liệu giả của ứng dụng)
       KC_DEMO_USER_PASSWORD: ${KC_DEMO_USER_PASSWORD:?Thiếu KC_DEMO_USER_PASSWORD trong .env}
       KC_REALM_SSL_REQUIRED: ${KC_REALM_SSL_REQUIRED:-external}
       JAVA_OPTS_KC_HEAP: "-XX:MaxRAMPercentage=70"
     volumes:
       # Realm (vai trò, client, người dùng mẫu) do ứng dụng cung cấp, không thuộc lõi
       - ./apps/${DXOS_APP:-cuu-tro}/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
+      - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - secrets-keycloak:/run/secrets/dxos:ro
     ports:
       - "${KEYCLOAK_PORT:-8080}:8080"
     healthcheck:
@@ -87,14 +189,21 @@ services:
     <<: *restart
     image: apache/apisix:3.19.0-debian
     profiles: [core, core-next]
+    # KC_GATEWAY_CLIENT_SECRET lấy từ OpenBao (secret/core/gateway) qua bao-agent-apisix
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos", "/docker-entrypoint.sh"]
+    command: ["docker-start"]
     depends_on:
       keycloak:
         condition: service_healthy
+      bao-agent-apisix:
+        condition: service_healthy
     environment:
-      KC_GATEWAY_CLIENT_SECRET: ${KC_GATEWAY_CLIENT_SECRET:?Thiếu KC_GATEWAY_CLIENT_SECRET trong .env}
+      SECRETS_REQUIRED: KC_GATEWAY_CLIENT_SECRET
     volumes:
       - ./core/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
       - ./core/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+      - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - secrets-apisix:/run/secrets/dxos:ro
     ports:
       - "${APISIX_PORT:-9080}:9080"
     healthcheck:
@@ -145,7 +254,7 @@ services:
     <<: *restart
     image: chrislusf/seaweedfs:4.48
     profiles: [core-next]
-    # TODO tuần 2: cấu hình khóa S3 (-s3.config) lấy từ OpenBao
+    # TODO #11: khóa S3 (-s3.config) lấy từ OpenBao secret/core/s3 (AppRole seaweedfs đã có)
     command: ["server", "-dir=/data", "-s3", "-master.volumeSizeLimitMB=1024", "-volume.max=0"]
     volumes:
       - seaweeddata:/data
@@ -214,24 +323,6 @@ services:
       retries: 10
     mem_limit: 256m
 
-  openbao:
-    <<: *restart
-    # Chế độ dev (dữ liệu trong RAM). TODO tuần 2: chế độ server + lưu trữ raft, auto-unseal.
-    image: openbao/openbao:2.7.1
-    profiles: [core-next]
-    command: ["server", "-dev"]
-    environment:
-      BAO_DEV_ROOT_TOKEN_ID: ${OPENBAO_DEV_ROOT_TOKEN:?Thiếu OPENBAO_DEV_ROOT_TOKEN trong .env}
-      BAO_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
-      BAO_ADDR: http://127.0.0.1:8200
-    ports:
-      - "127.0.0.1:${OPENBAO_PORT:-8200}:8200"
-    healthcheck:
-      test: ["CMD", "bao", "status"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    mem_limit: 256m
 
   # ===================== TODO các profile sau =====================
   # gis (tuần 4): Scorpio Broker (BSD-3-Clause) dùng chung postgis/postgis + mô phỏng cảm biến MQTT
@@ -241,5 +332,9 @@ services:
 
 volumes:
   pgdata:
+  baodata:
   seaweeddata:
   natsdata:
+  secrets-keycloak: *secrets-tmpfs
+  secrets-postgres: *secrets-tmpfs
+  secrets-apisix: *secrets-tmpfs

@@ -5,6 +5,7 @@ Cấu hình các dịch vụ dùng chung của DX-OS. Mỗi dịch vụ chạy b
 
 | Thư mục | Dịch vụ |
 |---|---|
+| `openbao/` | Két sắt bí mật: `openbao.hcl` (server, raft), `agent-*.hcl` (bao agent từng dịch vụ), `policies/` (policy chỉ đọc), `env-from-files.sh`, `dev-auto-unseal.sh`. Khởi tạo: `scripts/openbao-init.sh` |
 | `apisix/` | API Gateway: `config.yaml` (chế độ standalone), `apisix.yaml` (route lõi, kiểm JWT) |
 | `postgres/init/` | Khởi tạo PostgreSQL: CSDL riêng cho Keycloak, bật PostGIS |
 | `nats/` | NATS JetStream + MQTT |
