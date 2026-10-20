@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 ### Added
+- Cơ chế migration chung của lõi: container một lần `migrate` (`core/postgres/migrate.sh`) áp `apps/<DXOS_APP>/db/migrations/*.sql` vào schema riêng của ứng dụng bằng role chủ `NOLOGIN` (`<schema>_owner`), lưu lịch sử + checksum ở `dxos_meta.app_migrations`, cấp role `hasura` chỉ quyền DML; Hasura chờ `migrate` xong; `make migrate`, `make seed`, `make test-db` (chạy cả trong `make smoke`) (#25).
+- Schema `cuu_tro` của ứng dụng cứu trợ: `incidents`, `rescue_teams`, `shelters`, `supplies`, `sensors` (PostGIS `geography(Point,4326)`, chỉ mục GiST, CHECK) và `supply_movements` (phiếu nhập/xuất cập nhật tồn kho, chừa `ledger_index`, `ledger_leaf_hash` cho #28); Poka-yoke chặn tin kêu cứu trùng SĐT trong 200 m / 6 giờ bằng trigger; seed dữ liệu giả một xã miền Trung; 26 ca kiểm thử ràng buộc (#25).
 - OpenBao chạy chế độ server (raft trên volume `baodata`, tắt UI) trong profile `core`; `scripts/openbao-init.sh` (`make bao-init`, gọi tự động trong `make up`) khởi tạo Shamir, lưu key/token ra `.data/openbao/` ngoài git, mở khóa, bật KV v2 `secret/`, nạp bí mật lõi, tạo policy chỉ đọc + AppRole cho từng dịch vụ; chạy lại không ghi đè (#14).
 - `bao agent` cho Keycloak và APISIX render bí mật lên volume tmpfs, `core/openbao/env-from-files.sh` export trước entrypoint gốc; container `openbao-unseal` tự mở khóa khi dev (`OPENBAO_DEV_AUTO_UNSEAL`), `make bao-unseal`, `make bao-status`; `scripts/smoke-openbao.sh` chạy trong `make smoke` (#14).
 - Keycloak: claim `https://hasura.io/jwt/claims` (`x-hasura-allowed-roles`, `x-hasura-default-role` từ thuộc tính user `hasura_default_role`, `x-hasura-user-id`) bằng mapper có sẵn trên client `dxos-web`, `dxos-dev-cli`; thuộc tính khai báo trong user profile của realm (#13).
