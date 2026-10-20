@@ -146,6 +146,9 @@ do_setup() {
   # Mật khẩu NATS/MQTT của ứng dụng (#30): <APP>-app cho backend, <APP>-thiet-bi cho thiết bị MQTT.
   # bao-agent-nats render thành cấu hình xác thực của NATS (core/nats/auth.conf.ctmpl).
   kv_seed "app/$APP/nats"     app_password=@rand:24 device_password=@rand:24
+  # Khóa S3 của ứng dụng (#27): bao-agent-seaweedfs render thành định danh <APP>-app, chỉ dùng được
+  # bucket "<APP>-*"; backend của ứng dụng (API ảnh hiện trường) ký request S3 bằng khóa này.
+  kv_seed "app/$APP/s3"       access_key=@rand:10 secret_key=@rand:24
 
   # AppRole
   api_ok GET sys/auth

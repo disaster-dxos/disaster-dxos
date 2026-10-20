@@ -113,18 +113,23 @@ routes:
         functions:
           - "return function(conf, ctx) local core = require('apisix.core'); core.response.exit(403, {message = 'Forbidden: endpoint quản trị không mở qua gateway'}) end"
 
-  # ---------------- /files/* → SeaweedFS S3 gateway ----------------
+  # ---------------- /files/* → SeaweedFS S3 gateway (CHỈ ĐỌC) ----------------
   # /files/<bucket>/<key> → seaweedfs:8333/<bucket>/<key>. Gateway kiểm JWT (header Authorization)
   # rồi bỏ header này; S3 kiểm chữ ký SigV4 dạng presigned (tham số X-Amz-* trên URL).
-  # Dịch vụ cấp URL presigned theo quyền người dùng là việc của #27.
+  # Kiểm quyền THEO OBJECT (#27): gateway chỉ biết "người dùng đã đăng nhập", không biết ai được xem
+  # object nào. Quyền theo object nằm ở chữ ký presigned: chỉ backend của ứng dụng giữ khóa S3, nó
+  # kiểm vai trò + quyền theo hàng (Hasura) rồi mới ký URL cho ĐÚNG một object, phương thức GET, hạn
+  # ngắn (mặc định 5 phút). Đổi key, đổi phương thức, hết hạn hay không có chữ ký → S3 trả 403.
+  # Chỉ GET/HEAD: không có đường ghi/xóa S3 từ ngoài. Tải ảnh lên đi qua API của ứng dụng
+  # (/workflow/tai-len/*), nơi kiểm loại tệp bằng magic bytes và kích thước trước khi ghi S3.
   - id: files
     uri: /files/*
-    methods: [GET, HEAD, PUT, POST, DELETE, OPTIONS]
+    methods: [GET, HEAD, OPTIONS]
     upstream_id: seaweedfs-s3
     plugins:
       request-id: {}
       client-control:
-        # Ảnh/tệp hiện trường: mặc định 20 MiB một request (vượt → 413)
+        # Chỉ đọc nên body không cần lớn; giữ giới hạn chung để request bất thường bị 413
         max_body_size: ${{GW_FILES_MAX_BODY_BYTES:=20971520}}
       coraza-filter:
         conf:
@@ -161,6 +166,41 @@ routes:
           remove:
             # Header Authorization của S3 dành cho chữ ký SigV4, không chuyển JWT sang S3
             - Authorization
+      limit-count: *rate-limit
+
+  # ---------------- /workflow/tai-len/* → API của ứng dụng, tải tệp nhị phân (#27) ----------------
+  # Quy ước của lõi: đường dẫn /tai-len/... của API ứng dụng nhận body nhị phân (ảnh hiện trường),
+  # lớn hơn giới hạn 1 MiB của API JSON. Ưu tiên hơn route /workflow/* (priority). Gateway kiểm JWT,
+  # WAF (không đọc body nhị phân, vẫn kiểm URI/tham số/header), giới hạn body GW_UPLOAD_MAX_BODY_BYTES
+  # (vượt → 413) rồi chuyển nguyên Bearer token; API kiểm lại JWT, quyền, magic bytes, giới hạn riêng.
+  - id: workflow-upload
+    uri: /workflow/tai-len/*
+    priority: 10
+    methods: [POST, OPTIONS]
+    upstream_id: workflow-api
+    plugins:
+      request-id: {}
+      client-control:
+        max_body_size: ${{GW_UPLOAD_MAX_BODY_BYTES:=20971520}}
+      coraza-filter:
+        conf:
+          directives_map:
+            upload:
+              - Include @recommended-conf
+              - SecRuleEngine On
+              - SecRequestBodyAccess Off
+              - SecResponseBodyAccess Off
+              - Include @crs-setup-conf
+              # Kiểu nội dung client khai báo chỉ để qua WAF; API không tin, tự kiểm magic bytes
+              - >-
+                SecAction "id:900220,phase:1,pass,t:none,nolog,setvar:'tx.allowed_request_content_type=
+                |application/octet-stream| |image/jpeg| |image/png| |image/webp|'"
+              - Include @owasp_crs/*.conf
+          default_directives: upload
+      cors: *cors
+      openid-connect: *oidc-pass-token
+      proxy-rewrite:
+        regex_uri: ["^/workflow/(.*)", "/$1"]
       limit-count: *rate-limit
 
   # ---------------- /workflow/* → API workflow của ứng dụng (#29) ----------------

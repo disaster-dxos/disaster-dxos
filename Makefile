@@ -21,7 +21,7 @@ bao-status:    ## Trạng thái seal của OpenBao
 up-bi:         ## Grafana (tuần 4)
 	docker compose --profile bi up -d --build
 
-smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS, ràng buộc DB, phân quyền GraphQL, workflow phân công, luồng cảm biến MQTT (cần make up trước)
+smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS, ràng buộc DB, phân quyền GraphQL, workflow phân công, luồng cảm biến MQTT, ảnh hiện trường (cần make up trước)
 	bash scripts/smoke-openbao.sh
 	bash scripts/smoke-jwt.sh
 	bash scripts/smoke-gateway.sh
@@ -31,6 +31,7 @@ smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/Seaweed
 	bash scripts/smoke-hasura.sh
 	bash scripts/smoke-workflow.sh
 	bash scripts/smoke-cam-bien.sh
+	bash scripts/smoke-anh.sh
 
 gia-lap:       ## Giả lập trạm cảm biến: gửi một bản tin MQTT bình thường cho mỗi trạm mẫu (#30, cần make up trước)
 	docker compose --profile core --profile app run --rm --no-deps cuu-tro-gia-lap python -m cuu_tro_workflow.gia_lap --mot-lan

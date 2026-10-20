@@ -30,7 +30,7 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [x] [V1] OpenBao giữ bí mật DB, client Keycloak, khóa S3 (bỏ chế độ dev) (#14: OpenBao server + AppRole; #11: superuser PostgreSQL, role Hasura/Temporal, admin secret Hasura, khóa S3)
 - [x] [V2] Schema PostGIS trong `apps/`: incidents, rescue_teams, shelters, supplies, sensors (migration) (#25; schema `cuu_tro`, chặn tin trùng SĐT trong 200 m bằng trigger, `make seed`, `make test-db`)
 - [x] [V2] Hasura trên schema `apps/`, phân quyền theo vai trò trong JWT (#26; metadata `apps/cuu-tro/hasura/metadata/` tự áp khi khởi động, `cuu-ho` lọc theo `team_members`, `tinh-nguyen` không thấy SĐT, `scripts/smoke-hasura.sh` 33 ca qua gateway)
-- [ ] [V2] SeaweedFS S3 + API tải ảnh hiện trường qua gateway
+- [x] [V2] SeaweedFS S3 + API tải ảnh hiện trường qua gateway (#27; bucket `cuu-tro-media` do ứng dụng khai báo, khóa S3 riêng của ứng dụng chỉ bucket `cuu-tro-*`, tải lên qua `/workflow/tai-len/*` kiểm magic bytes + kích thước, xem bằng link presigned ngắn hạn qua `/files/*` chỉ đọc, bảng `incident_media`, `scripts/smoke-anh.sh`; ClamAV để sau)
 - [x] [V1] Chốt transparency log: Tessera, driver POSIX (D-007); tài liệu + SPDX cho Go (#34)
 - [ ] [V2] Dựng bản chạy thử `core/ledger` (Go + Tessera): ghi 1 phiếu, lấy proof, xác minh (#28)
 - [x] [V3] Temporal worker Python "hello" gọi được qua gateway (#29; mở rộng thành khung `PhanCongCuuHo` + API `/workflow/*`, role DB `cuu_tro_app`, `scripts/smoke-workflow.sh` 20 ca)

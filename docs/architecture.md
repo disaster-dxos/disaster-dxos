@@ -82,7 +82,7 @@ Hiện profile `core` có `openbao` (+ 7 bao agent), `postgres` (+ `postgres-rol
 | Identity / SSO (+MFA) | **Keycloak 26.8.1** | Realm `disaster`, OIDC, 3 vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen`, client cho gateway, web và CLI dev. Claim `https://hasura.io/jwt/claims` cho Hasura; OTP bắt buộc với vai trò `dieu-phoi` (#13) | `apps/cuu-tro/keycloak/realm.json` (vai trò, client của ứng dụng) | Chạy được (v0.0.1) |
 | API Gateway | **Apache APISIX 3.19** + **Coraza WAF** (coraza-proxy-wasm 0.6.0, OWASP CRS 4.14) | Điểm vào duy nhất của Tầng 2: `/graphql` → Hasura, `/files/*` → SeaweedFS S3, `/workflow/*` → API workflow của ứng dụng (#29, mục 7.3). WAF chặn ở biên, kiểm chữ ký JWT bằng JWKS của Keycloak, rate limit theo IP, CORS, gắn request-id. Chế độ standalone: route nằm trong git (GitOps) | `core/apisix/config.yaml`, `core/apisix/apisix.yaml`, `core/apisix/Dockerfile` | Chạy trong `core` (#12, mục 3.3) |
 | Dữ liệu có cấu trúc | **PostgreSQL 17 + PostGIS 3.5**, **Hasura CE v2.51** | Sự cố, đội cứu hộ, điểm trú ẩn, kho hàng, cảm biến (có tọa độ). Hasura tự sinh GraphQL + subscription, phân quyền theo claim vai trò trong JWT | `docker-compose.yml` (`postgres`, `postgres-roles`, `hasura`), `core/postgres/sync-roles.sh` | Chạy trong `core` (#11); schema nghiệp vụ ở #25, #26 |
-| Dữ liệu phi cấu trúc | **SeaweedFS 4.48** (S3) + ClamAV | Ảnh hiện trường, tệp đính kèm, file Parquet lịch sử. File tải lên được ClamAV quét trước khi công bố | `docker-compose.yml` (`seaweedfs`), `core/openbao/agent-seaweedfs.hcl` | S3 chạy trong `core`, khóa từ OpenBao (#11); ClamAV sau |
+| Dữ liệu phi cấu trúc | **SeaweedFS 4.48** (S3) + ClamAV | Ảnh hiện trường (#27: tải lên qua API ứng dụng, xem bằng link presigned ngắn hạn qua `/files/*`, mục 7.5), tệp đính kèm, file Parquet lịch sử. File tải lên sẽ được ClamAV quét trước khi công bố | `docker-compose.yml` (`seaweedfs`, `s3-buckets`), `core/openbao/agent-seaweedfs.hcl`, `core/seaweedfs/create-buckets.sh` | S3 chạy trong `core`, khóa từ OpenBao (#11); bucket + API ảnh (#27); ClamAV sau |
 | Workflow engine | **Temporal 1.29** + Python SDK | Quy trình kêu cứu: tiếp nhận → phân công đội gần nhất → xác nhận → đóng. Cảnh báo vượt ngưỡng → thông báo | `docker-compose.yml` (`temporal`, `temporal-ui`) | Chạy trong `core` (#11); worker ở #29 |
 
 Thành phần hỗ trợ: OpenBao (bí mật, chạy chế độ server trong profile `core` – mục 8), NATS JetStream + MQTT (sự kiện, IoT), Scorpio (NGSI-LD, bản sao số trạm đo), sổ cái minh bạch `core/ledger` (transparency log Tessera, D-007) cho tiền/hàng cứu trợ.
@@ -200,7 +200,8 @@ Tầng 2 chỉ thấy cổng `9080` của APISIX. Hasura (`8081`), SeaweedFS S3 
 |---|---|---|---|---|---|---|
 | `/graphql` | GET, POST, OPTIONS (+ WebSocket) | `hasura:8080/v1/graphql` | Bắt buộc, chuyển nguyên token cho Hasura kiểm lần 2 | Bộ `api`: đọc body JSON | Body 1 MiB; `GW_RATE_LIMIT_COUNT`/`GW_RATE_LIMIT_WINDOW` theo IP (mặc định 300/60 s) | Bỏ header `X-Hasura-Admin-Secret` của client |
 | `/v1/*`, `/v2/*`, `/console*` | mọi | không | – | – | – | Luôn 403: `/v1/metadata`, `/v2/query`, console Hasura không ra ngoài |
-| `/files/*` | GET, HEAD, PUT, POST, DELETE, OPTIONS | `seaweedfs:8333` (bỏ tiền tố `/files`) | Bắt buộc, rồi **bỏ** header `Authorization` | Bộ `files`: không đọc body, thêm PUT/DELETE và kiểu ảnh/tệp | Body `GW_FILES_MAX_BODY_BYTES` (mặc định 20 MiB, vượt → 413); rate limit như trên | S3 kiểm chữ ký SigV4 dạng presigned (tham số `X-Amz-*`) |
+| `/files/*` | GET, HEAD, OPTIONS (**chỉ đọc**, #27) | `seaweedfs:8333` (bỏ tiền tố `/files`) | Bắt buộc, rồi **bỏ** header `Authorization` | Bộ `files`: không đọc body | Body `GW_FILES_MAX_BODY_BYTES`; rate limit như trên | S3 kiểm chữ ký SigV4 dạng presigned (tham số `X-Amz-*`) = quyền theo object, mục 7.5 |
+| `/workflow/tai-len/*` (#27) | POST, OPTIONS | Như `/workflow/*`, ưu tiên hơn (`priority`) | Như `/workflow/*` | Bộ `upload`: không đọc body nhị phân, vẫn kiểm URI/tham số/header; chỉ nhận kiểu `image/jpeg\|png\|webp`, `application/octet-stream` | Body `GW_UPLOAD_MAX_BODY_BYTES` (mặc định 20 MiB, vượt → 413); rate limit như trên | Quy ước của lõi: đường dẫn nhận tệp nhị phân của API ứng dụng (ảnh hiện trường, mục 7.5) |
 | `/workflow/*` | GET, POST, OPTIONS | API workflow của ứng dụng `<DXOS_APP>-api:8000` (`GW_WORKFLOW_UPSTREAM_HOST/PORT`), bỏ tiền tố `/workflow` | Bắt buộc, chuyển nguyên Bearer token (API kiểm lại) | Bộ `api` | Body 1 MiB; rate limit như trên | #29, mục 7.3 |
 | `/api/v1/me` | GET, OPTIONS | Keycloak userinfo | Bắt buộc | Bộ `api` | rate limit như trên | Route mẫu v0.0.1 |
 | `/healthz` | GET | không (APISIX tự trả) | Không | – | 20 request / 10 s / IP | Healthcheck; smoke dùng để kiểm `limit-count` |
@@ -223,15 +224,15 @@ flowchart LR
 ```
 
 - **WAF ở chế độ chặn.** Image APISIX của đội (`core/apisix/Dockerfile`) = `apache/apisix:3.19.0-debian` + file `coraza-proxy-wasm.wasm` của bản phát hành 0.6.0 (zip tải từ GitHub Release, kiểm SHA-256 lúc build, không chép mã Coraza vào repo). OWASP CRS 4.14 nằm sẵn trong file wasm. Plugin chạy ở pha `rewrite` với priority 7999, trước `openid-connect` (2599): request độc bị chặn 403 trước cả bước kiểm token. Bộ luật: `@recommended-conf` + `SecRuleEngine On` + `@crs-setup-conf` + `@owasp_crs/*.conf`, paranoia 1, chặn theo điểm bất thường (anomaly score).
-- **Body cho WAF.** APISIX chỉ đưa body cho plugin wasm khi biến `wasm_process_req_body` được bật, còn coraza-proxy-wasm (viết cho Envoy) không tự bật. Route API có `serverless-pre-function` bật biến này trước Coraza, nên body JSON/GraphQL được kiểm (smoke: XSS trong body, SQLi trong biến GraphQL → 403). Route `/files` cố ý không đọc body (ảnh nhị phân, tránh báo nhầm và tốn RAM); tệp tải lên sẽ do ClamAV quét (#27).
+- **Body cho WAF.** APISIX chỉ đưa body cho plugin wasm khi biến `wasm_process_req_body` được bật, còn coraza-proxy-wasm (viết cho Envoy) không tự bật. Route API có `serverless-pre-function` bật biến này trước Coraza, nên body JSON/GraphQL được kiểm (smoke: XSS trong body, SQLi trong biến GraphQL → 403). Route `/files` và `/workflow/tai-len/*` cố ý không đọc body (ảnh nhị phân, tránh báo nhầm và tốn RAM); API của ứng dụng kiểm loại tệp bằng magic bytes, ClamAV quét ở biên là việc sau (#27).
 - **Log WAF.** Coraza ghi mỗi luật khớp vào log lỗi APISIX ở mức `emerg` (`docker compose logs apisix | grep Coraza`), kèm id luật CRS để tinh chỉnh khi báo nhầm.
-- **`/files` và chữ ký S3.** Header `Authorization` dành cho JWT ở gateway, S3 không nhận được. Client dùng URL presigned (chữ ký trên query string) do dịch vụ của #27 cấp theo quyền người dùng. SeaweedFS tính chữ ký theo `X-Forwarded-Host` APISIX gửi, nên URL được ký cho **host công khai của gateway** (vd `localhost:9080`) với path S3 `/<bucket>/<key>` (không có `/files`). Thiếu JWT → 401; có JWT mà không có chữ ký S3 → 403 từ S3.
+- **`/files` và chữ ký S3.** Header `Authorization` dành cho JWT ở gateway, S3 không nhận được. Client dùng URL presigned (chữ ký trên query string) do API của ứng dụng cấp theo quyền người dùng (#27, mục 7.5). SeaweedFS tính chữ ký theo `X-Forwarded-Host` APISIX gửi, nên URL được ký cho **host công khai của gateway** (vd `localhost:9080`) với path S3 `/<bucket>/<key>` (không có `/files`). Thiếu JWT → 401; có JWT mà không có chữ ký S3 → 403 từ S3.
 - **Rate limit.** `limit-count` chạy ở pha `access`, sau kiểm JWT: request không token bị từ chối 401 ở gateway mà không tới upstream, request có token bị đếm theo IP. Các header `X-RateLimit-Limit/Remaining/Reset` được trả về (và mở cho CORS). Bộ đếm là `local` (mỗi node APISIX một bộ đếm); chạy nhiều node thì chuyển sang `redis`.
 - **CORS.** Chỉ origin trong `GW_CORS_ALLOW_ORIGINS` (mặc định `http://localhost:3000`, dev server Nuxt) nhận `Access-Control-Allow-Origin`; origin lạ không có header này nên trình duyệt chặn. Không dùng `*`.
 - **Biến môi trường trong route.** APISIX standalone thay `${{TÊN:=mặc định}}` trong `apisix.yaml` khi nạp file (biến phải khai báo ở `nginx_config.envs`). Tên realm (`KEYCLOAK_REALM`), CORS, rate limit, giới hạn body đều lấy theo cách này.
 - **WebSocket.** `/graphql` bật `enable_websocket` cho subscription của Hasura, nhưng `openid-connect` vẫn đòi header `Authorization` lúc bắt tay. Trình duyệt không đặt được header này cho WebSocket, nên realtime phía web sẽ đi qua Centrifugo (tuần 3) hoặc cấu hình riêng khi làm #26.
 
-Kiểm thử: `make up && bash scripts/smoke-gateway.sh` (cũng trong `make smoke`): mỗi route không token/token giả → 401, token Keycloak → 200 (`/workflow/hello` chạy workflow Hello); `/v1/metadata`, `/v2/query`, `/v1/query`, `/console` → 403; PUT/GET ảnh qua `/files` bằng URL presigned + JWT; vượt kích thước → 413; SQLi/XSS trong query hoặc body → 403, request thường vẫn 200; CORS; 25 request vào `/healthz` trong 10 giây → 20 lần 200, 5 lần 429.
+Kiểm thử: `make up && bash scripts/smoke-gateway.sh` (cũng trong `make smoke`): mỗi route không token/token giả → 401, token Keycloak → 200 (`/workflow/hello` chạy workflow Hello); `/v1/metadata`, `/v2/query`, `/v1/query`, `/console` → 403; GET/HEAD ảnh qua `/files` bằng URL presigned + JWT, PUT/DELETE không có route (404); vượt kích thước → 413 (`/graphql`; tải ảnh: `scripts/smoke-anh.sh`); SQLi/XSS trong query hoặc body → 403, request thường vẫn 200; CORS; 25 request vào `/healthz` trong 10 giây → 20 lần 200, 5 lần 429.
 
 ## 4. Chia profile docker-compose
 
@@ -491,6 +492,49 @@ flowchart LR
 
 Bản sao số đầy đủ (NGSI-LD trên Scorpio, D-004) nối vào ở tuần 4 bằng một consumer thứ hai trên cùng stream `CUU_TRO_CAM_BIEN`, cập nhật thực thể theo `sensors.ngsi_ld_id`; thiết bị, topic và consumer ghi CSDL giữ nguyên. Chi tiết topic, payload, cách chạy bộ giả lập: `apps/cuu-tro/README.md` mục "Cảm biến mực nước".
 
+### 7.5. Dữ liệu phi cấu trúc: ảnh hiện trường (#27)
+
+Lõi cung cấp kho đối tượng S3 (SeaweedFS) và hai quy ước; ứng dụng quyết định lưu gì, ai được xem.
+
+```mermaid
+flowchart LR
+  c["Web / app hiện trường<br/>Bearer JWT"]
+  subgraph core["Tầng 1: lõi"]
+    gw1["APISIX /workflow/tai-len/*<br/>WAF (không đọc body) → JWT<br/>body ≤ GW_UPLOAD_MAX_BODY_BYTES"]
+    gw2["APISIX /files/* (chỉ GET/HEAD)<br/>JWT → bỏ Authorization"]
+    gq["APISIX /graphql → Hasura<br/>lọc theo hàng"]
+    s3[("SeaweedFS S3<br/>bucket riêng tư cuu-tro-media")]
+    bao[("OpenBao<br/>secret/app/cuu-tro/s3")]
+  end
+  subgraph app["Tầng 2: apps/cuu-tro"]
+    api["cuu-tro-api<br/>kiểm JWT, quyền, kích thước,<br/>magic bytes, SHA-256"]
+    db[("incident_media<br/>role cuu_tro_app")]
+  end
+  c -->|"1. POST nội dung ảnh"| gw1 --> api
+  api -->|"2. tin này người dùng thấy không? (JWT người dùng)"| gq
+  api -->|"3. PUT ký SigV4 + SHA-256<br/>định danh cuu-tro-app"| s3
+  api -->|"4. INSERT"| db
+  c -->|"5. xin link (liệt kê / một ảnh)"| api
+  api -->|"6. ảnh này người dùng thấy không?"| gq
+  api -.->|"7. URL presigned GET, đúng 1 object, ≤ 5 phút"| c
+  c -->|"8. GET link + JWT"| gw2 -->|"S3 kiểm chữ ký, hạn"| s3
+  bao -->|"bao-agent-cuu-tro (tmpfs riêng)"| api
+  bao -->|"bao-agent-seaweedfs: định danh cuu-tro-app"| s3
+```
+
+| Quyết định | Cách làm | Vì sao |
+|---|---|---|
+| Client không cầm khóa S3 | Khóa ứng dụng chỉ nằm trong tiến trình `cuu-tro-api` (volume tmpfs `secrets-cuu-tro-api`); khóa quản trị `secret/core/s3` không cấp cho ứng dụng | Khóa trên thiết bị người dùng là khóa đã lộ |
+| Tải lên qua API (không presigned PUT) | API đọc body có giới hạn, nhận dạng loại bằng magic bytes (không tin `Content-Type`/đuôi), tính SHA-256, ghi S3 ký kèm SHA-256 (S3 tính lại), rồi `INSERT` | Kiểm nội dung bắt buộc phải thấy nội dung; presigned PUT để S3 nhận bất cứ gì client gửi. Một chỗ ghi duy nhất để gắn ClamAV sau |
+| Xem bằng presigned GET qua `/files/*` | API kiểm quyền theo hàng (Hasura bằng JWT người dùng) rồi ký URL cho đúng một key, phương thức GET, hạn ngắn | Byte ảnh không đi qua API. Quyền theo object = chữ ký: gateway chỉ biết "đã đăng nhập", S3 chỉ biết "chữ ký hợp lệ, còn hạn, đúng key"; chỉ API ký được và chỉ ký sau khi kiểm quyền. Link lộ vẫn cần JWT và hết hạn nhanh |
+| `/files/*` chỉ đọc | Route chỉ `GET`/`HEAD`/`OPTIONS`; PUT/DELETE → 404 ở gateway | Không có đường ghi/xóa S3 từ ngoài, kể cả khi có ai đó ký được URL PUT |
+| Phạm vi khóa ứng dụng | Định danh `<DXOS_APP>-app` trên SeaweedFS: `Read/Write/List:<DXOS_APP>-*`, không `Admin` | Lộ khóa ứng dụng không đọc được bucket khác, không tạo/xóa bucket, không đổi chính sách |
+| Bucket do ứng dụng khai báo | `apps/<DXOS_APP>/s3/buckets.conf`; container một lần `s3-buckets` (image SeaweedFS, `weed shell`) tạo bucket còn thiếu mỗi lần `make up`, từ chối tên không có tiền tố `<DXOS_APP>-` | Lõi không biết tên bucket nghiệp vụ (giống migration SQL, metadata Hasura, stream NATS) |
+| Bucket riêng tư | SeaweedFS không có định danh nặc danh: request không ký → 403 | Không cần chính sách bucket riêng: mặc định là đóng |
+| Siêu dữ liệu tách nội dung | Bảng `incident_media` (khóa object, loại, kích thước, SHA-256, người tải, vai trò, thời điểm, `scan_status`); GraphQL chỉ cho đọc | Không ai tự tạo được dòng trỏ tới object tùy ý; truy vấn/thống kê ảnh bằng GraphQL như dữ liệu khác |
+
+API ghi S3 thẳng `seaweedfs:8333` trong mạng nội bộ, giống worker gọi Temporal/PostgreSQL thẳng (mục 7.3): đó là dịch vụ nền của ứng dụng, có định danh riêng, không dùng quyền người dùng. Mọi thứ người dùng gọi vẫn qua APISIX. Chi tiết API, bảng quyền: `apps/cuu-tro/README.md` mục "Ảnh hiện trường".
+
 ## 8. Quản lý bí mật: OpenBao (#14)
 
 OpenBao 2.7.1 (MPL-2.0, nhánh nguồn mở của Vault) chạy như dịch vụ riêng bằng image gốc trong profile `core`, **chế độ server** (không `-dev`): lưu trữ raft trên volume `baodata`, tắt UI (Tầng 1 headless), chỉ mở cổng `127.0.0.1:8200`. Cấu hình: `core/openbao/openbao.hcl`. TLS tắt trên laptop; bật khi lên VPS (tuần 4).
@@ -508,6 +552,7 @@ OpenBao 2.7.1 (MPL-2.0, nhánh nguồn mở của Vault) chạy như dịch vụ
 | `secret/core/temporal-db` | `password` | Temporal (`POSTGRES_PWD`), `postgres-roles` (role `temporal`) | ✔ (#11) |
 | `secret/core/s3` | `access_key`, `secret_key` | SeaweedFS (`-s3.config` do agent render) | ✔ (#11) |
 | `secret/core/ledger` | `signing_key` | `core/ledger` (khóa ký checkpoint Tessera, D-007) | Chỗ trống, sinh khi có `core/ledger` (#28) |
+| `secret/app/<DXOS_APP>/s3` | `access_key`, `secret_key` | SeaweedFS (định danh `<DXOS_APP>-app`, chỉ bucket `<DXOS_APP>-*`, không Admin); `bao-agent-cuu-tro` render `S3_ACCESS_KEY`, `S3_SECRET_KEY` chỉ cho `cuu-tro-api` | ✔ (#27) |
 | `secret/app/<DXOS_APP>/nats` | `app_password`, `device_password` | NATS (`auth.conf` do `bao-agent-nats` render): user `<DXOS_APP>-app` (backend, cổng NATS thường) và `<DXOS_APP>-thiet-bi` (thiết bị, chỉ MQTT); `bao-agent-cuu-tro` render `NATS_URL`, `MQTT_PASSWORD` cho ứng dụng | ✔ (#30) |
 
 `.env` không còn bí mật của dịch vụ lõi. `KC_DEMO_USER_PASSWORD` là mật khẩu của user mẫu (dữ liệu giả của `apps/cuu-tro`, dùng cho `make smoke`), không phải bí mật của dịch vụ lõi.
@@ -538,10 +583,10 @@ Mỗi dịch vụ một AppRole, mỗi AppRole một policy **chỉ đọc** đ�
 | `postgres` | `core-postgres` | `core/postgres`, `core/keycloak-db`, `core/hasura-db`, `core/temporal-db`, `app/+/db` (#29) |
 | `hasura` | `core-hasura` | `core/hasura-db`, `core/hasura` |
 | `temporal` | `core-temporal` | `core/temporal-db` |
-| `seaweedfs` | `core-seaweedfs` | `core/s3` |
+| `seaweedfs` | `core-seaweedfs` | `core/s3`, `app/+/s3` (#27) |
 | `ledger` | `core-ledger` | `core/ledger` (#28) |
 | `nats` | `core-nats` | `app/+/nats` (#30) |
-| `app-cuu-tro-workflow` | `app-cuu-tro-workflow` (`apps/cuu-tro/openbao/policies/workflow.hcl`) | `app/cuu-tro/db` (#29), `app/cuu-tro/nats` (#30) |
+| `app-cuu-tro-workflow` | `app-cuu-tro-workflow` (`apps/cuu-tro/openbao/policies/workflow.hcl`) | `app/cuu-tro/db` (#29), `app/cuu-tro/nats` (#30), `app/cuu-tro/s3` (#27) |
 
 `core-postgres` đọc thêm `app/+/db` (một đoạn đường dẫn bất kỳ) để `postgres-roles` đồng bộ mật khẩu role `<schema>_app` của ứng dụng đang chọn.
 

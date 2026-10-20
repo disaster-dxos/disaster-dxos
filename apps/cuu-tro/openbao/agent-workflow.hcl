@@ -3,6 +3,8 @@
 # PostgreSQL bằng role dịch vụ cuu_tro_app (không phải superuser, không phải role hasura), và (#30)
 # NATS_URL cho backend (user cuu-tro-app), MQTT_PASSWORD cho bộ giả lập (user cuu-tro-thiet-bi,
 # volume riêng /out/cuu-tro-thiet-bi: worker/API/consumer không mount, không thấy mật khẩu thiết bị).
+# Ảnh hiện trường (#27): volume riêng /out/cuu-tro-api cho cuu-tro-api: APP_DB_URL + khóa S3 của ứng
+# dụng (định danh cuu-tro-app trên SeaweedFS, chỉ bucket cuu-tro-*), không có mật khẩu NATS/MQTT.
 # Tên role/CSDL lấy từ biến môi trường của agent (apps/cuu-tro/compose.yaml).
 
 vault {
@@ -44,4 +46,22 @@ template {
   destination = "/out/cuu-tro-thiet-bi/MQTT_PASSWORD"
   perms       = "0444"
   contents    = "{{ with secret \"secret/data/app/cuu-tro/nats\" }}{{ .Data.data.device_password }}{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro-api/APP_DB_URL"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/db\" }}postgres://{{ env \"APP_DB_USER\" }}:{{ .Data.data.password | urlquery }}@postgres:5432/{{ env \"POSTGRES_DB\" }}{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro-api/S3_ACCESS_KEY"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/s3\" }}{{ .Data.data.access_key }}{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro-api/S3_SECRET_KEY"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/s3\" }}{{ .Data.data.secret_key }}{{ end }}"
 }

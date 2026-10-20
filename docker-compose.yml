@@ -170,8 +170,12 @@ services:
       - ./core/openbao/agent-seaweedfs.hcl:/openbao/config/agent.hcl:ro
       - ${OPENBAO_LOCAL_DIR:-./.data/openbao}/approle/seaweedfs:/openbao/approle:ro
       - secrets-seaweedfs:/out/seaweedfs
+    environment:
+      # Chọn secret/app/<DXOS_APP>/s3 và tên định danh/tiền tố bucket của ứng dụng (#27)
+      DXOS_APP: ${DXOS_APP:-cuu-tro}
     healthcheck:
-      test: ["CMD-SHELL", "grep -q accessKey /out/seaweedfs/s3.json"]
+      # Cả định danh lõi lẫn định danh của ứng dụng đã render
+      test: ["CMD-SHELL", "grep -q dxos-core /out/seaweedfs/s3.json && grep -q \"$${DXOS_APP}-app\" /out/seaweedfs/s3.json"]
       interval: 5s
       timeout: 3s
       retries: 24
@@ -330,6 +334,8 @@ services:
       GW_RATE_LIMIT_COUNT: ${GW_RATE_LIMIT_COUNT:-300}
       GW_RATE_LIMIT_WINDOW: ${GW_RATE_LIMIT_WINDOW:-60}
       GW_FILES_MAX_BODY_BYTES: ${GW_FILES_MAX_BODY_BYTES:-20971520}
+      # Route /workflow/tai-len/* (#27): tải tệp nhị phân lên API của ứng dụng, giới hạn body riêng
+      GW_UPLOAD_MAX_BODY_BYTES: ${GW_UPLOAD_MAX_BODY_BYTES:-20971520}
       # Upstream của route /workflow/*: API workflow của ứng dụng Tầng 2 (#29). Mặc định theo quy
       # ước <DXOS_APP>-api:8000 (cuu-tro-api trong apps/cuu-tro/compose.yaml); lõi không gắn cứng tên.
       GW_WORKFLOW_UPSTREAM_HOST: ${GW_WORKFLOW_UPSTREAM_HOST:-${DXOS_APP:-cuu-tro}-api}
@@ -436,6 +442,24 @@ services:
       retries: 12
       start_period: 15s
     mem_limit: 384m
+
+  s3-buckets:
+    # Chạy một lần mỗi lần up (#27): tạo bucket mà ứng dụng khai báo trong apps/${DXOS_APP}/s3/buckets.conf
+    # (tên bắt buộc tiền tố "<DXOS_APP>-"), bucket đã có thì giữ nguyên. Dùng lại image SeaweedFS
+    # (weed shell tới master/filer nội bộ), không kéo thêm image. Script: core/seaweedfs/create-buckets.sh
+    image: chrislusf/seaweedfs:4.48
+    profiles: [core]
+    restart: "no"
+    entrypoint: ["sh", "/opt/dxos/create-buckets.sh"]
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+    environment:
+      DXOS_APP: ${DXOS_APP:-cuu-tro}
+    volumes:
+      - ./core/seaweedfs/create-buckets.sh:/opt/dxos/create-buckets.sh:ro
+      - ./apps/${DXOS_APP:-cuu-tro}/s3:/opt/dxos/app-s3:ro
+    mem_limit: 128m
 
   temporal:
     <<: *restart

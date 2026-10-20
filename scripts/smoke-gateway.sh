@@ -4,7 +4,7 @@
 # (1) /graphql, /files/*, /workflow/*: không token → 401, token giả → 401, token Keycloak → 2xx
 #     (/workflow/hello chạy workflow Hello của apps/cuu-tro qua API workflow, #29);
 # (2) endpoint quản trị Hasura (/v1/metadata, /v2/query, /console) bị chặn từ ngoài;
-# (3) /files: ghi/đọc qua URL presigned S3 + JWT, giới hạn kích thước request (413);
+# (3) /files chỉ đọc (#27): đọc qua URL presigned S3 + JWT; PUT/DELETE không có route (404);
 # (4) Coraza WAF + OWASP CRS: SQLi/XSS trong query bị chặn 403 (kể cả khi có token), request thường vẫn qua;
 # (5) CORS: origin trong GW_CORS_ALLOW_ORIGINS được phép, origin lạ không có header cho phép;
 # (6) limit-count: vượt 20 request / 10 giây vào /healthz → 429.
@@ -47,7 +47,7 @@ kv() { # kv <đường dẫn> <khóa>: đọc bí mật OpenBao bằng root toke
 # presign <method> <bucket/key>: in phần query X-Amz-* của URL presigned SigV4 (5 phút). Ký cho host
 # công khai của gateway (SeaweedFS đọc X-Forwarded-Host do APISIX gửi) và path S3 /<bucket>/<key>
 # (không có tiền tố /files). Khóa S3 đọc từ biến môi trường, không nằm trên dòng lệnh.
-# Ở Tầng 2, URL này do dịch vụ của #27 cấp; smoke tự ký để kiểm đường đi qua gateway.
+# Ở Tầng 2, URL này do API của ứng dụng cấp (#27, scripts/smoke-anh.sh); smoke tự ký để kiểm đường đi qua gateway.
 presign() {
   python3 - "$1" "$2" <<'PY'
 import datetime, hashlib, hmac, os, sys, urllib.parse
@@ -100,15 +100,18 @@ export S3_AK S3_SK SIGN_HOST
 bucket="smoke-gw-$(date +%s)"
 curl -s -o /dev/null -K <(printf 'user = "%s:%s"\n' "$S3_AK" "$S3_SK") --aws-sigv4 "aws:amz:us-east-1:s3" -X PUT "$S3/$bucket"
 key="hien-truong/anh-01.jpg"
-check "PUT /files presigned + JWT (ảnh JPEG đi qua WAF)" 200 \
+# Ghi object thẳng vào S3 (cổng 127.0.0.1, khóa quản trị): /files không còn đường ghi (#27)
+curl -s -o /dev/null -K <(printf 'user = "%s:%s"\n' "$S3_AK" "$S3_SK") --aws-sigv4 "aws:amz:us-east-1:s3" \
+  -X PUT -H 'Content-Type: image/jpeg' --data-binary 'anh gia' "$S3/$bucket/$key"
+check "PUT /files presigned + JWT không có route (tải lên đi qua API ứng dụng)" 404 \
   "$(code "$tok" -X PUT -H 'Content-Type: image/jpeg' --data-binary 'anh gia' "$GW/files/$bucket/$key?$(presign PUT "$bucket/$key")")"
+check "DELETE /files presigned + JWT không có route" 404 \
+  "$(code "$tok" -X DELETE "$GW/files/$bucket/$key?$(presign DELETE "$bucket/$key")")"
 got=$(curl -s -K <(printf 'header = "Authorization: Bearer %s"\n' "$tok") "$GW/files/$bucket/$key?$(presign GET "$bucket/$key")")
 check "GET /files presigned + JWT đọc lại đúng nội dung" "anh gia" "$got"
 check "GET /files presigned nhưng không JWT" 401 "$(code - "$GW/files/$bucket/$key?$(presign GET "$bucket/$key")")"
 check "GET /files có JWT nhưng không chữ ký S3 (S3 từ chối)" 403 "$(code "$tok" "$GW/files/$bucket/$key")"
-max=${GW_FILES_MAX_BODY_BYTES:-20971520}
-check "PUT /files vượt $max byte" 413 \
-  "$(head -c $((max + 1024)) /dev/zero | code "$tok" -X PUT -H 'Content-Type: application/octet-stream' --data-binary @- "$GW/files/$bucket/to.bin")"
+check "HEAD /files presigned + JWT" 200 "$(code "$tok" -I "$GW/files/$bucket/$key?$(presign HEAD "$bucket/$key")")"
 for k in "$key" ""; do
   curl -s -o /dev/null -K <(printf 'user = "%s:%s"\n' "$S3_AK" "$S3_SK") --aws-sigv4 "aws:amz:us-east-1:s3" -X DELETE "$S3/$bucket/$k"
 done

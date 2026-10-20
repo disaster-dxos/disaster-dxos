@@ -18,7 +18,7 @@ Giấy phép kiểm tra ngày 17/10/2026 trên file LICENSE ở repo chính th�
 | Keycloak | `quay.io/keycloak/keycloak:26.8.1` | Apache-2.0 | github.com/keycloak/keycloak | Dịch vụ riêng | core | ✔ |
 | Apache APISIX | `apache/apisix:3.19.0-debian` (nền của image `disaster-dxos/apisix:3.19.0-coraza0.6.0`, `core/apisix/Dockerfile`) | Apache-2.0 | github.com/apache/apisix | Dịch vụ riêng, image gốc chỉ thêm file wasm | core | ✔ |
 | Hasura GraphQL Engine **CE** (bản kèm `hasura-cli` áp metadata lúc khởi động, #26) | `hasura/graphql-engine:v2.51.0-ce.cli-migrations-v3` | Apache-2.0 | github.com/hasura/graphql-engine | Dịch vụ riêng | core | ✔ |
-| SeaweedFS | `chrislusf/seaweedfs:4.48` | Apache-2.0 | github.com/seaweedfs/seaweedfs | Dịch vụ riêng | core | ✔ |
+| SeaweedFS | `chrislusf/seaweedfs:4.48` | Apache-2.0 | github.com/seaweedfs/seaweedfs | Dịch vụ riêng; cùng image chạy container một lần `s3-buckets` (`weed shell`) tạo bucket của ứng dụng (#27) | core | ✔ |
 | Temporal (server, auto-setup) | `temporalio/auto-setup:1.29.7` | MIT | github.com/temporalio/temporal | Dịch vụ riêng | core | ✔ |
 | Temporal UI (quản trị) | `temporalio/ui:2.56.0` | MIT | github.com/temporalio/ui | Dịch vụ riêng, chỉ mở 127.0.0.1 | core | ✔ |
 | NATS Server (JetStream + MQTT) | `nats:2.15.1-alpine` | Apache-2.0 | github.com/nats-io/nats-server | Dịch vụ riêng; bắt buộc xác thực, cấu hình `auth.conf` do bao agent render (#30) | core | ✔ |

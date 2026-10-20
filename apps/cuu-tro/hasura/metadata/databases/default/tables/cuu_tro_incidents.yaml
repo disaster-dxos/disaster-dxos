@@ -18,6 +18,15 @@ object_relationships:
   - name: assigned_team
     using:
       foreign_key_constraint_on: assigned_team_id
+array_relationships:
+  # Ảnh hiện trường (#27): quyền đọc theo luật của bảng incident_media
+  - name: media
+    using:
+      foreign_key_constraint_on:
+        column: incident_id
+        table:
+          name: incident_media
+          schema: cuu_tro
 insert_permissions:
   - role: dieu-phoi
     permission:

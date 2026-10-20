@@ -2,6 +2,7 @@
 # Bảng của schema cuu_tro được lộ ra GraphQL. Cố ý KHÔNG track incident_dedup_config (tham số
 # chặn tin trùng, chỉ đổi bằng SQL/migration) để không vai trò nào, kể cả qua quan hệ, thấy nó.
 - "!include cuu_tro_incidents.yaml"
+- "!include cuu_tro_incident_media.yaml"
 - "!include cuu_tro_rescue_teams.yaml"
 - "!include cuu_tro_team_members.yaml"
 - "!include cuu_tro_shelters.yaml"
