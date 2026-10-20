@@ -5,6 +5,7 @@
 # volume riêng /out/cuu-tro-thiet-bi: worker/API/consumer không mount, không thấy mật khẩu thiết bị).
 # Ảnh hiện trường (#27): volume riêng /out/cuu-tro-api cho cuu-tro-api: APP_DB_URL + khóa S3 của ứng
 # dụng (định danh cuu-tro-app trên SeaweedFS, chỉ bucket cuu-tro-*), không có mật khẩu NATS/MQTT.
+# Sổ cái (#28): /out/cuu-tro-api/LEDGER_WRITE_TOKEN, token để cuu-tro-api ghi lá lên core/ledger.
 # Tên role/CSDL lấy từ biến môi trường của agent (apps/cuu-tro/compose.yaml).
 
 vault {
@@ -64,4 +65,10 @@ template {
   destination = "/out/cuu-tro-api/S3_SECRET_KEY"
   perms       = "0444"
   contents    = "{{ with secret \"secret/data/app/cuu-tro/s3\" }}{{ .Data.data.secret_key }}{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro-api/LEDGER_WRITE_TOKEN"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/ledger\" }}{{ .Data.data.write_token }}{{ end }}"
 }

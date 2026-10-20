@@ -42,6 +42,12 @@ class Config:
     # Hạn link xem mặc định = tối đa (giây); client xin ngắn hơn bằng ?han_giay=
     anh_link_han_giay: int = 300
     gateway_public_url: str = "http://localhost:9080"
+    # Sổ cái minh bạch (#28): core/ledger trong mạng nội bộ (ghi không đi qua gateway: APISIX chặn mọi
+    # phương thức ghi /ledger/*). Token ghi của ứng dụng (secret/app/cuu-tro/ledger) do bao agent render.
+    # Khóa công khai (verifier) để tự kiểm chữ ký checkpoint; trống = lấy một lần từ ledger nội bộ.
+    ledger_url: str = "http://ledger:8090"
+    ledger_write_token: str = ""
+    ledger_verifier_key: str = ""
 
 
 def load() -> Config:
@@ -70,4 +76,7 @@ def load() -> Config:
         anh_max_bytes=_int("ANH_MAX_BYTES", 10 * 1024 * 1024),
         anh_link_han_giay=_int("ANH_LINK_HAN_GIAY", 300),
         gateway_public_url=os.environ.get("GATEWAY_PUBLIC_URL", "http://localhost:9080"),
+        ledger_url=os.environ.get("LEDGER_URL", "http://ledger:8090"),
+        ledger_write_token=os.environ.get("LEDGER_WRITE_TOKEN", ""),
+        ledger_verifier_key=os.environ.get("LEDGER_VERIFIER_KEY", ""),
     )

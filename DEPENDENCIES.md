@@ -25,7 +25,7 @@ Giấy phép kiểm tra ngày 17/10/2026 trên file LICENSE ở repo chính th�
 | OpenBao (server + bao agent) | `openbao/openbao:2.7.1` | MPL-2.0 | github.com/openbao/openbao | Dịch vụ riêng, image gốc, không sửa (cùng image chạy server, `bao agent` và mở khóa dev) | core | ✔ |
 | Coraza WAF (coraza-proxy-wasm) + OWASP CRS | `coraza-proxy-wasm-0.6.0.zip`, SHA-256 `cca4e3c75cf6b2e615907f936a1b6dcd0955250e0fb7d3b1c2ecef807d84603c` (file `.wasm` bên trong: `f36e710529167482df820b790981230092da098d26d21aebb16f1d9c8c4e26d5`); nhúng OWASP CRS 4.14.0 | Apache-2.0 (Coraza, coraza-proxy-wasm, OWASP CRS); thư viện Go nhúng trong wasm: libinjection-go BSD-3-Clause, proxy-wasm-go-sdk / coraza-wasilibs Apache-2.0, gjson / nottinygc / aho-corasick MIT | github.com/corazawaf/coraza-proxy-wasm (GitHub Release 0.6.0), github.com/coreruleset/coreruleset | Plugin WASM nạp vào APISIX (`core/apisix/config.yaml` mục `wasm`); tải bản phát hành lúc build image, kiểm SHA-256, không chép mã vào repo (#12) | core | ✔ |
 | Scorpio Broker (NGSI-LD) | ghim ở tuần 4 | BSD-3-Clause | github.com/ScorpioBroker/ScorpioBroker | Dịch vụ riêng, dùng chung postgis | gis | ☐ |
-| Sổ cái `core/ledger` (nhúng Tessera, xem mục 2) | build từ nguồn trong repo, tuần 4 | Apache-2.0 | mã của đội | Dịch vụ của đội | sec | ☐ |
+| Sổ cái `core/ledger` (nhúng Tessera, xem mục 2) | `disaster-dxos/ledger:0.1.0` build từ nguồn trong repo (`core/ledger/Dockerfile`): bước build `golang:1.26.10-alpine3.24` (BSD-3-Clause, không vào image chạy), image chạy `scratch` | Apache-2.0 | mã của đội | Dịch vụ của đội, ghi chỉ trong mạng nội bộ, đọc công khai qua APISIX `/ledger/*` (#28) | core | ✔ |
 | ClamAV | ghim ở tuần 2+ | GPL-2.0 | github.com/Cisco-Talos/clamav | Dịch vụ riêng | sec | ☐ |
 | Centrifugo **OSS** | ghim ở tuần 3 | Apache-2.0 | github.com/centrifugal/centrifugo | Dịch vụ riêng | core | ☐ |
 | Grafana | ghim ở tuần 4 | AGPL-3.0 | github.com/grafana/grafana | Dịch vụ riêng | bi | ☐ |
@@ -42,7 +42,7 @@ Giấy phép kiểm tra ngày 17/10/2026 trên file LICENSE ở repo chính th�
 | Uvicorn | 0.54.0 | BSD-3-Clause | github.com/encode/uvicorn | Máy chủ ASGI của `cuu-tro-api` (PyPI, #29) | ✔ |
 | asyncpg | 0.32.0 | Apache-2.0 | github.com/MagicStack/asyncpg | Worker kết nối PostgreSQL (PyPI, #29). Chọn thay psycopg (LGPL-3.0) để giữ toàn bộ phụ thuộc giấy phép dễ dãi | ✔ |
 | PyJWT (`pyjwt[crypto]`) | 2.15.1 | MIT | github.com/jpadilla/pyjwt | API kiểm lại JWT bằng JWKS Keycloak (PyPI, #29) | ✔ |
-| cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause | github.com/pyca/cryptography | Chữ ký RS256 cho PyJWT (PyPI, gián tiếp) | ✔ |
+| cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause | github.com/pyca/cryptography | Chữ ký RS256 cho PyJWT; kiểm chữ ký Ed25519 của checkpoint sổ cái trên trang minh bạch (PyPI, khai báo trực tiếp từ #28) | ✔ |
 | HTTPX | 0.28.1 | BSD-3-Clause | github.com/encode/httpx | API hỏi Hasura qua gateway `/graphql` (PyPI, #29) | ✔ |
 | pytest | 8.3.4 | MIT | github.com/pytest-dev/pytest | Kiểm thử (nhóm `dev`, không có trong image) | ✔ |
 | nats-py | 2.16.0 | Apache-2.0 | github.com/nats-io/nats.py | Consumer JetStream `cuu-tro-cam-bien`: khai báo stream, kéo bản tin, phát cảnh báo (PyPI, #30) | ✔ |
@@ -54,13 +54,34 @@ Giấy phép kiểm tra ngày 17/10/2026 trên file LICENSE ở repo chính th�
 | Tailwind CSS | tuần 3 | MIT | github.com/tailwindlabs/tailwindcss | Web điều phối (npm) | ☐ |
 | MapLibre GL JS | tuần 3 | BSD-3-Clause | github.com/maplibre/maplibre-gl-js | Bản đồ thời gian thực (npm) | ☐ |
 | Flutter SDK | tuần 5 | BSD-3-Clause | github.com/flutter/flutter | App hiện trường (pub) | ☐ |
-| Tessera (đã chốt – D-007, driver POSIX) | ghim trong `core/ledger/go.mod`, tuần 2–4 | Apache-2.0 | github.com/transparency-dev/tessera | Sổ cái minh bạch `core/ledger` (Go modules) | ☐ |
+| Tessera (đã chốt – D-007, driver POSIX + antispam BadgerDB) | v1.0.4 (`core/ledger/go.mod`) | Apache-2.0 | github.com/transparency-dev/tessera | Sổ cái minh bạch `core/ledger`: appender, tile/checkpoint tlog-tiles, gói `client` dựng inclusion proof (Go modules, #28) | ✔ |
+| transparency-dev/formats | v0.0.0-20251017110053-404c0d5b696c | Apache-2.0 | github.com/transparency-dev/formats | Đọc/kiểm checkpoint (`log.ParseCheckpoint`) trong `core/ledger` (#28) | ✔ |
+| transparency-dev/merkle | v0.0.2 | Apache-2.0 | github.com/transparency-dev/merkle | Leaf hash RFC 6962, kiểm inclusion proof (`ledger-verify`, #28) | ✔ |
+| golang.org/x/mod (`sumdb/note`) | v0.33.0 | BSD-3-Clause | cs.opensource.google/go/x/mod | Khóa ký / chữ ký checkpoint Ed25519 dạng note (#28) | ✔ |
 
 **Phụ thuộc Python gián tiếp của `apps/cuu-tro/workflow`** (khóa trong `uv.lock`, có hash trong `requirements.txt`; giấy phép đọc từ metadata gói ngày 20/10/2026): starlette 1.9.0, click 8.5.0, httpcore 1.0.9, idna 3.20, protobuf 7.36.2, pycparser 3.11 (BSD-3-Clause); pydantic 2.14.1, pydantic-core 2.50.1, anyio 4.15.1, h11 0.16.0, annotated-types 0.8.0, annotated-doc 0.0.5, typing-inspection 0.4.4, nexus-rpc 1.4.0 (MIT); cffi 2.1.1 (MIT-0); opentelemetry-api 1.45.1, types-protobuf 7.35.1.20260906 (Apache-2.0); typing-extensions 4.16.0 (PSF-2.0); certifi 2026.10.19 (MPL-2.0, chỉ dùng như gói, không sửa). Tất cả là giấy phép OSI. Image nền `python:3.12.13-slim-bookworm` (PSF-2.0 + gói Debian) chỉ dùng để chạy, không chép mã vào repo.
 
 Phiên bản thư viện được ghim trong file khai báo của từng ứng dụng (`requirements.txt`/`pyproject.toml`, `package-lock.json`, `pubspec.lock`, `go.mod`/`go.sum`) khi tạo. Bảng này cập nhật cùng lúc.
 
-**Phụ thuộc Go của `core/ledger`:** Tessera kéo theo nhiều thư viện gián tiếp (AWS SDK, GCP, BadgerDB…). Khi dựng `core/ledger` phải liệt kê các phụ thuộc gián tiếp vào bảng này và chạy công cụ kiểm giấy phép Go (ví dụ `go-licenses`) trong CI, chặn giấy phép không phải OSI.
+**Phụ thuộc Go của `core/ledger`** (#28). `go.mod` của Tessera khai báo cả driver AWS, GCP, Spanner…, nhưng Go chỉ biên dịch gói được import (driver POSIX), nên binary chỉ chứa các gói dưới đây. Danh sách lấy từ `go-licenses report ./...` ngày 20/10/2026; job CI `go-licenses` chạy `go-licenses check` mỗi PR và chặn giấy phép ngoài danh sách Apache-2.0, BSD-2-Clause, BSD-3-Clause, MIT, ISC, MPL-2.0. Cập nhật bảng này khi nâng Tessera (`go get github.com/transparency-dev/tessera@<bản> && go mod tidy`).
+
+| Gói Go (gián tiếp) | Phiên bản | Giấy phép |
+|---|---|---|
+| github.com/dgraph-io/badger/v4 (antispam bền vững) | v4.9.1 | Apache-2.0 |
+| github.com/dgraph-io/ristretto/v2 (cache của Badger; gói con `z` MIT) | v2.2.0 | Apache-2.0, MIT |
+| github.com/google/flatbuffers/go | v25.2.10 | Apache-2.0 |
+| github.com/klauspost/compress (zstd, s2, snappy) | v1.18.0 | Apache-2.0, BSD-3-Clause, MIT |
+| github.com/cespare/xxhash/v2 | v2.3.0 | MIT |
+| github.com/dustin/go-humanize | v1.0.1 | MIT |
+| github.com/cenkalti/backoff/v5 | v5.0.3 | MIT |
+| github.com/hashicorp/golang-lru/v2 (gói con `simplelru` BSD-3-Clause) | v2.0.7 | MPL-2.0 (thư viện dùng nguyên dạng, không sửa) |
+| github.com/go-logr/logr, github.com/go-logr/stdr | v1.4.3, v1.2.2 | Apache-2.0 |
+| go.opentelemetry.io/otel, /otel/metric, /otel/trace, /auto/sdk | v1.40.0, v1.2.1 | Apache-2.0 (kèm đoạn BSD-3-Clause) |
+| google.golang.org/protobuf | v1.36.11 | BSD-3-Clause |
+| golang.org/x/crypto, x/exp, x/net, x/sync, x/sys | v0.48.0, 2024-03-25, v0.50.0, v0.19.0, v0.41.0 | BSD-3-Clause |
+| k8s.io/klog/v2 | v2.130.1 | Apache-2.0 |
+
+Công cụ chỉ dùng trong CI, không vào image: `github.com/google/go-licenses/v2` v2.0.1 (Apache-2.0).
 
 ## 3. Danh sách không dùng
 

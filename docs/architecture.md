@@ -73,7 +73,7 @@ flowchart TB
 ```
 
 Đường liền: luồng dữ liệu. Đường đứt: xác thực, khóa và bí mật.
-Hiện profile `core` có `openbao` (+ 7 bao agent), `postgres` (+ `postgres-roles`), `keycloak`, `apisix`, `hasura`, `seaweedfs`, `temporal` (+ `temporal-ui`), `nats` (#11; bắt buộc xác thực, MQTT cho thiết bị, #30) và route gateway `/graphql`, `/files/*`, `/workflow/*`, `/api/v1/me` sau Coraza WAF (#12, mục 3.3); các thành phần còn lại tuần 3–5 (xem `docs/PLAN.md`).
+Hiện profile `core` có `openbao` (+ 8 bao agent), `postgres` (+ `postgres-roles`), `keycloak`, `apisix`, `hasura`, `seaweedfs`, `temporal` (+ `temporal-ui`), `nats` (#11; bắt buộc xác thực, MQTT cho thiết bị, #30), `ledger` (sổ cái Tessera, #28) và route gateway `/graphql`, `/files/*`, `/workflow/*`, `/ledger/*` (đọc công khai, #28), `/api/v1/me` sau Coraza WAF (#12, mục 3.3); các thành phần còn lại tuần 3–5 (xem `docs/PLAN.md`).
 
 ## 2. Ánh xạ 4 dịch vụ bắt buộc của đề
 
@@ -202,6 +202,9 @@ Tầng 2 chỉ thấy cổng `9080` của APISIX. Hasura (`8081`), SeaweedFS S3 
 | `/v1/*`, `/v2/*`, `/console*` | mọi | không | – | – | – | Luôn 403: `/v1/metadata`, `/v2/query`, console Hasura không ra ngoài |
 | `/files/*` | GET, HEAD, OPTIONS (**chỉ đọc**, #27) | `seaweedfs:8333` (bỏ tiền tố `/files`) | Bắt buộc, rồi **bỏ** header `Authorization` | Bộ `files`: không đọc body | Body `GW_FILES_MAX_BODY_BYTES`; rate limit như trên | S3 kiểm chữ ký SigV4 dạng presigned (tham số `X-Amz-*`) = quyền theo object, mục 7.5 |
 | `/workflow/tai-len/*` (#27) | POST, OPTIONS | Như `/workflow/*`, ưu tiên hơn (`priority`) | Như `/workflow/*` | Bộ `upload`: không đọc body nhị phân, vẫn kiểm URI/tham số/header; chỉ nhận kiểu `image/jpeg\|png\|webp`, `application/octet-stream` | Body `GW_UPLOAD_MAX_BODY_BYTES` (mặc định 20 MiB, vượt → 413); rate limit như trên | Quy ước của lõi: đường dẫn nhận tệp nhị phân của API ứng dụng (ảnh hiện trường, mục 7.5) |
+| `/workflow/minh-bach/*` (#28) | GET, OPTIONS | Như `/workflow/*`, ưu tiên hơn (`priority`) | **Không** (công khai), bỏ header `Authorization` | Bộ `api` | Body 1 MiB; rate limit như trên | Quy ước của lõi: đường công khai chỉ đọc của API ứng dụng (trang "Minh bạch cứu trợ", mục 5.1) |
+| `/ledger/*` (#28) | GET, HEAD, OPTIONS | `ledger:8090` (sổ cái của lõi) | **Không** (công khai) | Bộ `api` | Rate limit như trên | checkpoint, tile, proof, verifier (mục 5.1) |
+| `/ledger/*` (#28) | POST, PUT, PATCH, DELETE | – | – | – | – | **403**: ghi sổ cái chỉ từ dịch vụ nội bộ |
 | `/workflow/*` | GET, POST, OPTIONS | API workflow của ứng dụng `<DXOS_APP>-api:8000` (`GW_WORKFLOW_UPSTREAM_HOST/PORT`), bỏ tiền tố `/workflow` | Bắt buộc, chuyển nguyên Bearer token (API kiểm lại) | Bộ `api` | Body 1 MiB; rate limit như trên | #29, mục 7.3 |
 | `/api/v1/me` | GET, OPTIONS | Keycloak userinfo | Bắt buộc | Bộ `api` | rate limit như trên | Route mẫu v0.0.1 |
 | `/healthz` | GET | không (APISIX tự trả) | Không | – | 20 request / 10 s / IP | Healthcheck; smoke dùng để kiểm `limit-count` |
@@ -246,10 +249,11 @@ flowchart LR
     roles --> tp[temporal] --> tui[temporal-ui]
     bao --> sw[seaweedfs]
     bao --> nt[nats<br/>JetStream + MQTT có xác thực]
+    bao --> ld[ledger<br/>Tessera · POSIX]
   end
   subgraph later["profile sau"]
     gis["gis · Scorpio, mô phỏng cảm biến"]
-    sec["sec · ClamAV, core/ledger (Tessera)"]
+    sec["sec · ClamAV"]
     ai["ai · Ollama + Qwen2.5 7B/14B, Qdrant, agent"]
     bi["bi · Grafana"]
   end
@@ -258,9 +262,9 @@ flowchart LR
 
 | Profile | Dịch vụ | Lệnh | RAM |
 |---|---|---|---|
-| `core` | openbao, openbao-unseal (dev), 7 bao agent, postgres, postgres-roles (chạy một lần rồi thoát), keycloak, apisix, hasura, seaweedfs, temporal, temporal-ui, nats | `make up` | **Đo 19/10/2026** (`docker stats --no-stream`, Mac Apple Silicon, PostGIS chạy giả lập amd64): ~1,5 GB ngay sau khi mọi dịch vụ healthy; ~2,1 GB sau `make smoke` (bảng dưới; APISIX đo lại sau #12) |
+| `core` | openbao, openbao-unseal (dev), 8 bao agent, postgres, postgres-roles (chạy một lần rồi thoát), keycloak, apisix, hasura, seaweedfs, temporal, temporal-ui, nats, ledger (#28) | `make up` | **Đo 19/10/2026** (`docker stats --no-stream`, Mac Apple Silicon, PostGIS chạy giả lập amd64): ~1,5 GB ngay sau khi mọi dịch vụ healthy; ~2,1 GB sau `make smoke` (bảng dưới; APISIX đo lại sau #12) |
 | `gis` | Scorpio (dùng chung postgis), mô phỏng cảm biến | tuần 4 | |
-| `sec` | ClamAV, `ledger` (Tessera) | tuần 2–4 | ClamAV ~1,5 GB; `ledger` nhỏ, giới hạn bằng `GOMEMLIMIT` |
+| `sec` | ClamAV | tuần 2–4 | ClamAV ~1,5 GB. `ledger` (Tessera) đã vào `core` (#28) |
 | `ai` | Ollama, Qdrant, agent | tuần 5 | Qwen2.5 7B ~5 GB |
 | `bi` | Grafana | tuần 4 | |
 
@@ -312,25 +316,57 @@ Yêu cầu: mỗi lần nhập/xuất hàng hoặc nhận/chi tiền được gh
 Lý do: nhẹ nhất (không thêm CSDL), đúng hướng mà chính nhóm Trillian khuyên dùng, và tile tĩnh cho phép người dân hoặc nhà tài trợ tự tải log về đối chiếu. Đây là điểm mạnh khi trình bày tính minh bạch cứu trợ. Dịch vụ Go nhỏ build từ nguồn trong repo cũng là bằng chứng "build từ mã nguồn" cho PoF. Chi phí: đội phải viết khoảng 200–300 dòng Go.
 Phương án dự phòng: Trillian với driver PostgreSQL (dùng chung PostgreSQL), chỉ dùng nếu đội không theo được Go.
 
-### 5.1. Dịch vụ lõi `core/ledger`
+### 5.1. Dịch vụ lõi `core/ledger` (#28)
 
-Sổ cái là dịch vụ **Tầng 1**, không gắn nghiệp vụ (theo mục 7): `core/ledger` viết bằng Go, nhúng thư viện Tessera (khai báo qua `go.mod`, không vendor, không chép mã mẫu). Ghi nội dung gì (phiếu nhập/xuất kho, khoản tiền cứu trợ) do `apps/cuu-tro` quyết định.
+Sổ cái là dịch vụ **Tầng 1**, không gắn nghiệp vụ (theo mục 7): `core/ledger` viết bằng Go (~600 dòng kèm CLI), nhúng thư viện Tessera v1.0.4 (khai báo qua `go.mod`, không vendor, không chép mã mẫu `cmd/conformance/posix`). Ghi nội dung gì (phiếu nhập/xuất kho, sau này khoản tiền cứu trợ) do `apps/cuu-tro` quyết định. Image build từ nguồn (`core/ledger/Dockerfile`: Go ở bước build, image chạy `scratch` chỉ có 2 file nhị phân tĩnh).
 
-| API (qua APISIX) | Quyền | Mô tả |
+| API | Quyền | Mô tả |
 |---|---|---|
-| `POST /ledger/entries` | JWT Keycloak; vai trò được phép ghi do cấu hình quyết định | Thêm một lá vào log, trả về `index` |
-| `GET /ledger/checkpoint`, `GET /ledger/tile/...` | Công khai | Checkpoint đã ký và tile tĩnh theo chuẩn [tlog-tiles](https://c2sp.org/tlog-tiles) (C2SP), cache được, ai cũng tải về tự kiểm |
-| `GET /ledger/proof/{index}` | Công khai | Inclusion proof của lá tại `index` so với checkpoint hiện tại |
+| `POST /ledger/entries` | **Chỉ mạng nội bộ** + `Authorization: Bearer <token ghi>` của ứng dụng (OpenBao `secret/app/<APP>/ledger`). APISIX chặn mọi phương thức ghi `/ledger/*` (403), ledger không mở cổng ra máy host | Body `{"type","ref","sha256","attrs"}` (không định danh) → lá chuẩn tắc; chờ checkpoint đã ký chứa lá rồi trả `index`, `leaf_hash`, `duplicate` |
+| `GET /ledger/checkpoint`, `GET /ledger/tile/...` | Công khai qua APISIX (WAF, rate limit) | Checkpoint đã ký và tile hash / entry bundle tĩnh theo [tlog-tiles](https://c2sp.org/tlog-tiles) (C2SP). Tile đầy đủ `Cache-Control: immutable` |
+| `GET /ledger/proof/{index}` | Công khai | Lá, leaf hash, inclusion proof và checkpoint đang công bố (dựng bằng gói `client` của Tessera) |
+| `GET /ledger/verifier` | Công khai | Khóa công khai (verifier key dạng note) để ai cũng kiểm chữ ký checkpoint |
 
-Nguyên tắc:
+**Vì sao ghi bằng token dịch vụ, không bằng JWT người dùng:** lõi không biết vai trò nghiệp vụ. Ứng dụng kiểm JWT + vai trò (`dieu-phoi`) rồi mới ghi, và chính ứng dụng là nơi lưu `ledger_index`. Token ghi sinh ngẫu nhiên 32 byte cho từng ứng dụng, chỉ `cuu-tro-api` và ledger đọc được (policy riêng); đổi token trong OpenBao có hiệu lực sau lần render kế tiếp của bao agent, không cần khởi động lại. Ba lớp chặn: không có route ghi qua gateway, không có cổng host, sai/thiếu token → 401.
 
-- **Không đưa dữ liệu cá nhân lên sổ cái công khai.** Lá chỉ chứa mã giao dịch + SHA-256 của bản ghi chuẩn hóa (JSON chuẩn tắc), loại giao dịch, số lượng/số tiền, thời điểm. Bản ghi đầy đủ (người nhận, SĐT…) nằm trong PostgreSQL của `apps/cuu-tro`. Xác minh = băm lại bản ghi trong CSDL, so với lá và kiểm proof.
-- **Khóa ký checkpoint** (Ed25519, định dạng note) lưu trong OpenBao, nạp lúc khởi động; không nằm trong repo hay `.env.example`.
-- **Lưu trữ:** driver POSIX trên Docker volume riêng (filesystem thật, không dùng s3fs/NFS). Chỉ một tiến trình ghi tại một thời điểm (lock file), đủ cho quy mô demo. Đặt `GOMEMLIMIT` để giới hạn bộ nhớ của phần chống trùng (BadgerDB).
-- **Tầng 2:** trang công khai **"Minh bạch cứu trợ"** trong web điều phối: người dân nhập mã phiếu → hiển thị bản ghi đã băm và trạng thái "đã xác minh trong sổ cái".
-- **Mở rộng (tuần 6, nếu kịp):** gửi checkpoint tới witness công khai của transparency.dev.
+**Lá** (gói `core/ledger/leaf`): JSON chuẩn tắc `{"attrs":{…},"ref":"<mã giao dịch>","sha256":"<64 hex>","type":"<loại>","v":1}`, tối đa 1 KiB. Thuộc tính chỉ nhận chữ/số không dấu, không khoảng trắng (không ghi được họ tên) và từ chối dãy số dạng SĐT/CCCD (bắt đầu bằng 0, từ 9 chữ số). Gửi lại đúng lá cũ → chống trùng (in-memory + BadgerDB bền vững) trả index cũ, nên ứng dụng gọi lại an toàn.
 
-Luồng (tuần 4): worker Temporal ghi giao dịch kho/tiền vào PostgreSQL → gửi lá (mã giao dịch + SHA-256 bản ghi chuẩn hóa) tới `POST /ledger/entries` → lưu `index` vào PostgreSQL → trang "Minh bạch cứu trợ" lấy `GET /ledger/proof/{index}` và checkpoint để xác minh.
+**Khóa ký checkpoint** Ed25519 dạng note (`golang.org/x/mod/sumdb/note`), tên khóa = origin của sổ cái (`LEDGER_ORIGIN`). `scripts/openbao-init.sh` sinh **một lần** bằng openssl khi `secret/core/ledger` còn trống (khóa đi qua file tạm 0600 rồi stdin, không lên dòng lệnh, không in ra màn hình), lưu `signing_key` và `verifier_key`. `bao-agent-ledger` render vào volume tmpfs chỉ ledger mount; ledger đọc file trực tiếp (image không có shell), không bao giờ ghi khóa vào log.
+
+**Lưu trữ:** driver POSIX trên volume `ledgerdata` (`/data/log`: `checkpoint`, `tile/`, `.state/`; `/data/antispam`: BadgerDB). Ledger chỉ phục vụ `checkpoint` và `tile/` (qua `os.Root`, không thoát thư mục, không liệt kê), không phục vụ `.state/`. Một tiến trình ghi (lock file). `GOMEMLIMIT=150MiB`, `mem_limit` 256 MB.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor DP as dieu-phoi
+  participant GW as APISIX
+  participant API as cuu-tro-api
+  participant PG as PostgreSQL (cuu_tro)
+  participant L as core/ledger (Tessera)
+  actor ND as Người dân / nhà tài trợ
+  DP->>GW: POST /workflow/kho/phieu (JWT)
+  GW->>API: kiểm JWT + WAF → chuyển tiếp
+  API->>PG: INSERT supply_movements (role cuu_tro_app; trigger cộng/trừ tồn)
+  API->>API: bản ghi chuẩn hóa (không created_by) → JSON chuẩn tắc → SHA-256
+  API->>L: POST /ledger/entries {type, ref=mã phiếu, sha256, attrs} + token ghi (mạng nội bộ)
+  L-->>API: index, leaf_hash (sau khi checkpoint đã ký chứa lá)
+  API->>PG: UPDATE ledger_index, ledger_leaf_hash (một lần, trigger chặn sửa lại)
+  ND->>GW: GET /workflow/minh-bach/phieu/{mã} (không đăng nhập)
+  GW->>API: chuyển tiếp (bỏ Authorization)
+  API->>PG: đọc phiếu → băm lại
+  API->>L: GET /ledger/proof/{index}
+  API-->>ND: bản ghi + "da_xac_minh" / "khong_khop" (kiểm chữ ký checkpoint, lá, leaf hash, proof)
+  ND->>GW: GET /ledger/checkpoint, /ledger/tile/... (công khai)
+  Note over ND: ledger-verify tự kiểm chữ ký bằng khóa công khai,<br/>tự dựng proof từ tile, băm lại bản ghi đã lưu
+```
+
+**Ba cách kiểm chứng**, từ tin máy chủ nhiều đến ít:
+
+1. Trang công khai `GET /workflow/minh-bach/phieu/{mã}`: API băm lại bản ghi trong CSDL, kiểm chữ ký checkpoint, nội dung lá, leaf hash và inclusion proof (RFC 9162). Sửa tay một phiếu trong CSDL → `khong_khop`.
+2. `ledger-verify` (`core/ledger/cmd/ledger-verify`, có sẵn trong image `ledger`): chỉ dùng checkpoint + tile công khai qua gateway, tự dựng proof (không dùng `/ledger/proof`), kiểm chữ ký bằng khóa công khai do người dùng đưa vào, băm lại bản ghi đã lưu từ trang công khai.
+3. Tự viết: định dạng là chuẩn mở (tlog-tiles, tlog-checkpoint, signed note), mọi thư viện tương thích đều kiểm được.
+
+Giới hạn hiện tại: khóa công khai lấy từ chính máy chủ thì chỉ chứng minh toàn vẹn so với khóa đang công bố; triển khai thật cần công bố khóa ở nơi độc lập (tài liệu phát hành) và đặt `LEDGER_VERIFIER_KEY`. Consistency proof (log không bị viết lại) và witness công khai của transparency.dev để tuần 6.
 
 ## 6. Luồng nghiệp vụ chính (đích tuần 3–5)
 
@@ -551,7 +587,8 @@ OpenBao 2.7.1 (MPL-2.0, nhánh nguồn mở của Vault) chạy như dịch vụ
 | `secret/core/hasura` | `admin_secret` | Hasura (`HASURA_GRAPHQL_ADMIN_SECRET`) | ✔ (#11) |
 | `secret/core/temporal-db` | `password` | Temporal (`POSTGRES_PWD`), `postgres-roles` (role `temporal`) | ✔ (#11) |
 | `secret/core/s3` | `access_key`, `secret_key` | SeaweedFS (`-s3.config` do agent render) | ✔ (#11) |
-| `secret/core/ledger` | `signing_key` | `core/ledger` (khóa ký checkpoint Tessera, D-007) | Chỗ trống, sinh khi có `core/ledger` (#28) |
+| `secret/core/ledger` | `signing_key`, `verifier_key` | `core/ledger` (khóa ký checkpoint Ed25519 dạng note, D-007); `scripts/openbao-init.sh` sinh một lần. `verifier_key` là khóa công khai, chỉ để tra cứu | ✔ (#28) |
+| `secret/app/<DXOS_APP>/ledger` | `write_token` | `core/ledger` (file `writers`: dịch vụ được ghi) và `cuu-tro-api` (`LEDGER_WRITE_TOKEN`) | ✔ (#28) |
 | `secret/app/<DXOS_APP>/s3` | `access_key`, `secret_key` | SeaweedFS (định danh `<DXOS_APP>-app`, chỉ bucket `<DXOS_APP>-*`, không Admin); `bao-agent-cuu-tro` render `S3_ACCESS_KEY`, `S3_SECRET_KEY` chỉ cho `cuu-tro-api` | ✔ (#27) |
 | `secret/app/<DXOS_APP>/nats` | `app_password`, `device_password` | NATS (`auth.conf` do `bao-agent-nats` render): user `<DXOS_APP>-app` (backend, cổng NATS thường) và `<DXOS_APP>-thiet-bi` (thiết bị, chỉ MQTT); `bao-agent-cuu-tro` render `NATS_URL`, `MQTT_PASSWORD` cho ứng dụng | ✔ (#30) |
 
@@ -584,9 +621,9 @@ Mỗi dịch vụ một AppRole, mỗi AppRole một policy **chỉ đọc** đ�
 | `hasura` | `core-hasura` | `core/hasura-db`, `core/hasura` |
 | `temporal` | `core-temporal` | `core/temporal-db` |
 | `seaweedfs` | `core-seaweedfs` | `core/s3`, `app/+/s3` (#27) |
-| `ledger` | `core-ledger` | `core/ledger` (#28) |
+| `ledger` | `core-ledger` | `core/ledger`, `app/+/ledger` (#28) |
 | `nats` | `core-nats` | `app/+/nats` (#30) |
-| `app-cuu-tro-workflow` | `app-cuu-tro-workflow` (`apps/cuu-tro/openbao/policies/workflow.hcl`) | `app/cuu-tro/db` (#29), `app/cuu-tro/nats` (#30), `app/cuu-tro/s3` (#27) |
+| `app-cuu-tro-workflow` | `app-cuu-tro-workflow` (`apps/cuu-tro/openbao/policies/workflow.hcl`) | `app/cuu-tro/db` (#29), `app/cuu-tro/nats` (#30), `app/cuu-tro/s3` (#27), `app/cuu-tro/ledger` (#28). Không đọc được `core/ledger` (khóa ký) |
 
 `core-postgres` đọc thêm `app/+/db` (một đoạn đường dẫn bất kỳ) để `postgres-roles` đồng bộ mật khẩu role `<schema>_app` của ứng dụng đang chọn.
 

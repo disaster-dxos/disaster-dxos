@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Yêu cầu PoF: license đầy đủ (#1), build được 100% từ mã nguồn (#3), lint/test từng thành phần (#31).
 # Tên job ổn định để bật bắt buộc trong bảo vệ nhánh: license, build-from-source, shellcheck, yamllint, pytest.
+# Sổ cái core/ledger (Go, #28): go-test (gofmt, go vet, go test) và go-licenses (chỉ giấy phép OSI).
 name: ci
 on:
   push:
@@ -72,3 +73,43 @@ jobs:
         name: Chạy pytest
         # Mã 5 = không thu thập được test nào: coi là đạt khi mới có mã Python mà chưa có test
         run: python -m pytest -q || [ $? -eq 5 ]
+
+  go-test:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: core/ledger
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-go@v5.5.0
+        with:
+          go-version-file: core/ledger/go.mod
+          cache-dependency-path: core/ledger/go.sum
+      - name: gofmt
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then gofmt -l .; echo "Chạy gofmt -w core/ledger"; exit 1; fi
+      - run: go vet ./...
+      - run: go test -count=1 ./...
+
+  go-licenses:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: core/ledger
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-go@v5.5.0
+        with:
+          go-version-file: core/ledger/go.mod
+          cache-dependency-path: core/ledger/go.sum
+      - run: go install github.com/google/go-licenses/v2@v2.0.1
+      # Mọi gói Go được biên dịch vào core/ledger phải có giấy phép OSI trong danh sách (DEPENDENCIES.md).
+      # Bỏ qua module của chính repo (Apache-2.0, LICENSE ở gốc repo, ngoài thư mục module).
+      - name: Kiểm giấy phép phụ thuộc Go
+        run: |
+          go-licenses check ./... \
+            --ignore github.com/disaster-dxos/disaster-dxos \
+            --allowed_licenses=Apache-2.0,BSD-2-Clause,BSD-3-Clause,MIT,ISC,MPL-2.0
+      - name: Báo cáo giấy phép
+        if: always()
+        run: go-licenses report ./... --ignore github.com/disaster-dxos/disaster-dxos | sort | tee -a "$GITHUB_STEP_SUMMARY"

@@ -117,11 +117,12 @@ SELECT pg_temp.expect_error('supply_movements: sửa số lượng phiếu bị 
   $q$UPDATE supply_movements SET quantity = 1 WHERE supply_id = '30000000-0000-4000-8000-000000000001' AND direction = 'nhap'$q$, '23001');
 SELECT pg_temp.expect_error('supply_movements: xóa phiếu bị chặn',
   $q$DELETE FROM supply_movements WHERE supply_id = '30000000-0000-4000-8000-000000000001'$q$, '23001');
+-- Index rất lớn: không trùng lá thật mà sổ cái đã ghi trên volume cũ (#28, ledger_index UNIQUE)
 SELECT pg_temp.expect_ok('supply_movements: điền ledger_* lần đầu được',
-  $q$UPDATE supply_movements SET ledger_index = 0, ledger_leaf_hash = sha256('leaf'::bytea), ledger_logged_at = now()
+  $q$UPDATE supply_movements SET ledger_index = 9000000000000000000, ledger_leaf_hash = sha256('leaf'::bytea), ledger_logged_at = now()
       WHERE supply_id = '30000000-0000-4000-8000-000000000001' AND direction = 'nhap'$q$);
 SELECT pg_temp.expect_error('supply_movements: đổi ledger_* đã ghi bị chặn',
-  $q$UPDATE supply_movements SET ledger_index = 5
+  $q$UPDATE supply_movements SET ledger_index = 9000000000000000001
       WHERE supply_id = '30000000-0000-4000-8000-000000000001' AND direction = 'nhap'$q$, '23001');
 
 -- Cảm biến: ngưỡng nguy hiểm ≥ ngưỡng cảnh báo, mã trạm đúng dạng
