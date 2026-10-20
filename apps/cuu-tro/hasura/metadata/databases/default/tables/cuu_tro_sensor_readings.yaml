@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: Apache-2.0
+# Chuỗi đo cảm biến (#30). Chỉ consumer cuu-tro-cam-bien (role DB cuu_tro_app, đọc NATS JetStream)
+# ghi bảng này; không vai trò người dùng nào thêm/sửa/xóa qua GraphQL.
+#   dieu-phoi, cuu-ho, tinh-nguyen   chỉ đọc (mực nước là thông tin an toàn chung)
+table:
+  name: sensor_readings
+  schema: cuu_tro
+configuration:
+  custom_name: sensor_readings
+  column_config: {}
+  custom_column_names: {}
+  custom_root_fields: {}
+object_relationships:
+  - name: sensor
+    using:
+      foreign_key_constraint_on: sensor_id
+select_permissions:
+  - role: dieu-phoi
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+  - role: cuu-ho
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+  - role: tinh-nguyen
+    permission:
+      columns: "*"
+      filter: {}
+      # Giới hạn số dòng mỗi truy vấn cho vai trò đông người dùng nhất
+      limit: 500

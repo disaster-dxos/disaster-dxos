@@ -34,7 +34,7 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [x] [V1] Chốt transparency log: Tessera, driver POSIX (D-007); tài liệu + SPDX cho Go (#34)
 - [ ] [V2] Dựng bản chạy thử `core/ledger` (Go + Tessera): ghi 1 phiếu, lấy proof, xác minh (#28)
 - [x] [V3] Temporal worker Python "hello" gọi được qua gateway (#29; mở rộng thành khung `PhanCongCuuHo` + API `/workflow/*`, role DB `cuu_tro_app`, `scripts/smoke-workflow.sh` 20 ca)
-- [ ] [V3] NATS JetStream bật MQTT, gửi thử bản tin cảm biến
+- [x] [V3] NATS JetStream bật MQTT, gửi thử bản tin cảm biến (#30; MQTT + NATS bắt buộc xác thực từ OpenBao, bộ giả lập `gia_lap`, stream `CUU_TRO_CAM_BIEN` → `sensor_readings`, cảnh báo vượt ngưỡng lên `cuu-tro.canh-bao.cam-bien.*`, `scripts/smoke-cam-bien.sh`)
 - [x] [V1] CI: lint/test cho từng thành phần (shellcheck, yamllint, pytest khi có mã Python)
 - [ ] [V1] README song ngữ: hướng dẫn chạy từ máy sạch · Release v0.1.0
 
@@ -46,9 +46,9 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [ ] [V1] Centrifugo OSS: đẩy thông báo realtime
 
 ## Tuần 4 · 05–11/11 · Tầng [D] + lên mạng → v0.2.0
-- [ ] [V2] Mô phỏng cảm biến mực nước (Python → MQTT)
-- [ ] [V2] NATS → Scorpio: thực thể trạm đo NGSI-LD (bản sao số)
-- [ ] [V1] Cảnh báo vượt ngưỡng → Temporal → thông báo Telegram
+- [ ] [V2] Mô phỏng cảm biến mực nước (Python → MQTT) (khung có từ #30: `cuu_tro_workflow.gia_lap`, kịch bản `binh-thuong`/`vuot-nguong`; còn: thêm trạm, dữ liệu theo trận lũ mẫu)
+- [ ] [V2] NATS → Scorpio: thực thể trạm đo NGSI-LD (bản sao số) (consumer thứ hai trên stream `CUU_TRO_CAM_BIEN` của #30)
+- [ ] [V1] Cảnh báo vượt ngưỡng → Temporal → thông báo Telegram (sự kiện đã phát lên stream `CUU_TRO_CANH_BAO` từ #30)
 - [ ] [V2] Sổ cái minh bạch: niêm phong nhập/xuất hàng, tiền cứu trợ + endpoint xác minh
 - [ ] [V2] Xuất dữ liệu cũ ra Parquet + truy vấn DuckDB
 - [ ] [V2] Grafana dashboard điều hành

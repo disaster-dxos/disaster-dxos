@@ -73,7 +73,7 @@ flowchart TB
 ```
 
 Đường liền: luồng dữ liệu. Đường đứt: xác thực, khóa và bí mật.
-Hiện profile `core` có `openbao` (+ 6 bao agent), `postgres` (+ `postgres-roles`), `keycloak`, `apisix`, `hasura`, `seaweedfs`, `temporal` (+ `temporal-ui`), `nats` (#11) và route gateway `/graphql`, `/files/*`, `/workflow/*`, `/api/v1/me` sau Coraza WAF (#12, mục 3.3); các thành phần còn lại tuần 3–5 (xem `docs/PLAN.md`).
+Hiện profile `core` có `openbao` (+ 7 bao agent), `postgres` (+ `postgres-roles`), `keycloak`, `apisix`, `hasura`, `seaweedfs`, `temporal` (+ `temporal-ui`), `nats` (#11; bắt buộc xác thực, MQTT cho thiết bị, #30) và route gateway `/graphql`, `/files/*`, `/workflow/*`, `/api/v1/me` sau Coraza WAF (#12, mục 3.3); các thành phần còn lại tuần 3–5 (xem `docs/PLAN.md`).
 
 ## 2. Ánh xạ 4 dịch vụ bắt buộc của đề
 
@@ -244,7 +244,7 @@ flowchart LR
     roles --> hs[hasura]
     roles --> tp[temporal] --> tui[temporal-ui]
     bao --> sw[seaweedfs]
-    nt[nats]
+    bao --> nt[nats<br/>JetStream + MQTT có xác thực]
   end
   subgraph later["profile sau"]
     gis["gis · Scorpio, mô phỏng cảm biến"]
@@ -257,7 +257,7 @@ flowchart LR
 
 | Profile | Dịch vụ | Lệnh | RAM |
 |---|---|---|---|
-| `core` | openbao, openbao-unseal (dev), 6 bao agent, postgres, postgres-roles (chạy một lần rồi thoát), keycloak, apisix, hasura, seaweedfs, temporal, temporal-ui, nats | `make up` | **Đo 19/10/2026** (`docker stats --no-stream`, Mac Apple Silicon, PostGIS chạy giả lập amd64): ~1,5 GB ngay sau khi mọi dịch vụ healthy; ~2,1 GB sau `make smoke` (bảng dưới; APISIX đo lại sau #12) |
+| `core` | openbao, openbao-unseal (dev), 7 bao agent, postgres, postgres-roles (chạy một lần rồi thoát), keycloak, apisix, hasura, seaweedfs, temporal, temporal-ui, nats | `make up` | **Đo 19/10/2026** (`docker stats --no-stream`, Mac Apple Silicon, PostGIS chạy giả lập amd64): ~1,5 GB ngay sau khi mọi dịch vụ healthy; ~2,1 GB sau `make smoke` (bảng dưới; APISIX đo lại sau #12) |
 | `gis` | Scorpio (dùng chung postgis), mô phỏng cảm biến | tuần 4 | |
 | `sec` | ClamAV, `ledger` (Tessera) | tuần 2–4 | ClamAV ~1,5 GB; `ledger` nhỏ, giới hạn bằng `GOMEMLIMIT` |
 | `ai` | Ollama, Qdrant, agent | tuần 5 | Qwen2.5 7B ~5 GB |
@@ -274,7 +274,7 @@ RAM từng dịch vụ của `core` (MiB; "sau smoke" = sau khi chạy `make smo
 | seaweedfs | 153 | 193 | 384 | `mem_limit`, `GOMEMLIMIT=300MiB`, volume 256 MB |
 | apisix (+ Coraza WAF, #12) | 242 | 352 | 768 | `mem_limit`, `worker_processes: 2` (mỗi worker giữ một bản Coraza + CRS); ~370 sau thêm 560 request |
 | openbao | 33 | 145 | 256 | `mem_limit` |
-| nats | 12 | 25 | 256 | `mem_limit`, `GOMEMLIMIT=200MiB`, JetStream bộ nhớ 64 MB |
+| nats | 12 | 25 | 256 | `mem_limit`, `GOMEMLIMIT=200MiB`, JetStream bộ nhớ 64 MB, ổ 1 GB (`NATS_JS_MAX_MEMORY`, `NATS_JS_MAX_FILE`, #30) |
 | temporal-ui | 11 | 33 | 128 | `mem_limit`, `GOMEMLIMIT=100MiB` |
 | 6 bao agent + openbao-unseal | ~100 | ~115 | 64 mỗi cái | `mem_limit` |
 | **Tổng** | **~1478** | **~2125** | | |
@@ -449,6 +449,48 @@ flowchart LR
 
 Vì sao `include` thay vì khai báo dịch vụ ứng dụng trong `docker-compose.yml` hay dùng `COMPOSE_FILE`: (1) file lõi không chứa tên nghiệp vụ; (2) `include` nằm trong file, không phụ thuộc `.env` của từng máy, `docker compose config` và job CI `build-from-source` tự thấy dịch vụ ứng dụng; (3) dịch vụ ứng dụng vẫn `depends_on` được dịch vụ lõi (Temporal, `migrate`, OpenBao).
 
+### 7.4. Luồng IT/OT: cảm biến → NATS → dữ liệu nghiệp vụ (#30, nguyên lý B2)
+
+Nguyên lý B2 của đề là hội tụ IT/OT: dữ liệu thiết bị hiện trường (OT, ở đây là trạm đo mực nước) đi vào cùng nền tảng với quy trình nghiệp vụ (IT), thành bản sao số thời gian thực. Lõi cung cấp **đường vào** chung cho thiết bị; ứng dụng quyết định ý nghĩa của dữ liệu.
+
+```mermaid
+flowchart LR
+  subgraph ot["OT: hiện trường"]
+    dev["Trạm đo / bộ giả lập<br/>MQTT 3.1.1, QoS 1"]
+  end
+  subgraph core["Tầng 1: lõi (không biết topic nào)"]
+    mq["NATS :1883 MQTT<br/>user &lt;APP&gt;-thiet-bi: chỉ gửi &lt;APP&gt;.&gt;"]
+    js[("JetStream<br/>giới hạn 64 MB RAM / 1 GB ổ")]
+    mq --> js
+  end
+  subgraph app["Tầng 2: apps/cuu-tro"]
+    st["stream CUU_TRO_CAM_BIEN<br/>consumer bền ghi-csdl"]
+    cs["cuu-tro-cam-bien<br/>kiểm payload, so ngưỡng"]
+    cb["stream CUU_TRO_CANH_BAO"]
+  end
+  subgraph it["IT: nghiệp vụ"]
+    db[("PostgreSQL<br/>sensors.last_*, sensor_readings")]
+    gql["Hasura /graphql<br/>qua APISIX"]
+    later["tuần 4–5: Scorpio NGSI-LD,<br/>agent cảnh báo → Temporal"]
+  end
+  dev -->|"cuu-tro/cam-bien/&lt;trạm&gt;/muc-nuoc"| mq
+  js --- st --> cs -->|"role cuu_tro_app"| db --> gql
+  cs -->|"vượt ngưỡng"| cb -.-> later
+  st -.-> later
+```
+
+| Quyết định | Cách làm | Vì sao |
+|---|---|---|
+| Thiết bị nói MQTT, backend nói NATS | NATS bật MQTT trong cùng tiến trình; topic `a/b/c` là subject `a.b.c` | Thiết bị IoT phổ biến dùng MQTT; backend dùng JetStream (lưu bền, consumer bền, ack, giao lại). Một broker, không thêm Mosquitto/EMQX |
+| Bắt buộc xác thực | `auth.conf` (render từ OpenBao) có 2 user theo quy ước `<DXOS_APP>-app`, `<DXOS_APP>-thiet-bi`; không `no_auth_user` | Không cho thiết bị lạ gửi dữ liệu giả hay đọc trộm. `allowed_connection_types` tách hẳn: mật khẩu thiết bị lộ cũng không dùng được ở cổng NATS thường, và ngược lại |
+| Phạm vi subject theo ứng dụng | Thiết bị chỉ `publish` vào `<DXOS_APP>.>`, không `subscribe`; backend pub/sub `<DXOS_APP>.>`, gọi `$JS.API.>` | Lõi chỉ biết tên ứng dụng (như role `<schema>_app`, mục 7.3), không biết "cảm biến" hay "mực nước" |
+| Ứng dụng tự khai báo stream | `apps/cuu-tro/nats/streams.json`, consumer tạo/cập nhật khi khởi động | Đổi giới hạn lưu trữ, thêm stream không cần sửa lõi |
+| Ghi dữ liệu nghiệp vụ một chiều | Consumer dùng role `cuu_tro_app`: `INSERT` chuỗi đo, `UPDATE` đúng 2 cột `last_*` (migration 0004); người dùng chỉ đọc qua `/graphql` | Dữ liệu đo không đi qua quyền người dùng; điều phối chỉnh ngưỡng, không sửa số đo |
+| Cảnh báo là sự kiện | Mức tăng lên `canh_bao`/`nguy_hiem` → subject `cuu-tro.canh-bao.cam-bien.<trạm>` (stream lưu 30 ngày, `Nats-Msg-Id` chống trùng) | Tách nguồn phát hiện khỏi kênh thông báo: agent cảnh báo (tuần 4–5) và Temporal tiêu thụ sau, không chặn đường ghi |
+| Chưa TLS | Cổng MQTT mặc định chỉ `127.0.0.1` (`NATS_MQTT_BIND`) | Thiết bị thật qua Internet cần TLS + chứng chỉ (việc sau); mật khẩu NATS đang ở dạng rõ trong file tmpfs, bcrypt/nkey là việc sau |
+
+Bản sao số đầy đủ (NGSI-LD trên Scorpio, D-004) nối vào ở tuần 4 bằng một consumer thứ hai trên cùng stream `CUU_TRO_CAM_BIEN`, cập nhật thực thể theo `sensors.ngsi_ld_id`; thiết bị, topic và consumer ghi CSDL giữ nguyên. Chi tiết topic, payload, cách chạy bộ giả lập: `apps/cuu-tro/README.md` mục "Cảm biến mực nước".
+
 ## 8. Quản lý bí mật: OpenBao (#14)
 
 OpenBao 2.7.1 (MPL-2.0, nhánh nguồn mở của Vault) chạy như dịch vụ riêng bằng image gốc trong profile `core`, **chế độ server** (không `-dev`): lưu trữ raft trên volume `baodata`, tắt UI (Tầng 1 headless), chỉ mở cổng `127.0.0.1:8200`. Cấu hình: `core/openbao/openbao.hcl`. TLS tắt trên laptop; bật khi lên VPS (tuần 4).
@@ -466,6 +508,7 @@ OpenBao 2.7.1 (MPL-2.0, nhánh nguồn mở của Vault) chạy như dịch vụ
 | `secret/core/temporal-db` | `password` | Temporal (`POSTGRES_PWD`), `postgres-roles` (role `temporal`) | ✔ (#11) |
 | `secret/core/s3` | `access_key`, `secret_key` | SeaweedFS (`-s3.config` do agent render) | ✔ (#11) |
 | `secret/core/ledger` | `signing_key` | `core/ledger` (khóa ký checkpoint Tessera, D-007) | Chỗ trống, sinh khi có `core/ledger` (#28) |
+| `secret/app/<DXOS_APP>/nats` | `app_password`, `device_password` | NATS (`auth.conf` do `bao-agent-nats` render): user `<DXOS_APP>-app` (backend, cổng NATS thường) và `<DXOS_APP>-thiet-bi` (thiết bị, chỉ MQTT); `bao-agent-cuu-tro` render `NATS_URL`, `MQTT_PASSWORD` cho ứng dụng | ✔ (#30) |
 
 `.env` không còn bí mật của dịch vụ lõi. `KC_DEMO_USER_PASSWORD` là mật khẩu của user mẫu (dữ liệu giả của `apps/cuu-tro`, dùng cho `make smoke`), không phải bí mật của dịch vụ lõi.
 
@@ -497,7 +540,8 @@ Mỗi dịch vụ một AppRole, mỗi AppRole một policy **chỉ đọc** đ�
 | `temporal` | `core-temporal` | `core/temporal-db` |
 | `seaweedfs` | `core-seaweedfs` | `core/s3` |
 | `ledger` | `core-ledger` | `core/ledger` (#28) |
-| `app-cuu-tro-workflow` | `app-cuu-tro-workflow` (`apps/cuu-tro/openbao/policies/workflow.hcl`) | `app/cuu-tro/db` (#29) |
+| `nats` | `core-nats` | `app/+/nats` (#30) |
+| `app-cuu-tro-workflow` | `app-cuu-tro-workflow` (`apps/cuu-tro/openbao/policies/workflow.hcl`) | `app/cuu-tro/db` (#29), `app/cuu-tro/nats` (#30) |
 
 `core-postgres` đọc thêm `app/+/db` (một đoạn đường dẫn bất kỳ) để `postgres-roles` đồng bộ mật khẩu role `<schema>_app` của ứng dụng đang chọn.
 
@@ -514,6 +558,7 @@ flowchart LR
   BAO -->|"AppRole hasura"| AH["bao-agent-hasura"] --> VH[["tmpfs secrets-hasura"]] --> HS["hasura"]
   BAO -->|"AppRole temporal"| AT["bao-agent-temporal"] --> VT[["tmpfs secrets-temporal"]] --> TP["temporal"]
   BAO -->|"AppRole seaweedfs"| AS["bao-agent-seaweedfs"] --> VS[["tmpfs secrets-seaweedfs<br/>s3.json"]] --> SW["seaweedfs"]
+  BAO -->|"AppRole nats"| AN["bao-agent-nats"] --> VN[["tmpfs secrets-nats<br/>auth.conf"]] --> NT["nats"]
 ```
 
 - Mỗi dịch vụ đọc bí mật có một `bao agent` riêng (`core/openbao/agent-<dịch vụ>.hcl`), đăng nhập bằng `role_id`/`secret_id` của AppRole tương ứng, render mỗi bí mật thành một file trên volume **tmpfs** (nằm trong RAM, mất khi dừng). Agent đọc lại KV mỗi 5 phút.

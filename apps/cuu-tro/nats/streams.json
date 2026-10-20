@@ -1,0 +1,36 @@
+{
+  "_mo_ta": "Stream + consumer NATS JetStream của apps/cuu-tro (#30). cuu-tro-cam-bien tạo/cập nhật khi khởi động (cuu_tro_workflow/cam_bien_consumer.py). Thời gian tính bằng giây, dung lượng bằng byte. Tổng max_bytes phải nhỏ hơn NATS_JS_MAX_FILE của lõi.",
+  "streams": [
+    {
+      "name": "CUU_TRO_CAM_BIEN",
+      "description": "Bản tin cảm biến (MQTT cuu-tro/cam-bien/<ma_tram>/<dai_luong>)",
+      "subjects": ["cuu-tro.cam-bien.>"],
+      "storage": "file",
+      "max_age": 604800,
+      "max_bytes": 268435456,
+      "max_msg_size": 4096,
+      "duplicate_window": 120
+    },
+    {
+      "name": "CUU_TRO_CANH_BAO",
+      "description": "Sự kiện cảnh báo vượt ngưỡng cho agent cảnh báo (tuần 4-5)",
+      "subjects": ["cuu-tro.canh-bao.>"],
+      "storage": "file",
+      "max_age": 2592000,
+      "max_bytes": 67108864,
+      "max_msg_size": 4096,
+      "duplicate_window": 120
+    }
+  ],
+  "consumers": [
+    {
+      "stream": "CUU_TRO_CAM_BIEN",
+      "durable_name": "ghi-csdl",
+      "description": "Ghi chuỗi đo vào cuu_tro.sensor_readings, cập nhật sensors.last_*",
+      "filter_subject": "cuu-tro.cam-bien.>",
+      "ack_wait": 30,
+      "max_deliver": 5,
+      "max_ack_pending": 200
+    }
+  ]
+}

@@ -143,6 +143,9 @@ do_setup() {
   # Role DB dịch vụ của ứng dụng Tầng 2 đang chọn (<schema>_app, #29): postgres-roles tạo role,
   # backend của ứng dụng (worker) đăng nhập bằng role này. Lõi chỉ biết quy ước tên, không biết nghiệp vụ.
   kv_seed "app/$APP/db"       password=@rand:24
+  # Mật khẩu NATS/MQTT của ứng dụng (#30): <APP>-app cho backend, <APP>-thiet-bi cho thiết bị MQTT.
+  # bao-agent-nats render thành cấu hình xác thực của NATS (core/nats/auth.conf.ctmpl).
+  kv_seed "app/$APP/nats"     app_password=@rand:24 device_password=@rand:24
 
   # AppRole
   api_ok GET sys/auth

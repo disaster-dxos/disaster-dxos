@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: up up-bi down logs ps migrate seed test-db test-py license check lint smoke bao-init bao-unseal bao-status
+.PHONY: up up-bi gia-lap gia-lap-vuot-nguong down logs ps migrate seed test-db test-py license check lint smoke bao-init bao-unseal bao-status
 
 # Dùng .env nếu có, nếu không thì .env.example (để CI/máy sạch vẫn kiểm được compose)
 ENV_FILE := $(if $(wildcard .env),.env,.env.example)
@@ -21,7 +21,7 @@ bao-status:    ## Trạng thái seal của OpenBao
 up-bi:         ## Grafana (tuần 4)
 	docker compose --profile bi up -d --build
 
-smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS, ràng buộc DB, phân quyền GraphQL, workflow phân công (cần make up trước)
+smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS, ràng buộc DB, phân quyền GraphQL, workflow phân công, luồng cảm biến MQTT (cần make up trước)
 	bash scripts/smoke-openbao.sh
 	bash scripts/smoke-jwt.sh
 	bash scripts/smoke-gateway.sh
@@ -30,6 +30,13 @@ smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/Seaweed
 	docker compose --profile core run --rm --no-deps migrate seed
 	bash scripts/smoke-hasura.sh
 	bash scripts/smoke-workflow.sh
+	bash scripts/smoke-cam-bien.sh
+
+gia-lap:       ## Giả lập trạm cảm biến: gửi một bản tin MQTT bình thường cho mỗi trạm mẫu (#30, cần make up trước)
+	docker compose --profile core --profile app run --rm --no-deps cuu-tro-gia-lap python -m cuu_tro_workflow.gia_lap --mot-lan
+
+gia-lap-vuot-nguong: ## Giả lập nước lên vượt ngưỡng nguy hiểm (một lần) → sự kiện cảnh báo trên NATS
+	docker compose --profile core --profile app run --rm --no-deps cuu-tro-gia-lap python -m cuu_tro_workflow.gia_lap --mot-lan --kich-ban vuot-nguong
 
 down:
 	docker compose --profile '*' down

@@ -4,7 +4,8 @@
 # (1) Hasura: chạy bằng role hasura (không phải superuser), console tắt, admin secret lấy từ
 #     OpenBao, nhận JWT Keycloak (kiểm lại chữ ký, đọc claim https://hasura.io/jwt/claims),
 #     từ chối token giả; (2) SeaweedFS S3: khóa từ OpenBao ghi/đọc/xóa được, khóa sai bị 403;
-# (3) Temporal frontend SERVING, namespace default có; (4) NATS JetStream bật, cổng MQTT nhận CONNECT;
+# (3) Temporal frontend SERVING, namespace default có; (4) NATS JetStream bật, có giới hạn; MQTT và
+#     cổng client bắt buộc xác thực, user thiết bị chỉ qua MQTT, user backend chỉ qua NATS thường (#30);
 # (5) docker compose không truyền bí mật đã chuyển qua environment.
 # Gọi thẳng cổng 127.0.0.1 của dịch vụ (route APISIX /graphql, /files, /workflow là việc của #12).
 # Dùng: make up && bash scripts/smoke-core.sh
@@ -95,24 +96,67 @@ check "CSDL Temporal thuộc role riêng" "temporal:${TEMPORAL_DB_USER:-temporal
 # ---------- (4) NATS ----------
 out=$(docker compose exec -T nats wget -qO- http://127.0.0.1:8222/jsz 2>&1 || true)
 check "NATS JetStream bật" True "$(jfield '"config" in d and not d.get("disabled", False)' <<<"$out" 2>/dev/null || echo "$out")"
-# MQTT 3.1.1: gửi CONNECT, chờ CONNACK mã 0 (NATS MQTT cần JetStream)
-r=$(python3 - "${NATS_MQTT_PORT:-1883}" <<'PY'
+# Xác thực bắt buộc (#30): user/mật khẩu trong OpenBao secret/app/<DXOS_APP>/nats, render vào
+# auth.conf của NATS; <APP>-thiet-bi chỉ vào được qua MQTT, <APP>-app chỉ qua cổng NATS thường.
+APP="${DXOS_APP:-cuu-tro}"
+NATS_APP_PW=$(kv "app/$APP/nats" app_password)
+NATS_DEV_PW=$(kv "app/$APP/nats" device_password)
+# mqtt_connect <user|-> <mật khẩu>: MQTT 3.1.1 CONNECT → in CONNACK-<mã> (0 = nhận, 4/5 = từ chối)
+# hoặc "dong-ket-noi" khi server đóng kết nối không trả CONNACK. Mật khẩu đi qua stdin.
+mqtt_connect() {
+  python3 - "${NATS_MQTT_PORT:-1883}" "$1" <<PY
 import socket, sys
+port, user = int(sys.argv[1]), sys.argv[2]
+pw = """$2""".encode()
 cid = b"dxos-smoke"
-var = b"\x00\x04MQTT\x04\x02\x00\x1e"           # giao thức MQTT 3.1.1, clean session, keepalive 30s
+flags = 0x02 | ((0xC0) if user != "-" else 0)  # clean session (+ username + password)
+var = b"\x00\x04MQTT\x04" + bytes([flags]) + b"\x00\x1e"
 payload = len(cid).to_bytes(2, "big") + cid
+if user != "-":
+    payload += len(user).to_bytes(2, "big") + user.encode() + len(pw).to_bytes(2, "big") + pw
 pkt = b"\x10" + bytes([len(var) + len(payload)]) + var + payload
 try:
-    s = socket.create_connection(("127.0.0.1", int(sys.argv[1])), timeout=5)
+    s = socket.create_connection(("127.0.0.1", port), timeout=5)
     s.sendall(pkt); ack = s.recv(4); s.close()
-    print("CONNACK-0" if ack[:1] == b"\x20" and ack[3:4] == b"\x00" else "tra-loi-la:" + ack.hex())
+    if not ack:
+        print("dong-ket-noi")
+    else:
+        print("CONNACK-%d" % ack[3] if ack[:1] == b"\x20" and len(ack) == 4 else "tra-loi-la:" + ack.hex())
 except OSError as e:
     print("loi:" + str(e))
 PY
-)
-check "NATS MQTT cổng ${NATS_MQTT_PORT:-1883} nhận CONNECT" CONNACK-0 "$r"
-r=$(python3 -c 'import socket,sys; s=socket.create_connection(("127.0.0.1",int(sys.argv[1])),timeout=5); print(s.recv(4).decode()); s.close()' "${NATS_PORT:-4222}" 2>&1 || true)
-check "NATS cổng client ${NATS_PORT:-4222} trả INFO" INFO "$r"
+}
+check "NATS MQTT cổng ${NATS_MQTT_PORT:-1883}: CONNECT không xác thực bị từ chối" CONNACK-5 "$(mqtt_connect - '')"
+check "NATS MQTT: sai mật khẩu bị từ chối" CONNACK-5 "$(mqtt_connect "$APP-thiet-bi" sai-mat-khau)"
+check "NATS MQTT: user $APP-thiet-bi đúng mật khẩu được nhận" CONNACK-0 "$(mqtt_connect "$APP-thiet-bi" "$NATS_DEV_PW")"
+check "NATS MQTT: user backend $APP-app không được vào qua MQTT" CONNACK-5 "$(mqtt_connect "$APP-app" "$NATS_APP_PW")"
+
+# nats_connect <user|-> <mật khẩu>: giao thức NATS: INFO → CONNECT (verbose) + PING → in OK hoặc lỗi -ERR
+nats_connect() {
+  python3 - "${NATS_PORT:-4222}" "$1" <<PY
+import json, socket, sys
+port, user = int(sys.argv[1]), sys.argv[2]
+opts = {"verbose": False, "pedantic": False, "name": "dxos-smoke", "lang": "python", "version": "0"}
+if user != "-":
+    opts.update(user=user, **{"pass": """$2"""})
+try:
+    s = socket.create_connection(("127.0.0.1", port), timeout=5)
+    f = s.makefile("rb")
+    if not f.readline().startswith(b"INFO"):
+        print("khong-co-INFO"); sys.exit()
+    s.sendall(b"CONNECT " + json.dumps(opts).encode() + b"\r\nPING\r\n")
+    line = f.readline().decode().strip()
+    print("OK" if line == "PONG" else line or "dong-ket-noi")
+    s.close()
+except OSError as e:
+    print("loi:" + str(e))
+PY
+}
+check "NATS cổng client ${NATS_PORT:-4222}: không xác thực bị từ chối" "-ERR 'Authorization Violation'" "$(nats_connect - '')"
+check "NATS cổng client: user $APP-app đúng mật khẩu được nhận" OK "$(nats_connect "$APP-app" "$NATS_APP_PW")"
+check "NATS cổng client: user thiết bị chỉ được dùng MQTT" "-ERR 'Authorization Violation'" "$(nats_connect "$APP-thiet-bi" "$NATS_DEV_PW")"
+lim=$(jfield '0 < d["config"]["max_memory"] <= 1 << 30 and 0 < d["config"]["max_storage"] <= 8 << 30' <<<"$out" 2>/dev/null || echo "$out")
+check "NATS JetStream có giới hạn bộ nhớ/ổ (mặc định 64MB/1GB)" True "$lim"
 
 # ---------- (5) Không lộ bí mật ----------
 leak=$(docker compose --profile core config 2>/dev/null | grep -cE 'POSTGRES_PASSWORD:|POSTGRES_PWD:|HASURA_GRAPHQL_ADMIN_SECRET:|HASURA_GRAPHQL_DATABASE_URL:|"accessKey"|"secretKey"' || true)

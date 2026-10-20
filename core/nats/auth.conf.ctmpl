@@ -1,0 +1,29 @@
+{{- /* SPDX-License-Identifier: Apache-2.0
+  Template xác thực NATS (#30), bao-agent-nats render thành secrets/auth.conf (xem
+  core/openbao/agent-nats.hcl). DXOS_APP là biến môi trường của agent. */ -}}
+{{- $app := env "DXOS_APP" -}}
+{{- with secret (printf "secret/data/app/%s/nats" $app) -}}
+# Sinh từ core/nats/auth.conf.ctmpl, không sửa tay
+authorization {
+  users = [
+    {
+      user: "{{ $app }}-app"
+      password: "{{ .Data.data.app_password }}"
+      allowed_connection_types: ["STANDARD"]
+      permissions: {
+        publish: ["{{ $app }}.>", "$JS.API.>", "$JS.ACK.>", "$JS.FC.>", "_INBOX.>"]
+        subscribe: ["{{ $app }}.>", "_INBOX.>"]
+      }
+    }
+    {
+      user: "{{ $app }}-thiet-bi"
+      password: "{{ .Data.data.device_password }}"
+      allowed_connection_types: ["MQTT"]
+      permissions: {
+        publish: ["{{ $app }}.>"]
+        subscribe: { deny: [">"] }
+      }
+    }
+  ]
+}
+{{ end -}}

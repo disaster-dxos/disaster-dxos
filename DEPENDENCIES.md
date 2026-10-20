@@ -21,7 +21,7 @@ Giấy phép kiểm tra ngày 17/10/2026 trên file LICENSE ở repo chính th�
 | SeaweedFS | `chrislusf/seaweedfs:4.48` | Apache-2.0 | github.com/seaweedfs/seaweedfs | Dịch vụ riêng | core | ✔ |
 | Temporal (server, auto-setup) | `temporalio/auto-setup:1.29.7` | MIT | github.com/temporalio/temporal | Dịch vụ riêng | core | ✔ |
 | Temporal UI (quản trị) | `temporalio/ui:2.56.0` | MIT | github.com/temporalio/ui | Dịch vụ riêng, chỉ mở 127.0.0.1 | core | ✔ |
-| NATS Server (JetStream + MQTT) | `nats:2.15.1-alpine` | Apache-2.0 | github.com/nats-io/nats-server | Dịch vụ riêng | core | ✔ |
+| NATS Server (JetStream + MQTT) | `nats:2.15.1-alpine` | Apache-2.0 | github.com/nats-io/nats-server | Dịch vụ riêng; bắt buộc xác thực, cấu hình `auth.conf` do bao agent render (#30) | core | ✔ |
 | OpenBao (server + bao agent) | `openbao/openbao:2.7.1` | MPL-2.0 | github.com/openbao/openbao | Dịch vụ riêng, image gốc, không sửa (cùng image chạy server, `bao agent` và mở khóa dev) | core | ✔ |
 | Coraza WAF (coraza-proxy-wasm) + OWASP CRS | `coraza-proxy-wasm-0.6.0.zip`, SHA-256 `cca4e3c75cf6b2e615907f936a1b6dcd0955250e0fb7d3b1c2ecef807d84603c` (file `.wasm` bên trong: `f36e710529167482df820b790981230092da098d26d21aebb16f1d9c8c4e26d5`); nhúng OWASP CRS 4.14.0 | Apache-2.0 (Coraza, coraza-proxy-wasm, OWASP CRS); thư viện Go nhúng trong wasm: libinjection-go BSD-3-Clause, proxy-wasm-go-sdk / coraza-wasilibs Apache-2.0, gjson / nottinygc / aho-corasick MIT | github.com/corazawaf/coraza-proxy-wasm (GitHub Release 0.6.0), github.com/coreruleset/coreruleset | Plugin WASM nạp vào APISIX (`core/apisix/config.yaml` mục `wasm`); tải bản phát hành lúc build image, kiểm SHA-256, không chép mã vào repo (#12) | core | ✔ |
 | Scorpio Broker (NGSI-LD) | ghim ở tuần 4 | BSD-3-Clause | github.com/ScorpioBroker/ScorpioBroker | Dịch vụ riêng, dùng chung postgis | gis | ☐ |
@@ -45,7 +45,8 @@ Giấy phép kiểm tra ngày 17/10/2026 trên file LICENSE ở repo chính th�
 | cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause | github.com/pyca/cryptography | Chữ ký RS256 cho PyJWT (PyPI, gián tiếp) | ✔ |
 | HTTPX | 0.28.1 | BSD-3-Clause | github.com/encode/httpx | API hỏi Hasura qua gateway `/graphql` (PyPI, #29) | ✔ |
 | pytest | 8.3.4 | MIT | github.com/pytest-dev/pytest | Kiểm thử (nhóm `dev`, không có trong image) | ✔ |
-| nats-py | tuần 4 | Apache-2.0 | github.com/nats-io/nats.py | Worker nhận sự kiện (PyPI) | ☐ |
+| nats-py | 2.16.0 | Apache-2.0 | github.com/nats-io/nats.py | Consumer JetStream `cuu-tro-cam-bien`: khai báo stream, kéo bản tin, phát cảnh báo (PyPI, #30) | ✔ |
+| Eclipse Paho MQTT Python (`paho-mqtt`) | 2.1.0 | EPL-2.0 OR BSD-3-Clause (dùng theo EDL-1.0 = BSD-3-Clause) | github.com/eclipse-paho/paho.mqtt.python | Bộ giả lập trạm cảm biến gửi MQTT (PyPI, #30) | ✔ |
 | DuckDB | tuần 4 | MIT | github.com/duckdb/duckdb | Truy vấn Parquet lịch sử (PyPI) | ☐ |
 | LangGraph | tuần 5 | MIT | github.com/langchain-ai/langgraph | Agent AI bóc tách tin kêu cứu (PyPI) | ☐ |
 | Vue 3 | tuần 3 | MIT | github.com/vuejs/core | Web điều phối (npm) | ☐ |
