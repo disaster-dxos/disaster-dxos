@@ -30,6 +30,7 @@
 - CI thêm job `shellcheck`, `yamllint` (cấu hình `.yamllint.yml`) và `pytest` (tự bỏ qua khi chưa có mã Python); `scripts/lint.sh`, `make lint`; ghim phiên bản action (#31).
 
 ### Changed
+- `LICENSE`: điền `Copyright 2026 DTU_DZ_1` vào dòng mẫu của phần APPENDIX, khớp với `NOTICE`; điều khoản Apache-2.0 giữ nguyên (#46).
 - `NOTICE`: điền năm và tên đội vào dòng bản quyền (`Copyright 2026 DTU_DZ_1`); `LICENSE` giữ nguyên văn bản Apache-2.0 gốc (#44).
 - NATS bắt buộc xác thực (#30): `bao-agent-nats` (AppRole `nats`, policy `core-nats`) render `auth.conf` từ `secret/app/<DXOS_APP>/nats` (`scripts/openbao-init.sh` sinh lần đầu) với user `<DXOS_APP>-app` (chỉ cổng NATS, pub/sub `<DXOS_APP>.>` + JetStream API) và `<DXOS_APP>-thiet-bi` (chỉ MQTT, chỉ gửi vào `<DXOS_APP>.>`); không cho kết nối nặc danh. JetStream giới hạn qua `NATS_JS_MAX_MEMORY`/`NATS_JS_MAX_FILE` (64MB/1GB), MQTT từ chối QoS 2; địa chỉ công bố cổng MQTT chọn bằng `NATS_MQTT_BIND` (mặc định 127.0.0.1, chưa TLS). `scripts/smoke-core.sh` kiểm từ chối nặc danh/sai mật khẩu, tách loại kết nối của 2 user, giới hạn JetStream (#30).
 - Route APISIX `/workflow/*` trỏ vào API workflow của ứng dụng (upstream `GW_WORKFLOW_UPSTREAM_HOST/PORT`, mặc định `<DXOS_APP>-api:8000`, bỏ tiền tố `/workflow`, vẫn WAF + JWT + rate limit) thay cho chỗ giữ 503; `scripts/smoke-gateway.sh` kiểm `/workflow/hello` → 200 (#29).
