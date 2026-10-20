@@ -11,3 +11,9 @@ path "secret/data/app/cuu-tro/db" {
 path "secret/data/app/cuu-tro/nats" {
   capabilities = ["read"]
 }
+
+# S3 (#27): bao-agent-cuu-tro render khóa S3 của ứng dụng cho cuu-tro-api (volume secrets-cuu-tro-api).
+# Định danh này trên SeaweedFS chỉ Read/Write/List bucket cuu-tro-* (core/openbao/agent-seaweedfs.hcl).
+path "secret/data/app/cuu-tro/s3" {
+  capabilities = ["read"]
+}

@@ -6,13 +6,14 @@
 | Thư mục | Nội dung | Trạng thái |
 |---|---|---|
 | `keycloak/realm.json` | Realm `disaster`: vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen`; client `dxos-gateway`, `dxos-web`, `dxos-dev-cli` (chỉ dev); 3 người dùng mẫu, mật khẩu lấy từ `.env` | Có |
-| `db/migrations/` | Schema `cuu_tro`: `incidents`, `rescue_teams`, `shelters`, `supplies`, `supply_movements`, `sensors` (PostGIS); `team_members` (#26); `sensor_readings` chuỗi đo cảm biến (#30) | Có (#25, #26, #30) |
+| `db/migrations/` | Schema `cuu_tro`: `incidents`, `rescue_teams`, `shelters`, `supplies`, `supply_movements`, `sensors` (PostGIS); `team_members` (#26); `sensor_readings` chuỗi đo cảm biến (#30); `incident_media` ảnh hiện trường (#27) | Có (#25, #26, #30, #27) |
 | `db/seed/` | Dữ liệu giả xã An Lạc (giả định) | Có (#25) |
-| `db/tests/` | Kiểm thử ràng buộc (Poka-yoke, CHECK, quyền theo search_path, quyền role `cuu_tro_app`, chuỗi đo cảm biến) | Có (#25, #26, #29, #30) |
+| `db/tests/` | Kiểm thử ràng buộc (Poka-yoke, CHECK, quyền theo search_path, quyền role `cuu_tro_app`, chuỗi đo cảm biến, ảnh hiện trường) | Có (#25, #26, #29, #30, #27) |
 | `hasura/metadata/` | Metadata Hasura: bảng track, quan hệ, quyền theo vai trò JWT | Có (#26) |
-| `workflow/` | Backend Python: Temporal worker (`PhanCongCuuHo`, `Hello`) + API FastAPI khởi chạy workflow qua gateway `/workflow/*` (#29); consumer cảm biến NATS JetStream + bộ giả lập trạm đo MQTT (#30); pytest | Có (#29, #30) |
-| `compose.yaml` | Dịch vụ `cuu-tro-worker`, `cuu-tro-api`, `cuu-tro-cam-bien`, `bao-agent-cuu-tro` (profile `app`), `cuu-tro-gia-lap` (profile `gia-lap`), lõi nạp bằng `include` | Có (#29, #30) |
-| `openbao/` | Policy + template bao agent cho backend (mật khẩu role `cuu_tro_app`, NATS/MQTT) | Có (#29, #30) |
+| `workflow/` | Backend Python: Temporal worker (`PhanCongCuuHo`, `Hello`) + API FastAPI khởi chạy workflow qua gateway `/workflow/*` (#29); consumer cảm biến NATS JetStream + bộ giả lập trạm đo MQTT (#30); API ảnh hiện trường (#27); pytest | Có (#29, #30, #27) |
+| `compose.yaml` | Dịch vụ `cuu-tro-worker`, `cuu-tro-api`, `cuu-tro-cam-bien`, `bao-agent-cuu-tro` (profile `app`), `cuu-tro-gia-lap` (profile `gia-lap`), lõi nạp bằng `include` | Có (#29, #30, #27) |
+| `openbao/` | Policy + template bao agent cho backend (mật khẩu role `cuu_tro_app`, NATS/MQTT, khóa S3 của ứng dụng) | Có (#29, #30, #27) |
+| `s3/buckets.conf` | Bucket S3 của ứng dụng (`cuu-tro-media`), lõi tạo khi `make up` | Có (#27) |
 | `nats/streams.json` | Khai báo stream/consumer JetStream của ứng dụng (tạo khi `cuu-tro-cam-bien` khởi động) | Có (#30) |
 | `web/` | Web điều phối Nuxt 3 + MapLibre | Tuần 3 |
 | `mobile/` | App hiện trường Flutter | Tuần 5 |
@@ -138,6 +139,7 @@ R = đọc, C = tạo, U = sửa, D = xóa, – = không có (bảng không xu�
 | `supply_movements` | R · C (phiếu bất biến, không U/D) | – | – |
 | `sensors` | R · U tên, ngưỡng, bật/tắt | R | R thông tin công khai của trạm (#30) |
 | `sensor_readings` | R (quan hệ `sensor`, `sensors.readings`) | R | R (tối đa 500 dòng/truy vấn) |
+| `incident_media` (#27) | R mọi ảnh (quan hệ `incident`, `incidents.media`) | R ảnh của tin **đội mình** | R chỉ ảnh **mình tải lên**, không có `uploaded_by`, `uploader_role` |
 | `incident_dedup_config` | không track: không vai trò nào thấy | | |
 
 Cột hệ thống gán từ token, client không tự đặt được: `incidents.created_by`, `supply_movements.created_by` = `X-Hasura-User-Id` (sub Keycloak). Tồn kho chỉ đổi qua phiếu nhập/xuất (trigger, sổ cái #28); cột `ledger_*` và giá trị đo cảm biến do dịch vụ nội bộ ghi (#28, #30), không qua vai trò người dùng.
@@ -250,6 +252,52 @@ uv lock && uv export --frozen --no-dev --no-emit-project -o requirements.txt
 ```
 
 Test: logic thuần (chọn đội, chuyển trạng thái), workflow trên máy chủ test của `temporalio` (tự tua thời gian để thử quá hạn; activity thay bằng bản giả trong bộ nhớ), kiểm JWT/vai trò của API bằng khóa RSA sinh tại chỗ. Lần chạy đầu `temporalio` tải máy chủ test về thư mục tạm. Kiểm thử thật qua gateway: `scripts/smoke-workflow.sh` (trong `make smoke`).
+
+## Ảnh hiện trường (`workflow/cuu_tro_workflow/anh.py`, `s3.py`, #27)
+
+Ảnh chụp tại hiện trường gắn với tin kêu cứu. Nội dung ảnh nằm trên SeaweedFS (bucket riêng tư `cuu-tro-media`), siêu dữ liệu ở bảng `incident_media` (migration `0005`). **Client Tầng 2 không bao giờ cầm khóa S3.**
+
+**Thiết kế: tải lên qua API (cách a), xem bằng link presigned ngắn hạn (cách b).**
+
+| Việc | Cách làm | Vì sao |
+|---|---|---|
+| Tải lên | Client gửi nội dung ảnh trong body `POST /workflow/tai-len/su-co/{incident_id}/anh`; `cuu-tro-api` kiểm quyền, kích thước, magic bytes, tính SHA-256 rồi tự ghi S3 bằng khóa của ứng dụng (từ OpenBao) | Phải **đọc nội dung** mới kiểm được magic bytes và kích thước thật; URL presigned PUT để client ghi thẳng S3 thì S3 nhận mọi thứ client gửi (HTML, tệp thực thi đổi đuôi .jpg). Một chỗ ghi duy nhất cũng là chỗ gắn quét ClamAV sau này |
+| Xem | API kiểm quyền theo hàng rồi ký URL GET presigned cho **đúng một object**, hạn mặc định 5 phút (`ANH_LINK_HAN_GIAY`, client xin ngắn hơn bằng `?han_giay=`). Client mở `<gateway>/files/<bucket>/<key>?X-Amz-...` **kèm JWT** | Ảnh đi thẳng từ S3 qua gateway, API không phải chuyển tiếp byte. Link lộ ra ngoài vẫn cần JWT hợp lệ (APISIX) và hết hạn nhanh; đổi key/phương thức → S3 trả 403 |
+| Route `/files/*` | Chỉ `GET`/`HEAD`. Gateway kiểm JWT (biết "đã đăng nhập"), S3 kiểm chữ ký (biết "được xem đúng object này đến lúc nào") | Kiểm quyền theo object nằm ở chữ ký: chỉ API giữ khóa, chỉ ký sau khi Hasura xác nhận người dùng thấy dòng `incident_media` đó. Không có đường ghi/xóa S3 từ ngoài |
+| Khóa S3 | Định danh `cuu-tro-app` (`secret/app/cuu-tro/s3`) chỉ `Read`/`Write`/`List` bucket `cuu-tro-*`, không `Admin`; chỉ `cuu-tro-api` có (volume tmpfs riêng) | Lộ khóa ứng dụng không đụng được bucket khác, không tạo/xóa bucket. Khóa quản trị `secret/core/s3` không cấp cho ứng dụng |
+| Thứ tự ghi | Kiểm quyền → đọc body (dừng ngay khi vượt giới hạn) → magic bytes → PUT S3 (ký kèm SHA-256 nội dung) → `INSERT incident_media`. CSDL lỗi → xóa object vừa ghi | Không có dòng trỏ tới object không có, không để object mồ côi |
+| Tên object | `su-co/<incident_id>/<media_id>.<jpg\|png\|webp>`, đuôi theo loại thật | Không dùng tên tệp của người dùng (chặn path traversal, lộ thông tin) |
+| Quét mã độc | Cột `scan_status` (mặc định `chua_quet`) chừa chỗ; ClamAV ở biên (profile `sec`) là việc sau | |
+
+### Quyền theo vai trò
+
+Quyền theo hàng không viết lại trong API: API hỏi Hasura qua gateway `/graphql` bằng JWT + vai trò của chính người dùng (`incidents_by_pk`, `incident_media_by_pk`), Hasura trả `null` nghĩa là không thấy. Người dùng có nhiều vai trò thì dùng vai trò rộng nhất (`dieu-phoi` > `cuu-ho` > `tinh-nguyen`).
+
+| Vai trò | Tải ảnh lên | Liệt kê ảnh của tin | Lấy link xem một ảnh |
+|---|---|---|---|
+| `dieu-phoi` | Mọi tin (tin `dong` → 409, tin không có → 404) | Mọi tin | Mọi ảnh |
+| `cuu-ho` | Tin phân công cho **đội mình**; đội khác → 403 | Tin của đội mình; đội khác → 403 | Ảnh của tin đội mình; khác → 403 |
+| `tinh-nguyen` | Chỉ tin **mình vừa tạo**, khi tin còn `tiep_nhan` (lúc kêu cứu); tin khác hoặc đã phân công → 403 | Không được (403) | Chỉ ảnh **chính mình tải lên**; ảnh người khác → 403 |
+
+### API (qua gateway, `Authorization: Bearer <access token Keycloak>`)
+
+| Phương thức, đường dẫn | Kết quả |
+|---|---|
+| `POST /workflow/tai-len/su-co/{incident_id}/anh`, body = nội dung ảnh | `201 {id, incident_id, object_key, content_type, size_bytes, sha256, uploaded_by, uploader_role, uploaded_at, scan_status, link}` · `400` body rỗng · `413` quá `ANH_MAX_BYTES` (mặc định 10 MiB; gateway chặn trước ở `GW_UPLOAD_MAX_BODY_BYTES`, 20 MiB) · `415` không phải JPEG/PNG/WebP theo magic bytes |
+| `GET /workflow/su-co/{incident_id}/anh` | `200 {incident_id, anh: [{id, content_type, size_bytes, sha256, uploaded_by, uploaded_at, scan_status, link}]}` |
+| `GET /workflow/anh/{media_id}/link?han_giay=N` | `200 {…, link: {url, han_giay, het_han_luc}}` · `422` `han_giay` ngoài 1..`ANH_LINK_HAN_GIAY` |
+
+`link.url` mở bằng `GET` kèm header `Authorization` (trình duyệt: `fetch` có header rồi `URL.createObjectURL`, không dùng thẳng trong `<img src>`). Mọi phản hồi có `Cache-Control: no-store`. Loại ảnh lấy từ magic bytes: `Content-Type` và đuôi tên tệp của client bị bỏ qua.
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $TOKEN" --data-binary @anh.jpg \
+  http://localhost:9080/workflow/tai-len/su-co/b0000000-0000-4000-8000-000000000002/anh
+URL=$(curl -s -H "Authorization: Bearer $TOKEN" http://localhost:9080/workflow/su-co/b0000000-0000-4000-8000-000000000002/anh \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["anh"][0]["link"]["url"])')
+curl -s -H "Authorization: Bearer $TOKEN" "$URL" -o anh-tai-ve.jpg
+```
+
+Kiểm thử: `tests/test_cuu_tro_anh.py` (ký SigV4 khớp ví dụ chính thức của AWS, magic bytes, luật quyền, endpoint với Hasura/S3/CSDL giả); `scripts/smoke-anh.sh` (trong `make smoke`) gọi thật qua APISIX. Luồng dữ liệu: `docs/architecture.md` mục 7.5.
 
 ## Cảm biến mực nước (`workflow/cuu_tro_workflow/cam_bien*.py`, `gia_lap.py`, #30)
 

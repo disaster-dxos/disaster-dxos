@@ -7,6 +7,9 @@
 #   - bí mật secret/app/cuu-tro/db + policy apps/cuu-tro/openbao/policies/*.hcl (openbao-init);
 #   - NATS (#30): user cuu-tro-app (backend) / cuu-tro-thiet-bi (MQTT), subject cuu-tro.>,
 #     mật khẩu secret/app/cuu-tro/nats.
+#   - S3 (#27): bucket khai báo ở apps/cuu-tro/s3/buckets.conf (s3-buckets của lõi tạo), định danh
+#     S3 cuu-tro-app chỉ dùng bucket cuu-tro-*, khóa secret/app/cuu-tro/s3; route /workflow/tai-len/*
+#     (body nhị phân) và /files/* (chỉ đọc, link presigned) của APISIX.
 # Không mở cổng nào ra máy host: client gọi API qua gateway, worker chỉ kéo việc từ Temporal,
 # consumer cảm biến chỉ kéo bản tin từ NATS. Thiết bị gửi MQTT vào cổng của lõi (nats:1883).
 
@@ -32,8 +35,9 @@ services:
       - ${OPENBAO_LOCAL_DIR:-./.data/openbao}/approle/app-cuu-tro-workflow:/openbao/approle:ro
       - secrets-cuu-tro:/out/cuu-tro
       - secrets-cuu-tro-thiet-bi:/out/cuu-tro-thiet-bi
+      - secrets-cuu-tro-api:/out/cuu-tro-api
     healthcheck:
-      test: ["CMD-SHELL", "test -s /out/cuu-tro/APP_DB_URL && test -s /out/cuu-tro/NATS_URL && test -s /out/cuu-tro-thiet-bi/MQTT_PASSWORD"]
+      test: ["CMD-SHELL", "test -s /out/cuu-tro/APP_DB_URL && test -s /out/cuu-tro/NATS_URL && test -s /out/cuu-tro-thiet-bi/MQTT_PASSWORD && test -s /out/cuu-tro-api/S3_SECRET_KEY"]
       interval: 5s
       timeout: 3s
       retries: 24
@@ -79,7 +83,10 @@ services:
     pull_policy: never
     restart: unless-stopped
     profiles: [app]
-    # Không cần bí mật: kiểm JWT bằng JWKS công khai của Keycloak, hỏi Hasura bằng JWT người dùng
+    # Kiểm JWT bằng JWKS công khai của Keycloak, hỏi Hasura bằng JWT người dùng. Ảnh hiện trường (#27):
+    # APP_DB_URL (ghi incident_media) + khóa S3 của ứng dụng, volume riêng secrets-cuu-tro-api (không có
+    # mật khẩu NATS/MQTT). env-from-files.sh export rồi exec uvicorn.
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos"]
     command: ["uvicorn", "cuu_tro_workflow.api:app", "--host", "0.0.0.0", "--port", "8000",
               "--root-path", "/workflow", "--no-server-header", "--no-access-log"]
     depends_on:
@@ -87,11 +94,19 @@ services:
         condition: service_healthy
       keycloak:
         condition: service_healthy
+      # Bảng incident_media + quyền của cuu_tro_app (migration 0005), bucket cuu-tro-media
+      migrate:
+        condition: service_completed_successfully
+      s3-buckets:
+        condition: service_completed_successfully
+      bao-agent-cuu-tro:
+        condition: service_healthy
       # API không có worker thì workflow không chạy; cũng bảo đảm image đã build trước
       cuu-tro-worker:
         condition: service_started
     environment:
       <<: *cuu-tro-env
+      SECRETS_REQUIRED: APP_DB_URL S3_ACCESS_KEY S3_SECRET_KEY
       KEYCLOAK_INTERNAL_URL: http://keycloak:8080
       KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-disaster}
@@ -101,6 +116,16 @@ services:
       PHAN_CONG_HAN_XAC_NHAN_GIAY: ${PHAN_CONG_HAN_XAC_NHAN_GIAY:-21600}
       PHAN_CONG_SO_LAN_TIM_DOI: ${PHAN_CONG_SO_LAN_TIM_DOI:-10}
       PHAN_CONG_CHO_TIM_LAI_GIAY: ${PHAN_CONG_CHO_TIM_LAI_GIAY:-60}
+      # Ảnh hiện trường (#27). API ghi S3 thẳng trong mạng nội bộ (seaweedfs:8333, khóa của ứng dụng);
+      # link xem ký cho host công khai của gateway, client mở qua APISIX /files/* (kèm JWT)
+      S3_ENDPOINT: http://seaweedfs:8333
+      ANH_BUCKET: cuu-tro-media
+      ANH_MAX_BYTES: ${ANH_MAX_BYTES:-10485760}
+      ANH_LINK_HAN_GIAY: ${ANH_LINK_HAN_GIAY:-300}
+      GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL:-http://localhost:9080}
+    volumes:
+      - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - secrets-cuu-tro-api:/run/secrets/dxos:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
       interval: 15s
@@ -181,6 +206,12 @@ volumes:
       device: tmpfs
       o: "uid=100,gid=1000,mode=0755,size=1m"
   secrets-cuu-tro-thiet-bi:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "uid=100,gid=1000,mode=0755,size=1m"
+  secrets-cuu-tro-api:
     driver: local
     driver_opts:
       type: tmpfs
