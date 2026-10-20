@@ -33,14 +33,14 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [ ] [V2] SeaweedFS S3 + API tải ảnh hiện trường qua gateway
 - [x] [V1] Chốt transparency log: Tessera, driver POSIX (D-007); tài liệu + SPDX cho Go (#34)
 - [ ] [V2] Dựng bản chạy thử `core/ledger` (Go + Tessera): ghi 1 phiếu, lấy proof, xác minh (#28)
-- [ ] [V3] Temporal worker Python "hello" gọi được qua gateway
+- [x] [V3] Temporal worker Python "hello" gọi được qua gateway (#29; mở rộng thành khung `PhanCongCuuHo` + API `/workflow/*`, role DB `cuu_tro_app`, `scripts/smoke-workflow.sh` 20 ca)
 - [ ] [V3] NATS JetStream bật MQTT, gửi thử bản tin cảm biến
 - [x] [V1] CI: lint/test cho từng thành phần (shellcheck, yamllint, pytest khi có mã Python)
 - [ ] [V1] README song ngữ: hướng dẫn chạy từ máy sạch · Release v0.1.0
 
 ## Tuần 3 · 29/10–04/11 · Luồng nghiệp vụ chính
 - [ ] [V2] API kêu cứu + Poka-yoke (bắt buộc tọa độ, chặn trùng SĐT trong bán kính 200 m)
-- [ ] [V1] Temporal workflow: tiếp nhận → phân công đội gần nhất → xác nhận đã cứu → đóng
+- [ ] [V1] Temporal workflow: tiếp nhận → phân công đội gần nhất → xác nhận đã cứu → đóng (khung chạy được từ #29; còn: tự khởi chạy khi có tin mới, quá hạn → báo điều phối + phân công lại, ưu tiên theo `urgency`)
 - [ ] [V3] Web Nuxt: đăng nhập Keycloak (PKCE), bản đồ MapLibre hiển thị sự cố realtime (subscription)
 - [ ] [V3] Màn hình phân công + cập nhật trạng thái
 - [ ] [V1] Centrifugo OSS: đẩy thông báo realtime

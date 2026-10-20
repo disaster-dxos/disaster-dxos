@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: up up-bi down logs ps migrate seed test-db license check lint smoke bao-init bao-unseal bao-status
+.PHONY: up up-bi down logs ps migrate seed test-db test-py license check lint smoke bao-init bao-unseal bao-status
 
 # Dùng .env nếu có, nếu không thì .env.example (để CI/máy sạch vẫn kiểm được compose)
 ENV_FILE := $(if $(wildcard .env),.env,.env.example)
 
-up:            ## Chạy lõi headless (profile core): OpenBao trước, init/unseal, rồi các dịch vụ còn lại (#11)
+up:            ## Chạy lõi headless (profile core) + backend ứng dụng apps/$$DXOS_APP (profile app, #29): OpenBao trước, init/unseal, rồi các dịch vụ còn lại
 	docker compose --profile core up -d openbao
 	bash scripts/openbao-init.sh
-	docker compose --profile core up -d --build
+	docker compose --profile core --profile app up -d --build
 
 bao-init:      ## Khởi tạo OpenBao + nạp bí mật, policy, AppRole (idempotent, cần OpenBao đang chạy)
 	bash scripts/openbao-init.sh
@@ -21,7 +21,7 @@ bao-status:    ## Trạng thái seal của OpenBao
 up-bi:         ## Grafana (tuần 4)
 	docker compose --profile bi up -d --build
 
-smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS, ràng buộc DB, phân quyền GraphQL (cần make up trước)
+smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS, ràng buộc DB, phân quyền GraphQL, workflow phân công (cần make up trước)
 	bash scripts/smoke-openbao.sh
 	bash scripts/smoke-jwt.sh
 	bash scripts/smoke-gateway.sh
@@ -29,6 +29,7 @@ smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/Seaweed
 	docker compose --profile core run --rm --no-deps migrate test
 	docker compose --profile core run --rm --no-deps migrate seed
 	bash scripts/smoke-hasura.sh
+	bash scripts/smoke-workflow.sh
 
 down:
 	docker compose --profile '*' down
@@ -47,6 +48,9 @@ seed:          ## Nạp dữ liệu giả apps/$$DXOS_APP/db/seed (chạy lại 
 
 test-db:       ## Kiểm thử ràng buộc schema ứng dụng (apps/$$DXOS_APP/db/tests, ROLLBACK sau khi chạy)
 	docker compose --profile core run --rm --no-deps migrate test
+
+test-py:       ## pytest backend apps/$$DXOS_APP/workflow (cần uv: https://docs.astral.sh/uv/)
+	cd apps/$${DXOS_APP:-cuu-tro}/workflow && uv run --frozen pytest -q
 
 license:       ## Thêm header SPDX cho file mới
 	bash scripts/add-license-header.sh

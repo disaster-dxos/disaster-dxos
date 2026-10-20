@@ -8,9 +8,11 @@
 | `keycloak/realm.json` | Realm `disaster`: vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen`; client `dxos-gateway`, `dxos-web`, `dxos-dev-cli` (chỉ dev); 3 người dùng mẫu, mật khẩu lấy từ `.env` | Có |
 | `db/migrations/` | Schema `cuu_tro`: `incidents`, `rescue_teams`, `shelters`, `supplies`, `supply_movements`, `sensors` (PostGIS); `team_members` (#26) | Có (#25, #26) |
 | `db/seed/` | Dữ liệu giả xã An Lạc (giả định) | Có (#25) |
-| `db/tests/` | 29 ca kiểm thử ràng buộc (Poka-yoke, CHECK, quyền theo search_path) | Có (#25, #26) |
+| `db/tests/` | 46 ca kiểm thử ràng buộc (Poka-yoke, CHECK, quyền theo search_path, quyền role `cuu_tro_app`) | Có (#25, #26, #29) |
 | `hasura/metadata/` | Metadata Hasura: bảng track, quan hệ, quyền theo vai trò JWT | Có (#26) |
-| `workflows/` | Kêu cứu: tiếp nhận → phân công → xác nhận → đóng | Tuần 3 |
+| `workflow/` | Backend Python: Temporal worker (`PhanCongCuuHo`, `Hello`) + API FastAPI khởi chạy workflow qua gateway `/workflow/*`; 36 test pytest | Có (#29) |
+| `compose.yaml` | Dịch vụ `cuu-tro-worker`, `cuu-tro-api`, `bao-agent-cuu-tro` (profile `app`), lõi nạp bằng `include` | Có (#29) |
+| `openbao/` | Policy + template bao agent cho backend (mật khẩu role `cuu_tro_app`) | Có (#29) |
 | `web/` | Web điều phối Nuxt 3 + MapLibre | Tuần 3 |
 | `mobile/` | App hiện trường Flutter | Tuần 5 |
 
@@ -161,3 +163,79 @@ SELECT i.description, t.name, round(ST_Distance(t.location, i.location)) AS met
                        ORDER BY location <-> i.location LIMIT 1) t
  WHERE i.status = 'tiep_nhan';
 ```
+
+## Workflow (`workflow/`, #29)
+
+Backend nghiệp vụ của ứng dụng (D-008), không thuộc lõi. Hai dịch vụ dùng chung một image (`python:3.12-slim`, phụ thuộc cài từ `requirements.txt` có hash, sinh từ `uv.lock`):
+
+| Dịch vụ | Lệnh | Gọi tới |
+|---|---|---|
+| `cuu-tro-worker` | `python -m cuu_tro_workflow.worker` | Temporal (task queue `cuu-tro`), PostgreSQL bằng role `cuu_tro_app` (`APP_DB_URL` từ OpenBao qua `bao-agent-cuu-tro`) |
+| `cuu-tro-api` | `uvicorn cuu_tro_workflow.api:app --root-path /workflow` | Temporal (start/signal/query), Hasura qua gateway `/graphql` bằng JWT người dùng. Không có bí mật, không mở cổng ra host |
+
+Cách backend gọi lõi và vì sao: `docs/architecture.md` mục 7.3.
+
+### `PhanCongCuuHo`: tiếp nhận → phân công → xác nhận → đóng
+
+```mermaid
+stateDiagram-v2
+  [*] --> doc_tin: POST /workflow/phan-cong/{incident_id}<br/>(dieu-phoi)
+  doc_tin --> xong_bo_qua: tin không có / không ở tiep_nhan
+  doc_tin --> tim_doi
+  tim_doi --> tim_doi: chưa có đội sẵn sàng trong bán kính<br/>chờ PHAN_CONG_CHO_TIM_LAI_GIAY
+  tim_doi --> xong_khong_co_doi: hết PHAN_CONG_SO_LAN_TIM_DOI lần
+  tim_doi --> gan_doi: đội san_sang gần nhất (PostGIS KNN)
+  gan_doi --> tim_doi: đội vừa bị gán cho tin khác
+  gan_doi --> cho_xac_nhan: tin phan_cong, đội dang_lam_nhiem_vu
+  cho_xac_nhan --> ket_thuc: signal xac_nhan_da_cuu<br/>POST /workflow/{id}/xac-nhan
+  cho_xac_nhan --> xong_qua_han: quá PHAN_CONG_HAN_XAC_NHAN_GIAY
+  ket_thuc --> [*]: tin da_cuu → dong, đội san_sang
+  xong_bo_qua --> [*]
+  xong_khong_co_doi --> [*]
+  xong_qua_han --> [*]
+```
+
+| Bước | Activity (I/O) | Ghi chú |
+|---|---|---|
+| `doc_tin` | `SELECT` tin | Chỉ phân công tin `tiep_nhan` |
+| `tim_doi` | `tim_doi_ung_vien`: tối đa 10 đội `san_sang` có vị trí trong `PHAN_CONG_BAN_KINH_M` (mặc định 20 km), xếp theo `location <-> incident.location` | Chọn đội: `logic.chon_doi_gan_nhat` (gần nhất; hòa thì đội đông người hơn, rồi theo id), logic thuần có test |
+| `gan_doi` | Một transaction: khóa tin (`FOR UPDATE`), kiểm chuyển trạng thái, `UPDATE` đội chỉ khi còn `san_sang` | Hai luồng giành cùng một đội: luồng thua nhận `False`, chọn đội kế tiếp |
+| `cho_xac_nhan` | – | Signal `xac_nhan_da_cuu` (người, vai trò, ghi chú); quá hạn mặc định 6 giờ thì kết thúc `qua_han_xac_nhan`, chưa đổi CSDL (tuần 3: báo điều phối, phân công lại) |
+| `ket_thuc` | Tin `da_cuu` → `dong`, đội về `san_sang` | Mọi activity chạy lại được (Temporal thử lại 5 lần); lỗi nghiệp vụ (chuyển trạng thái sai) không thử lại |
+
+Luồng trạng thái tin hợp lệ (`logic.CHUYEN_TRANG_THAI`): `tiep_nhan → phan_cong | dong`, `phan_cong → dang_cuu | da_cuu`, `dang_cuu → da_cuu`, `da_cuu → dong`. `cuu-ho` vẫn tự chuyển `phan_cong → dang_cuu` qua GraphQL (#26) khi bắt đầu cứu, workflow chấp nhận cả hai.
+
+`Hello`: workflow một activity, kiểm đường đi gateway → API → Temporal → worker.
+
+### API (qua gateway, `Authorization: Bearer <access token Keycloak>`)
+
+| Phương thức, đường dẫn | Vai trò | Kết quả |
+|---|---|---|
+| `POST /workflow/hello` body `{"ten": "…"}` (tùy chọn) | mọi vai trò | `200 {"workflow_id", "ket_qua", "nguoi_goi"}` |
+| `POST /workflow/phan-cong/{incident_id}` | `dieu-phoi` | `202 {"workflow_id": "phan-cong-<incident_id>", "run_id", "incident_id"}` · `404` tin không có · `409` tin không ở `tiep_nhan` hoặc luồng đang chạy |
+| `GET /workflow/{workflow_id}` | `dieu-phoi`; `cuu-ho` của đội được gán | `200 {"workflow_id", "trang_thai": "RUNNING\|COMPLETED\|…", "chi_tiet": {buoc, doi_id, doi_ten, khoang_cach_m, so_lan_tim, xac_nhan, ket_qua, lich_su}}` |
+| `POST /workflow/{workflow_id}/xac-nhan` body `{"ghi_chu": "…"}` (tùy chọn) | `dieu-phoi`; `cuu-ho` của đội được gán | `202` · `409` workflow không ở bước chờ xác nhận |
+
+Không token → `401` ở APISIX; vai trò không đủ → `403` ở API; `cuu-ho` đội khác → `403` (API hỏi `incidents_by_pk` qua `/graphql` bằng JWT người dùng, luật lọc theo đội của Hasura trả `null`).
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8080/realms/disaster/protocol/openid-connect/token \
+  -d grant_type=password -d client_id=dxos-dev-cli -d username=dieuphoi01 \
+  --data-urlencode password="$KC_DEMO_USER_PASSWORD" | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+curl -s -X POST -H "Authorization: Bearer $TOKEN" http://localhost:9080/workflow/phan-cong/b0000000-0000-4000-8000-000000000004
+curl -s -H "Authorization: Bearer $TOKEN" http://localhost:9080/workflow/phan-cong-b0000000-0000-4000-8000-000000000004
+```
+
+Theo dõi trong Temporal không cần UI: `docker compose exec temporal temporal workflow list --address temporal:7233`.
+
+### Phát triển
+
+```bash
+cd apps/cuu-tro/workflow
+uv sync                 # tạo .venv theo uv.lock
+uv run pytest -q        # hoặc từ gốc repo: make test-py
+# Đổi phụ thuộc: sửa pyproject.toml rồi
+uv lock && uv export --frozen --no-dev --no-emit-project -o requirements.txt
+```
+
+Test: logic thuần (chọn đội, chuyển trạng thái), workflow trên máy chủ test của `temporalio` (tự tua thời gian để thử quá hạn; activity thay bằng bản giả trong bộ nhớ), kiểm JWT/vai trò của API bằng khóa RSA sinh tại chỗ. Lần chạy đầu `temporalio` tải máy chủ test về thư mục tạm. Kiểm thử thật qua gateway: `scripts/smoke-workflow.sh` (trong `make smoke`).

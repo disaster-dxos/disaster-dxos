@@ -17,3 +17,8 @@ path "secret/data/core/hasura-db" {
 path "secret/data/core/temporal-db" {
   capabilities = ["read"]
 }
+
+# Role DB dịch vụ của ứng dụng Tầng 2 (secret/app/<DXOS_APP>/db, #29): một đoạn đường dẫn bất kỳ
+path "secret/data/app/+/db" {
+  capabilities = ["read"]
+}

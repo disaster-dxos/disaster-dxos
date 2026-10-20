@@ -20,6 +20,8 @@ nginx_config:
     - GW_RATE_LIMIT_COUNT
     - GW_RATE_LIMIT_WINDOW
     - GW_FILES_MAX_BODY_BYTES
+    - GW_WORKFLOW_UPSTREAM_HOST
+    - GW_WORKFLOW_UPSTREAM_PORT
   http:
     # Trần cứng của nginx; route /files đặt giới hạn thấp hơn bằng plugin client-control
     client_max_body_size: 64m

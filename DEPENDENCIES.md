@@ -37,8 +37,14 @@ Giấy phép kiểm tra ngày 17/10/2026 trên file LICENSE ở repo chính th�
 
 | Thư viện | Phiên bản | Giấy phép | Nguồn gốc | Dùng ở | Trạng thái |
 |---|---|---|---|---|---|
-| Temporal Python SDK (`temporalio`) | ghim khi tạo worker, tuần 2 | MIT | github.com/temporalio/sdk-python | Worker workflow (PyPI) | ☐ |
-| FastAPI | tuần 2–5 | MIT | github.com/fastapi/fastapi | API dịch vụ Python (PyPI) | ☐ |
+| Temporal Python SDK (`temporalio`) | 1.34.0 | MIT | github.com/temporalio/sdk-python | Worker + client workflow `apps/cuu-tro/workflow` (PyPI, #29) | ✔ |
+| FastAPI | 0.150.0 | MIT | github.com/fastapi/fastapi | API workflow `cuu-tro-api` (PyPI, #29) | ✔ |
+| Uvicorn | 0.54.0 | BSD-3-Clause | github.com/encode/uvicorn | Máy chủ ASGI của `cuu-tro-api` (PyPI, #29) | ✔ |
+| asyncpg | 0.32.0 | Apache-2.0 | github.com/MagicStack/asyncpg | Worker kết nối PostgreSQL (PyPI, #29). Chọn thay psycopg (LGPL-3.0) để giữ toàn bộ phụ thuộc giấy phép dễ dãi | ✔ |
+| PyJWT (`pyjwt[crypto]`) | 2.15.1 | MIT | github.com/jpadilla/pyjwt | API kiểm lại JWT bằng JWKS Keycloak (PyPI, #29) | ✔ |
+| cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause | github.com/pyca/cryptography | Chữ ký RS256 cho PyJWT (PyPI, gián tiếp) | ✔ |
+| HTTPX | 0.28.1 | BSD-3-Clause | github.com/encode/httpx | API hỏi Hasura qua gateway `/graphql` (PyPI, #29) | ✔ |
+| pytest | 8.3.4 | MIT | github.com/pytest-dev/pytest | Kiểm thử (nhóm `dev`, không có trong image) | ✔ |
 | nats-py | tuần 4 | Apache-2.0 | github.com/nats-io/nats.py | Worker nhận sự kiện (PyPI) | ☐ |
 | DuckDB | tuần 4 | MIT | github.com/duckdb/duckdb | Truy vấn Parquet lịch sử (PyPI) | ☐ |
 | LangGraph | tuần 5 | MIT | github.com/langchain-ai/langgraph | Agent AI bóc tách tin kêu cứu (PyPI) | ☐ |
@@ -48,6 +54,8 @@ Giấy phép kiểm tra ngày 17/10/2026 trên file LICENSE ở repo chính th�
 | MapLibre GL JS | tuần 3 | BSD-3-Clause | github.com/maplibre/maplibre-gl-js | Bản đồ thời gian thực (npm) | ☐ |
 | Flutter SDK | tuần 5 | BSD-3-Clause | github.com/flutter/flutter | App hiện trường (pub) | ☐ |
 | Tessera (đã chốt – D-007, driver POSIX) | ghim trong `core/ledger/go.mod`, tuần 2–4 | Apache-2.0 | github.com/transparency-dev/tessera | Sổ cái minh bạch `core/ledger` (Go modules) | ☐ |
+
+**Phụ thuộc Python gián tiếp của `apps/cuu-tro/workflow`** (khóa trong `uv.lock`, có hash trong `requirements.txt`; giấy phép đọc từ metadata gói ngày 20/10/2026): starlette 1.9.0, click 8.5.0, httpcore 1.0.9, idna 3.20, protobuf 7.36.2, pycparser 3.11 (BSD-3-Clause); pydantic 2.14.1, pydantic-core 2.50.1, anyio 4.15.1, h11 0.16.0, annotated-types 0.8.0, annotated-doc 0.0.5, typing-inspection 0.4.4, nexus-rpc 1.4.0 (MIT); cffi 2.1.1 (MIT-0); opentelemetry-api 1.45.1, types-protobuf 7.35.1.20260906 (Apache-2.0); typing-extensions 4.16.0 (PSF-2.0); certifi 2026.10.19 (MPL-2.0, chỉ dùng như gói, không sửa). Tất cả là giấy phép OSI. Image nền `python:3.12.13-slim-bookworm` (PSF-2.0 + gói Debian) chỉ dùng để chạy, không chép mã vào repo.
 
 Phiên bản thư viện được ghim trong file khai báo của từng ứng dụng (`requirements.txt`/`pyproject.toml`, `package-lock.json`, `pubspec.lock`, `go.mod`/`go.sum`) khi tạo. Bảng này cập nhật cùng lúc.
 
