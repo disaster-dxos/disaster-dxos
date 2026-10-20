@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Kiểm thử route API Gateway (#12), gọi qua APISIX như ứng dụng Tầng 2:
 # (1) /graphql, /files/*, /workflow/*: không token → 401, token giả → 401, token Keycloak → 2xx
-#     (/workflow trả 503 đúng ý đồ khi chưa có API của #29);
+#     (/workflow/hello chạy workflow Hello của apps/cuu-tro qua API workflow, #29);
 # (2) endpoint quản trị Hasura (/v1/metadata, /v2/query, /console) bị chặn từ ngoài;
 # (3) /files: ghi/đọc qua URL presigned S3 + JWT, giới hạn kích thước request (413);
 # (4) Coraza WAF + OWASP CRS: SQLi/XSS trong query bị chặn 403 (kể cả khi có token), request thường vẫn qua;
@@ -85,9 +85,9 @@ check "POST /graphql xin vai trò admin bị Hasura chặn" access-denied \
 check "GET /files/* không token" 401 "$(code - "$GW/files/bat-ky/anh.jpg")"
 check "GET /files/* token giả" 401 "$(code "$FAKE" "$GW/files/bat-ky/anh.jpg")"
 
-check "POST /workflow/* không token" 401 "$(code - -X POST "$GW/workflow/tiep-nhan")"
-check "POST /workflow/* token giả" 401 "$(code "$FAKE" -X POST "$GW/workflow/tiep-nhan")"
-check "POST /workflow/* token Keycloak (giữ chỗ, chờ #29)" 503 "$(code "$tok" -X POST "$GW/workflow/tiep-nhan")"
+check "POST /workflow/* không token" 401 "$(code - -X POST "$GW/workflow/hello")"
+check "POST /workflow/* token giả" 401 "$(code "$FAKE" -X POST "$GW/workflow/hello")"
+check "POST /workflow/hello token Keycloak → API workflow → Temporal (#29)" 200 "$(code "$tok" -X POST "$GW/workflow/hello")"
 
 # ---------- (2) endpoint quản trị Hasura không mở ra ngoài ----------
 for p in /v1/metadata /v2/query /v1/query /console; do
@@ -120,7 +120,7 @@ check "GET /graphql SQLi trong query bị WAF chặn" 403 "$(code "$tok" "$GW/gr
 check "GET /graphql XSS trong query bị WAF chặn" 403 "$(code "$tok" "$GW/graphql?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E")"
 check "GET /files SQLi bị WAF chặn trước bước kiểm JWT" 403 "$(code - "$GW/files/a/b?id=1%20UNION%20SELECT%20password%20FROM%20users--")"
 check "POST /workflow XSS trong body JSON bị WAF chặn" 403 \
-  "$(code "$tok" -X POST -H 'Content-Type: application/json' -d '{"ghi_chu":"<script>alert(document.cookie)</script>"}' "$GW/workflow/tiep-nhan")"
+  "$(code "$tok" -X POST -H 'Content-Type: application/json' -d '{"ghi_chu":"<script>alert(document.cookie)</script>"}' "$GW/workflow/hello")"
 
 # shellcheck disable=SC2016 # $id là biến GraphQL, không phải biến shell
 check "POST /graphql SQLi trong biến GraphQL (body JSON) bị WAF chặn" 403 \

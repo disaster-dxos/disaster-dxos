@@ -80,7 +80,7 @@ Hiện profile `core` có `openbao` (+ 6 bao agent), `postgres` (+ `postgres-rol
 | Dịch vụ bắt buộc | Thành phần | Vai trò cụ thể | File cấu hình | Trạng thái |
 |---|---|---|---|---|
 | Identity / SSO (+MFA) | **Keycloak 26.8.1** | Realm `disaster`, OIDC, 3 vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen`, client cho gateway, web và CLI dev. Claim `https://hasura.io/jwt/claims` cho Hasura; OTP bắt buộc với vai trò `dieu-phoi` (#13) | `apps/cuu-tro/keycloak/realm.json` (vai trò, client của ứng dụng) | Chạy được (v0.0.1) |
-| API Gateway | **Apache APISIX 3.19** + **Coraza WAF** (coraza-proxy-wasm 0.6.0, OWASP CRS 4.14) | Điểm vào duy nhất của Tầng 2: `/graphql` → Hasura, `/files/*` → SeaweedFS S3, `/workflow/*` → API workflow (giữ chỗ, #29). WAF chặn ở biên, kiểm chữ ký JWT bằng JWKS của Keycloak, rate limit theo IP, CORS, gắn request-id. Chế độ standalone: route nằm trong git (GitOps) | `core/apisix/config.yaml`, `core/apisix/apisix.yaml`, `core/apisix/Dockerfile` | Chạy trong `core` (#12, mục 3.3) |
+| API Gateway | **Apache APISIX 3.19** + **Coraza WAF** (coraza-proxy-wasm 0.6.0, OWASP CRS 4.14) | Điểm vào duy nhất của Tầng 2: `/graphql` → Hasura, `/files/*` → SeaweedFS S3, `/workflow/*` → API workflow của ứng dụng (#29, mục 7.3). WAF chặn ở biên, kiểm chữ ký JWT bằng JWKS của Keycloak, rate limit theo IP, CORS, gắn request-id. Chế độ standalone: route nằm trong git (GitOps) | `core/apisix/config.yaml`, `core/apisix/apisix.yaml`, `core/apisix/Dockerfile` | Chạy trong `core` (#12, mục 3.3) |
 | Dữ liệu có cấu trúc | **PostgreSQL 17 + PostGIS 3.5**, **Hasura CE v2.51** | Sự cố, đội cứu hộ, điểm trú ẩn, kho hàng, cảm biến (có tọa độ). Hasura tự sinh GraphQL + subscription, phân quyền theo claim vai trò trong JWT | `docker-compose.yml` (`postgres`, `postgres-roles`, `hasura`), `core/postgres/sync-roles.sh` | Chạy trong `core` (#11); schema nghiệp vụ ở #25, #26 |
 | Dữ liệu phi cấu trúc | **SeaweedFS 4.48** (S3) + ClamAV | Ảnh hiện trường, tệp đính kèm, file Parquet lịch sử. File tải lên được ClamAV quét trước khi công bố | `docker-compose.yml` (`seaweedfs`), `core/openbao/agent-seaweedfs.hcl` | S3 chạy trong `core`, khóa từ OpenBao (#11); ClamAV sau |
 | Workflow engine | **Temporal 1.29** + Python SDK | Quy trình kêu cứu: tiếp nhận → phân công đội gần nhất → xác nhận → đóng. Cảnh báo vượt ngưỡng → thông báo | `docker-compose.yml` (`temporal`, `temporal-ui`) | Chạy trong `core` (#11); worker ở #29 |
@@ -201,7 +201,7 @@ Tầng 2 chỉ thấy cổng `9080` của APISIX. Hasura (`8081`), SeaweedFS S3 
 | `/graphql` | GET, POST, OPTIONS (+ WebSocket) | `hasura:8080/v1/graphql` | Bắt buộc, chuyển nguyên token cho Hasura kiểm lần 2 | Bộ `api`: đọc body JSON | Body 1 MiB; `GW_RATE_LIMIT_COUNT`/`GW_RATE_LIMIT_WINDOW` theo IP (mặc định 300/60 s) | Bỏ header `X-Hasura-Admin-Secret` của client |
 | `/v1/*`, `/v2/*`, `/console*` | mọi | không | – | – | – | Luôn 403: `/v1/metadata`, `/v2/query`, console Hasura không ra ngoài |
 | `/files/*` | GET, HEAD, PUT, POST, DELETE, OPTIONS | `seaweedfs:8333` (bỏ tiền tố `/files`) | Bắt buộc, rồi **bỏ** header `Authorization` | Bộ `files`: không đọc body, thêm PUT/DELETE và kiểu ảnh/tệp | Body `GW_FILES_MAX_BODY_BYTES` (mặc định 20 MiB, vượt → 413); rate limit như trên | S3 kiểm chữ ký SigV4 dạng presigned (tham số `X-Amz-*`) |
-| `/workflow/*` | GET, POST, OPTIONS | **giữ chỗ**: trả 503 + `Retry-After` | Bắt buộc (không token vẫn 401) | Bộ `api` | Body 1 MiB; rate limit như trên | Thay bằng upstream API workflow khi #29 xong |
+| `/workflow/*` | GET, POST, OPTIONS | API workflow của ứng dụng `<DXOS_APP>-api:8000` (`GW_WORKFLOW_UPSTREAM_HOST/PORT`), bỏ tiền tố `/workflow` | Bắt buộc, chuyển nguyên Bearer token (API kiểm lại) | Bộ `api` | Body 1 MiB; rate limit như trên | #29, mục 7.3 |
 | `/api/v1/me` | GET, OPTIONS | Keycloak userinfo | Bắt buộc | Bộ `api` | rate limit như trên | Route mẫu v0.0.1 |
 | `/healthz` | GET | không (APISIX tự trả) | Không | – | 20 request / 10 s / IP | Healthcheck; smoke dùng để kiểm `limit-count` |
 
@@ -231,7 +231,7 @@ flowchart LR
 - **Biến môi trường trong route.** APISIX standalone thay `${{TÊN:=mặc định}}` trong `apisix.yaml` khi nạp file (biến phải khai báo ở `nginx_config.envs`). Tên realm (`KEYCLOAK_REALM`), CORS, rate limit, giới hạn body đều lấy theo cách này.
 - **WebSocket.** `/graphql` bật `enable_websocket` cho subscription của Hasura, nhưng `openid-connect` vẫn đòi header `Authorization` lúc bắt tay. Trình duyệt không đặt được header này cho WebSocket, nên realtime phía web sẽ đi qua Centrifugo (tuần 3) hoặc cấu hình riêng khi làm #26.
 
-Kiểm thử: `make up && bash scripts/smoke-gateway.sh` (cũng trong `make smoke`): mỗi route không token/token giả → 401, token Keycloak → 200 (`/workflow` → 503 giữ chỗ); `/v1/metadata`, `/v2/query`, `/v1/query`, `/console` → 403; PUT/GET ảnh qua `/files` bằng URL presigned + JWT; vượt kích thước → 413; SQLi/XSS trong query hoặc body → 403, request thường vẫn 200; CORS; 25 request vào `/healthz` trong 10 giây → 20 lần 200, 5 lần 429.
+Kiểm thử: `make up && bash scripts/smoke-gateway.sh` (cũng trong `make smoke`): mỗi route không token/token giả → 401, token Keycloak → 200 (`/workflow/hello` chạy workflow Hello); `/v1/metadata`, `/v2/query`, `/v1/query`, `/console` → 403; PUT/GET ảnh qua `/files` bằng URL presigned + JWT; vượt kích thước → 413; SQLi/XSS trong query hoặc body → 403, request thường vẫn 200; CORS; 25 request vào `/healthz` trong 10 giây → 20 lần 200, 5 lần 429.
 
 ## 4. Chia profile docker-compose
 
@@ -374,15 +374,17 @@ Cách cắm ứng dụng vào lõi: đặt biến `DXOS_APP` trong `.env` là t�
 |---|---|---|---|
 | Realm Keycloak | `keycloak/realm.json` | Keycloak import khi khởi động lần đầu | Có |
 | Schema | `db/migrations/` | Container một lần `migrate` áp SQL đánh số vào schema riêng của ứng dụng (mục 7.1) | Có (#25) |
-| Quyền GraphQL | `hasura/metadata/` | Hasura nạp metadata (track bảng, quyền theo vai trò) | Tuần 2 (#26) |
-| Workflow | `workflows/` (worker Python) | Worker đăng ký với Temporal | Tuần 2–3 |
-| Route gateway | `gateway/routes.yaml` | Gộp với route lõi khi khởi động APISIX | Tuần 2 |
+| Quyền GraphQL | `hasura/metadata/` | Hasura nạp metadata (track bảng, quyền theo vai trò) | Có (#26) |
+| Backend (worker + API) | `compose.yaml`, `workflow/` (Python) | `docker-compose.yml` nạp `apps/${DXOS_APP}/compose.yaml` bằng `include` (profile `app`); route `/workflow/*` trỏ vào `<DXOS_APP>-api:8000` (mục 7.3) | Có (#29) |
+| Role DB dịch vụ | `db/migrations/` (GRANT) | `postgres-roles` tạo role `<schema>_app` không quyền gì; migration của ứng dụng cấp đúng bảng/cột (mục 7.3) | Có (#29) |
+| Bí mật của ứng dụng | `openbao/policies/*.hcl` | `openbao-init` nạp thành policy + AppRole `app-<DXOS_APP>-<dịch vụ>` | Có (#29) |
+| Route gateway riêng | `gateway/routes.yaml` | Gộp với route lõi khi khởi động APISIX | Chưa cần (tuần 3+) |
 | Dữ liệu mẫu | `db/seed/` | `make seed` (`migrate seed`) | Có (#25) |
 
 Lợi ích: cùng một lõi, cắm thêm ứng dụng khác chỉ bằng cấu hình, không sửa `core/`. Đây là bằng chứng lõi dùng lại được, sẽ trình bày trong phần demo.
 
 Còn ràng buộc (tuần 2 xử lý):
-- Tên realm (`KEYCLOAK_REALM`, mặc định `disaster`) là cấu hình triển khai, không phải nghiệp vụ. Từ #12, `core/apisix/apisix.yaml` đọc tên realm qua `${{KEYCLOAK_REALM:=disaster}}`, không còn ghi cứng. Còn lại: gộp route của ứng dụng (`apps/<DXOS_APP>/gateway/routes.yaml`) với route lõi lúc khởi động.
+- Tên realm (`KEYCLOAK_REALM`, mặc định `disaster`) là cấu hình triển khai, không phải nghiệp vụ. Từ #12, `core/apisix/apisix.yaml` đọc tên realm qua `${{KEYCLOAK_REALM:=disaster}}`, không còn ghi cứng. Từ #29, upstream của `/workflow/*` cũng là biến (`GW_WORKFLOW_UPSTREAM_HOST/PORT`, mặc định `<DXOS_APP>-api:8000`). Còn lại: gộp route riêng của ứng dụng (`apps/<DXOS_APP>/gateway/routes.yaml`) với route lõi lúc khởi động, khi ứng dụng cần route ngoài `/graphql`, `/files`, `/workflow`.
 - `scripts/smoke-jwt.sh` dùng người dùng mẫu của `apps/cuu-tro` để kiểm thử lõi.
 
 ### 7.1. Tầng dữ liệu của ứng dụng (#25)
@@ -419,6 +421,34 @@ Hàm PL/pgSQL của ứng dụng khai báo `SET search_path FROM CURRENT` (= `cu
 
 Chạy lại từ volume trống (không xóa OpenBao): `make down && docker volume rm disaster-dxos_pgdata && make up`. Lệnh này xóa cả dữ liệu Keycloak, Hasura, Temporal trong PostgreSQL (realm import lại khi khởi động). Không dùng `docker compose down -v`: lệnh đó xóa cả `baodata` (dữ liệu OpenBao) trong khi key mở khóa vẫn ở `.data/openbao/`. Sơ đồ bảng của ứng dụng cứu trợ: `apps/cuu-tro/README.md`.
 
+### 7.3. Backend nghiệp vụ của ứng dụng gọi lõi (#29)
+
+Tầng 2 có backend riêng (D-008): worker Temporal và API mỏng khởi chạy workflow, mã ở `apps/cuu-tro/workflow/` (Python, `pyproject.toml` + `uv.lock`), dịch vụ khai báo ở `apps/cuu-tro/compose.yaml`. File compose của lõi không có tên dịch vụ nào của ứng dụng: nó chỉ `include` đường dẫn `apps/${DXOS_APP}/compose.yaml`.
+
+```mermaid
+flowchart LR
+  c["Web / app / curl<br/>Bearer JWT"] -->|"/workflow/*"| gw["APISIX<br/>WAF → JWT → rate limit<br/>bỏ tiền tố /workflow"]
+  gw --> api["cuu-tro-api (FastAPI)<br/>kiểm lại JWT (JWKS)<br/>vai trò → 403"]
+  api -->|"hỏi quyền theo hàng bằng JWT người dùng<br/>/graphql qua gateway"| gw2["APISIX /graphql → Hasura"]
+  api -->|"gRPC: start / signal / query"| tp["Temporal"]
+  tp -->|"task queue cuu-tro"| wk["cuu-tro-worker<br/>workflow + activity"]
+  wk -->|"role cuu_tro_app<br/>quyền theo cột"| db[("PostgreSQL + PostGIS<br/>schema cuu_tro")]
+  bao["OpenBao<br/>secret/app/cuu-tro/db"] -->|"bao-agent-cuu-tro<br/>APP_DB_URL (tmpfs)"| wk
+```
+
+| Thành phần | Gọi lõi thế nào | Vì sao |
+|---|---|---|
+| Client → API | Chỉ qua APISIX `/workflow/*` (JWT + WAF + rate limit). API không mở cổng ra máy host | Tầng 2 chỉ gọi lõi qua gateway (D-008) |
+| API kiểm vai trò | Kiểm lại chữ ký JWT bằng JWKS Keycloak (như Hasura), đọc `x-hasura-allowed-roles`: chỉ `dieu-phoi` khởi chạy phân công | Zero-Trust: cổng nội bộ của API không tin request chỉ vì đến từ mạng Docker |
+| API kiểm quyền theo hàng | Hỏi `incidents_by_pk` qua gateway `/graphql` bằng **JWT của người dùng** (`X-Hasura-Role: cuu-ho`); `null` = không phải đội được gán → 403 | Không viết lại luật lọc theo đội: dùng đúng luật trong Hasura metadata (#26) |
+| API → Temporal | gRPC nội bộ `temporal:7233` (start, signal, query, describe) | Temporal không có giao thức HTTP cho client; gRPC không qua APISIX. Temporal UI vẫn chỉ cho admin |
+| Worker → PostgreSQL | Role `cuu_tro_app`: `SELECT` vài cột của `incidents`, `rescue_teams`; `UPDATE` chỉ `status`, `assigned_team_id`; không `INSERT/DELETE`, không đọc SĐT người báo, giới hạn 10 kết nối (migration `0003`, kiểm bằng `make test-db`) | Worker là dịch vụ nền tin cậy của ứng dụng, không có người dùng; không dùng token `dieu-phoi` của người dùng, không dùng admin secret Hasura |
+| Worker → bí mật | `bao-agent-cuu-tro` (AppRole `app-cuu-tro-workflow`, chỉ đọc `secret/app/cuu-tro/db`) render `APP_DB_URL` lên tmpfs, `env-from-files.sh` export | Cùng mẫu với dịch vụ lõi (mục 8.3) |
+
+Điểm lõi biết về ứng dụng chỉ là **quy ước tên** suy ra từ `DXOS_APP`: role `<schema>_app`, bí mật `secret/app/<DXOS_APP>/db`, policy `apps/<DXOS_APP>/openbao/policies/`, upstream `<DXOS_APP>-api:8000`. Lõi chạy một mình (không bật profile `app`) thì `/workflow/*` trả 502/503, các route khác không ảnh hưởng. Sơ đồ workflow `PhanCongCuuHo` và API: `apps/cuu-tro/README.md` mục "Workflow".
+
+Vì sao `include` thay vì khai báo dịch vụ ứng dụng trong `docker-compose.yml` hay dùng `COMPOSE_FILE`: (1) file lõi không chứa tên nghiệp vụ; (2) `include` nằm trong file, không phụ thuộc `.env` của từng máy, `docker compose config` và job CI `build-from-source` tự thấy dịch vụ ứng dụng; (3) dịch vụ ứng dụng vẫn `depends_on` được dịch vụ lõi (Temporal, `migrate`, OpenBao).
+
 ## 8. Quản lý bí mật: OpenBao (#14)
 
 OpenBao 2.7.1 (MPL-2.0, nhánh nguồn mở của Vault) chạy như dịch vụ riêng bằng image gốc trong profile `core`, **chế độ server** (không `-dev`): lưu trữ raft trên volume `baodata`, tắt UI (Tầng 1 headless), chỉ mở cổng `127.0.0.1:8200`. Cấu hình: `core/openbao/openbao.hcl`. TLS tắt trên laptop; bật khi lên VPS (tuần 4).
@@ -450,6 +480,7 @@ Container một lần `postgres-roles` (image postgis có sẵn, script `core/po
 | `keycloak` | Chủ CSDL `keycloak` | Tạo lần đầu bởi `core/postgres/init/20-create-databases.sh` |
 | `hasura` | Chủ schema `hdb_catalog` (metadata); `CONNECT, CREATE, TEMPORARY` trên CSDL `disaster`; `USAGE, CREATE` trên `public`; đọc `information_schema`, `pg_catalog`, `spatial_ref_sys` | Quyền tối thiểu theo tài liệu Hasura. Migration ứng dụng không chạy bằng role này (mục 7.1, #25): trên schema ứng dụng `hasura` chỉ có quyền DML. Bảng `hdb_catalog` có sẵn từ trước thì chuyển chủ sở hữu |
 | `temporal` | Chủ CSDL `temporal`, `temporal_visibility` (script tạo sẵn) | Không cần `CREATEDB`: Temporal chạy với `SKIP_DB_CREATE=true`, auto-setup chỉ tạo schema |
+| `<schema>_app` (`cuu_tro_app`) | `LOGIN`, `CONNECTION LIMIT 10`, lúc tạo **không có quyền gì** trên schema ứng dụng | Role dịch vụ cho backend của ứng dụng (#29). Mật khẩu `secret/app/<DXOS_APP>/db`. Migration của ứng dụng tự `GRANT` bảng/cột cần (mục 7.3) |
 
 Không role nào là superuser hay có `CREATEROLE`. `make smoke` kiểm Hasura kết nối bằng `hasura` (`rolsuper = false`) và 2 CSDL Temporal thuộc `temporal`.
 
@@ -461,11 +492,14 @@ Mỗi dịch vụ một AppRole, mỗi AppRole một policy **chỉ đọc** đ�
 |---|---|---|
 | `keycloak` | `core-keycloak` | `core/keycloak-db`, `core/keycloak-admin`, `core/gateway` (#11: thôi render cho PostgreSQL) |
 | `apisix` | `core-apisix` | `core/gateway` |
-| `postgres` | `core-postgres` | `core/postgres`, `core/keycloak-db`, `core/hasura-db`, `core/temporal-db` |
+| `postgres` | `core-postgres` | `core/postgres`, `core/keycloak-db`, `core/hasura-db`, `core/temporal-db`, `app/+/db` (#29) |
 | `hasura` | `core-hasura` | `core/hasura-db`, `core/hasura` |
 | `temporal` | `core-temporal` | `core/temporal-db` |
 | `seaweedfs` | `core-seaweedfs` | `core/s3` |
 | `ledger` | `core-ledger` | `core/ledger` (#28) |
+| `app-cuu-tro-workflow` | `app-cuu-tro-workflow` (`apps/cuu-tro/openbao/policies/workflow.hcl`) | `app/cuu-tro/db` (#29) |
+
+`core-postgres` đọc thêm `app/+/db` (một đoạn đường dẫn bất kỳ) để `postgres-roles` đồng bộ mật khẩu role `<schema>_app` của ứng dụng đang chọn.
 
 Token AppRole sống 1 giờ (tối đa 24 giờ), agent tự gia hạn hoặc đăng nhập lại. `secret_id` không hết hạn: chỉ chấp nhận trên máy dev; trên VPS cấp `secret_id` có hạn/giới hạn số lần dùng. `make smoke` kiểm AppRole `apisix` đọc được `core/gateway` nhưng bị từ chối (403) với `core/keycloak-db` và `core/s3`.
 

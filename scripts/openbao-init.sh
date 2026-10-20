@@ -22,6 +22,10 @@ DIR="${OPENBAO_LOCAL_DIR:-./.data/openbao}"
 SHARES="${OPENBAO_KEY_SHARES:-3}"
 THRESHOLD="${OPENBAO_KEY_THRESHOLD:-2}"
 POLICY_DIR=core/openbao/policies
+APP="${DXOS_APP:-cuu-tro}"
+# Policy riêng của ứng dụng (vd backend worker đọc mật khẩu role DB của ứng dụng): policy và AppRole
+# tên app-<ứng dụng>-<dịch vụ>, để nhiều ứng dụng dùng chung một OpenBao không đụng tên nhau
+APP_POLICY_DIR="apps/$APP/openbao/policies"
 umask 077
 
 log() { echo "openbao-init: $*"; }
@@ -136,6 +140,9 @@ do_setup() {
   kv_seed core/s3             access_key=@rand:10 secret_key=@rand:24
   # Khóa ký checkpoint Tessera (#28, sinh bằng core/ledger)
   kv_seed core/ledger         signing_key=@empty
+  # Role DB dịch vụ của ứng dụng Tầng 2 đang chọn (<schema>_app, #29): postgres-roles tạo role,
+  # backend của ứng dụng (worker) đăng nhập bằng role này. Lõi chỉ biết quy ước tên, không biết nghiệp vụ.
+  kv_seed "app/$APP/db"       password=@rand:24
 
   # AppRole
   api_ok GET sys/auth
@@ -144,13 +151,18 @@ do_setup() {
     log "đã bật auth AppRole"
   fi
 
-  # Mỗi file core/openbao/policies/<dịch vụ>.hcl → policy core-<dịch vụ> + AppRole <dịch vụ>
-  local f svc
-  for f in "$POLICY_DIR"/*.hcl; do
-    svc=$(basename "$f" .hcl)
-    api_ok PUT "sys/policies/acl/core-$svc" - <<<"$(python3 -c 'import sys,json; print(json.dumps({"policy":open(sys.argv[1]).read()}))' "$f")"
+  # Mỗi file core/openbao/policies/<dịch vụ>.hcl → policy core-<dịch vụ> + AppRole <dịch vụ>;
+  # mỗi file apps/<ứng dụng>/openbao/policies/<dịch vụ>.hcl → policy + AppRole app-<ứng dụng>-<dịch vụ>
+  local f svc policy
+  for f in "$POLICY_DIR"/*.hcl "$APP_POLICY_DIR"/*.hcl; do
+    [ -e "$f" ] || continue
+    case $f in
+      "$APP_POLICY_DIR"/*) svc="app-$APP-$(basename "$f" .hcl)"; policy=$svc ;;
+      *) svc=$(basename "$f" .hcl); policy="core-$svc" ;;
+    esac
+    api_ok PUT "sys/policies/acl/$policy" - <<<"$(python3 -c 'import sys,json; print(json.dumps({"policy":open(sys.argv[1]).read()}))' "$f")"
     # Token ngắn hạn, agent tự gia hạn/đăng nhập lại. secret_id không hết hạn: chỉ cho dev.
-    api_ok POST "auth/approle/role/$svc" - <<<"$(python3 -c 'import sys,json; print(json.dumps({"token_policies":["core-"+sys.argv[1]],"token_ttl":"1h","token_max_ttl":"24h","secret_id_ttl":"0","token_type":"service"}))' "$svc")"
+    api_ok POST "auth/approle/role/$svc" - <<<"$(python3 -c 'import sys,json; print(json.dumps({"token_policies":[sys.argv[1]],"token_ttl":"1h","token_max_ttl":"24h","secret_id_ttl":"0","token_type":"service"}))' "$policy")"
     mkdir -p "$DIR/approle/$svc"
     api_ok GET "auth/approle/role/$svc/role-id"
     jget 'd["data"]["role_id"]' <<<"$BODY" | tr -d '\n' > "$DIR/approle/$svc/role_id"
@@ -163,7 +175,7 @@ do_setup() {
     # thư mục cha $DIR vẫn 0700 nên user khác trên máy host không vào được.
     chmod 0755 "$DIR/approle/$svc"
     chmod 0644 "$DIR/approle/$svc/role_id" "$DIR/approle/$svc/secret_id"
-    log "policy core-$svc + AppRole $svc: OK"
+    log "policy $policy + AppRole $svc: OK"
   done
 }
 

@@ -5,6 +5,9 @@
 #   keycloak  CSDL ${KEYCLOAK_DB} (do init/20-create-databases.sh tạo lần đầu)
 #   hasura    CSDL ${POSTGRES_DB}: sở hữu schema hdb_catalog (metadata), được tạo schema ứng dụng
 #   temporal  sở hữu CSDL temporal, temporal_visibility (tạo ở đây; auto-setup chỉ tạo schema)
+#   <schema>_app  role dịch vụ của ứng dụng Tầng 2 đang chọn (DXOS_APP cuu-tro → cuu_tro_app, #29).
+#             Tạo ra KHÔNG có quyền gì trên schema ứng dụng: migration của ứng dụng tự GRANT đúng
+#             bảng/cột backend của nó cần (vd apps/cuu-tro/db/migrations/0003). Lõi không biết bảng nào.
 # Mật khẩu lấy từ OpenBao (bao-agent-postgres → env-from-files.sh), ALTER ROLE mỗi lần chạy nên
 # đổi mật khẩu trong OpenBao rồi `make up` là PostgreSQL khớp theo. Không dịch vụ nào dùng superuser.
 set -euo pipefail
@@ -26,6 +29,8 @@ SQL
 sync_role "$KEYCLOAK_DB_USER" "$KEYCLOAK_DB_PASSWORD" NOCREATEDB
 sync_role "$HASURA_DB_USER" "$HASURA_DB_PASSWORD" NOCREATEDB
 sync_role "$TEMPORAL_DB_USER" "$TEMPORAL_DB_PASSWORD" NOCREATEDB
+APP_DB_USER=${APP_DB_USER:-${DXOS_APP//-/_}_app}
+sync_role "$APP_DB_USER" "$APP_DB_PASSWORD" "NOCREATEDB CONNECTION LIMIT ${APP_DB_CONNECTION_LIMIT:-10}"
 
 # Hasura: quyền tối thiểu theo tài liệu Hasura ("Postgres permissions"), thêm quyền tạo schema
 # để migration của ứng dụng (apps/<app>/) chạy bằng chính role hasura.

@@ -26,6 +26,20 @@ upstreams:
     # gateway (vd localhost:9080). Dịch vụ cấp URL presigned (#27) ký cho host đó, path không có /files.
     nodes:
       "seaweedfs:8333": 1
+  - id: workflow-api
+    type: roundrobin
+    # API workflow của ứng dụng Tầng 2 (#29), không thuộc lõi: host/port lấy từ biến môi trường,
+    # mặc định theo quy ước <DXOS_APP>-api:8000 (docker-compose.yml). Dạng mảng vì APISIX chỉ thay
+    # biến ${{...}} trong giá trị, không thay trong khóa. Lõi chạy một mình (không có app) thì
+    # route này trả 502/503, các route khác không ảnh hưởng.
+    nodes:
+      - host: "${{GW_WORKFLOW_UPSTREAM_HOST:=workflow-api}}"
+        port: ${{GW_WORKFLOW_UPSTREAM_PORT:=8000}}
+        weight: 1
+    timeout:
+      connect: 5
+      send: 35
+      read: 35
 
 routes:
   # ---------------- /graphql → Hasura /v1/graphql ----------------
@@ -149,13 +163,14 @@ routes:
             - Authorization
       limit-count: *rate-limit
 
-  # ---------------- /workflow/* → API khởi chạy workflow (#29) ----------------
-  # GIỮ CHỖ: worker/API Temporal chưa có (#29). Route đã kiểm JWT + WAF + rate limit, rồi trả 503.
-  # Khi #29 xong: thay serverless-post-function bằng upstream của API workflow (vd "workflow-api:8000")
-  # và proxy-rewrite regex_uri ["^/workflow/(.*)", "/$1"].
+  # ---------------- /workflow/* → API workflow của ứng dụng (#29) ----------------
+  # /workflow/<đường dẫn> → <app>-api:8000/<đường dẫn>. Gateway kiểm JWT + WAF + rate limit rồi chuyển
+  # nguyên Bearer token: API kiểm lại chữ ký và đọc vai trò (vd chỉ dieu-phoi được khởi chạy phân công).
+  # Endpoint: apps/cuu-tro/README.md mục "Workflow".
   - id: workflow
     uri: /workflow/*
     methods: [GET, POST, OPTIONS]
+    upstream_id: workflow-api
     plugins:
       request-id: {}
       client-control: *api-body-limit
@@ -164,15 +179,9 @@ routes:
         conf: *waf-api
       cors: *cors
       openid-connect: *oidc-pass-token
+      proxy-rewrite:
+        regex_uri: ["^/workflow/(.*)", "/$1"]
       limit-count: *rate-limit
-      serverless-post-function:
-        # Pha access chạy sau openid-connect (pha rewrite): không token vẫn là 401, không phải 503
-        phase: access
-        functions:
-          - >-
-            return function(conf, ctx) local core = require('apisix.core');
-            core.response.set_header('Retry-After', '3600');
-            core.response.exit(503, {message = 'Workflow API chưa triển khai (#29)'}) end
 
   # ---------------- /api/v1/me (route mẫu v0.0.1) ----------------
   # Trả thông tin người dùng từ token (Keycloak userinfo). Không token / token sai → 401.
