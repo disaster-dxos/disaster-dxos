@@ -72,3 +72,11 @@ INSERT INTO sensors (id, code, name, kind, unit, location, warning_threshold, da
   ('f0000000-0000-4000-8000-000000000003', 'AL-LM-01', 'Lượng mưa UBND xã (giả định)', 'luong_mua', 'mm',
    ST_MakePoint(108.0995, 15.8540)::geography, 100, 200, NULL, NULL, 'urn:ngsi-ld:RainGauge:AL-LM-01')
 ON CONFLICT (id) DO NOTHING;
+
+-- Thành viên đội (#26): user mẫu cuuho01 thuộc "Đội ca nô Biên phòng". user_id là "sub" Keycloak,
+-- cố định trong apps/cuu-tro/keycloak/realm.json để seed khớp ngay trên volume trống. Realm đã
+-- import từ trước (volume Keycloak cũ) có sub ngẫu nhiên: điều phối gán lại đội qua GraphQL
+-- (insert_team_members_one … on_conflict), scripts/smoke-hasura.sh làm đúng như vậy.
+INSERT INTO team_members (user_id, team_id, username) VALUES
+  ('9b000000-0000-4000-8000-000000000002', 'a0000000-0000-4000-8000-000000000002', 'cuuho01')
+ON CONFLICT (user_id) DO NOTHING;

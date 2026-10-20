@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: Apache-2.0
+# Đội cứu hộ.
+#   dieu-phoi   đọc, tạo, sửa mọi đội. Không xóa (đội ngừng hoạt động = status nghi)
+#   cuu-ho      đọc đội của mình; cập nhật vị trí và trạng thái đội mình (app hiện trường)
+table:
+  name: rescue_teams
+  schema: cuu_tro
+configuration:
+  custom_name: rescue_teams
+  column_config: {}
+  custom_column_names: {}
+  custom_root_fields: {}
+array_relationships:
+  - name: incidents
+    using:
+      foreign_key_constraint_on:
+        column: assigned_team_id
+        table:
+          name: incidents
+          schema: cuu_tro
+  - name: members
+    using:
+      foreign_key_constraint_on:
+        column: team_id
+        table:
+          name: team_members
+          schema: cuu_tro
+insert_permissions:
+  - role: dieu-phoi
+    permission:
+      check: {}
+      columns: &team-columns
+        - name
+        - member_count
+        - location
+        - location_updated_at
+        - status
+        - contact_name
+        - contact_phone
+select_permissions:
+  - role: dieu-phoi
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+  - role: cuu-ho
+    permission:
+      columns: "*"
+      filter: &own-team
+        members:
+          user_id:
+            _eq: x-hasura-user-id
+update_permissions:
+  - role: dieu-phoi
+    permission:
+      columns: *team-columns
+      filter: {}
+      check: {}
+  - role: cuu-ho
+    permission:
+      columns:
+        - location
+        - location_updated_at
+        - status
+      filter: *own-team
+      check: *own-team

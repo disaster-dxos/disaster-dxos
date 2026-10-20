@@ -1,0 +1,127 @@
+# SPDX-License-Identifier: Apache-2.0
+# Tin kêu cứu. Quyền (#26, bảng đầy đủ: apps/cuu-tro/README.md):
+#   dieu-phoi   đọc mọi tin; tạo; sửa nội dung, trạng thái, phân công đội. Không xóa (đóng = status dong)
+#   cuu-ho      chỉ đọc tin phân công cho đội mình (assigned_team.members.user_id = X-Hasura-User-Id);
+#               chỉ đổi status, từ phan_cong/dang_cuu sang dang_cuu/da_cuu
+#   tinh-nguyen tạo tin mới (created_by gán từ token); chỉ đọc lại tin mình tạo, KHÔNG có cột
+#               reporter_phone, reporter_name, created_by; không sửa, không xóa
+# Chặn tin trùng là trigger trong DB (#25): Hasura trả lỗi constraint-violation kèm thông điệp.
+table:
+  name: incidents
+  schema: cuu_tro
+configuration:
+  custom_name: incidents
+  column_config: {}
+  custom_column_names: {}
+  custom_root_fields: {}
+object_relationships:
+  - name: assigned_team
+    using:
+      foreign_key_constraint_on: assigned_team_id
+insert_permissions:
+  - role: dieu-phoi
+    permission:
+      check: {}
+      set:
+        created_by: x-hasura-user-id
+      columns:
+        - description
+        - location
+        - address_text
+        - people_count
+        - urgency
+        - status
+        - reporter_phone
+        - reporter_name
+        - source
+        - assigned_team_id
+  - role: tinh-nguyen
+    permission:
+      # Tin mới luôn ở trạng thái tiep_nhan, chưa có đội (2 cột này không nằm trong columns)
+      check: {}
+      set:
+        created_by: x-hasura-user-id
+      columns:
+        - description
+        - location
+        - address_text
+        - people_count
+        - urgency
+        - reporter_phone
+        - reporter_name
+        - source
+select_permissions:
+  - role: dieu-phoi
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+  - role: cuu-ho
+    permission:
+      # Đội cứu hộ cần SĐT người báo để liên lạc khi tiếp cận hiện trường
+      columns:
+        - id
+        - description
+        - location
+        - address_text
+        - people_count
+        - urgency
+        - status
+        - reporter_phone
+        - reporter_name
+        - source
+        - assigned_team_id
+        - created_at
+        - updated_at
+      filter:
+        assigned_team:
+          members:
+            user_id:
+              _eq: x-hasura-user-id
+  - role: tinh-nguyen
+    permission:
+      columns:
+        - id
+        - description
+        - location
+        - address_text
+        - people_count
+        - urgency
+        - status
+        - source
+        - created_at
+        - updated_at
+      filter:
+        created_by:
+          _eq: x-hasura-user-id
+update_permissions:
+  - role: dieu-phoi
+    permission:
+      columns:
+        - description
+        - location
+        - address_text
+        - people_count
+        - urgency
+        - status
+        - reporter_phone
+        - reporter_name
+        - source
+        - assigned_team_id
+      filter: {}
+      check: {}
+  - role: cuu-ho
+    permission:
+      columns:
+        - status
+      filter:
+        _and:
+          - assigned_team:
+              members:
+                user_id:
+                  _eq: x-hasura-user-id
+          - status:
+              _in: [phan_cong, dang_cuu]
+      check:
+        status:
+          _in: [dang_cuu, da_cuu]

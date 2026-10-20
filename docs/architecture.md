@@ -165,6 +165,33 @@ browser-otp-dieu-phoi
 
 Kiểm thử: `make up && bash scripts/smoke-jwt.sh` (không token → 401, token giả → 401, token Keycloak → 200, claim Hasura đúng cho 3 user mẫu, đăng nhập web `dieuphoi01` bị bắt cài OTP còn `cuuho01` thì không).
 
+### 3.4. Phân quyền dữ liệu theo vai trò: JWT → Hasura → lọc theo hàng (#26)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant C as Ứng dụng Tầng 2
+  participant GW as APISIX /graphql
+  participant H as Hasura CE
+  participant DB as PostgreSQL (schema cuu_tro)
+
+  C->>GW: POST /graphql · Bearer JWT
+  GW->>GW: Kiểm JWT (401 nếu thiếu/sai), WAF, rate limit, bỏ X-Hasura-Admin-Secret
+  GW->>H: /v1/graphql + Authorization
+  H->>H: Kiểm lại chữ ký JWT, đọc https://hasura.io/jwt/claims
+  Note over H: role = X-Hasura-Role (nếu nằm trong allowed-roles) hoặc default-role<br/>session: x-hasura-user-id = sub
+  H->>H: Schema GraphQL của vai trò: chỉ bảng/cột được cấp (cột thiếu → validation-failed)
+  H->>DB: Một câu SQL, đã chèn WHERE từ filter của vai trò<br/>(vd. EXISTS team_members.user_id = sub) và CHECK sau khi ghi
+  DB-->>H: Dòng được phép
+  H-->>C: data / errors
+```
+
+- **Ba lớp kiểm:** (1) APISIX từ chối request không có JWT hợp lệ; (2) Hasura chỉ sinh field cho bảng/cột vai trò được cấp (column-level), xin vai trò ngoài `x-hasura-allowed-roles` → `access-denied`; (3) điều kiện `filter`/`check` của vai trò thành mệnh đề SQL trong cùng câu truy vấn (row-level), giá trị lấy từ session variable trong JWT đã kiểm, client không tự đặt được.
+- Đây là RLS ở tầng Hasura, không phải `ROW LEVEL SECURITY` của PostgreSQL: Hasura kết nối bằng một role `hasura` duy nhất. Ràng buộc nghiệp vụ không phụ thuộc vai trò (chặn tin trùng, sức chứa, phiếu bất biến) vẫn nằm trong DB (#25), nên Temporal worker, sổ cái gọi thẳng DB cũng không vượt qua được.
+- **`cuu-ho` chỉ thấy tin của đội mình:** bảng `cuu_tro.team_members (user_id = sub Keycloak, team_id)` (migration `0002`), filter `assigned_team.members.user_id = X-Hasura-User-Id`. Chọn bảng trong DB thay vì claim `x-hasura-team-id` từ thuộc tính Keycloak: điều phối đổi đội cho thành viên ngay trong ứng dụng, có hiệu lực ở truy vấn kế tiếp, không chờ token mới, không cần quyền quản trị Keycloak.
+- Không vai trò nào có quyền với `anonymous` (không có JWT); console và `/v1/metadata` không mở qua gateway. Bảng quyền đầy đủ: `apps/cuu-tro/README.md`.
+- Kiểm thử thật qua gateway với token của 3 user mẫu: `scripts/smoke-hasura.sh` (33 ca, trong `make smoke`).
+
 ### 3.3. Route API Gateway, WAF, rate limit (#12)
 
 Tầng 2 chỉ thấy cổng `9080` của APISIX. Hasura (`8081`), SeaweedFS S3 (`8333`), Temporal (`7233`) chỉ mở trên `127.0.0.1` cho quản trị và smoke test. Route khai báo trong `core/apisix/apisix.yaml`:
@@ -242,7 +269,7 @@ RAM từng dịch vụ của `core` (MiB; "sau smoke" = sau khi chạy `make smo
 |---|---|---|---|---|
 | keycloak | 537 | 525 | 1536 | `mem_limit`, heap `-XX:MaxRAMPercentage=70` |
 | postgres | 240 | 315 | 1024 | `mem_limit`, `shared_buffers=128MB`, `max_connections=100`; Hasura 10 + Temporal 15 kết nối |
-| hasura | 72 | 185 | 512 | `mem_limit`, `HASURA_GRAPHQL_PG_CONNECTIONS=10` |
+| hasura | 72 | 185 | 512 | `mem_limit`, pool 10 kết nối (`pool_settings` trong metadata của ứng dụng, #26) |
 | temporal | 76 | 238 | 512 | `mem_limit`, `GOMEMLIMIT=400MiB`, `SQL_MAX_CONNS=10`, `SQL_VIS_MAX_CONNS=5` |
 | seaweedfs | 153 | 193 | 384 | `mem_limit`, `GOMEMLIMIT=300MiB`, volume 256 MB |
 | apisix (+ Coraza WAF, #12) | 242 | 352 | 768 | `mem_limit`, `worker_processes: 2` (mỗi worker giữ một bản Coraza + CRS); ~370 sau thêm 560 request |
@@ -376,7 +403,17 @@ Quy ước tên và quyền:
 | Chủ sở hữu | role `cuu_tro_owner` | `NOLOGIN`, không superuser/`CREATEDB`/`CREATEROLE`; chỉ sở hữu schema của mình. Script đăng nhập bằng superuser chỉ để tạo role/schema, rồi `SET ROLE cuu_tro_owner` trước mỗi file, nên mọi bảng/hàm thuộc role ứng dụng |
 | Role API | `hasura` | `USAGE` schema, `SELECT, INSERT, UPDATE, DELETE` mọi bảng, `EXECUTE` hàm. Không `CREATE`, `TRUNCATE`, `DROP`; không đọc `dxos_meta`. Bảng/cột nào lộ ra GraphQL theo vai trò do Hasura metadata quyết định (#26) |
 
-Vì sao SQL thuần + container một lần, không dùng migration của Hasura CLI: (1) migration Hasura cần thêm Hasura CLI hoặc image `cli-migrations` (thêm một thành phần phải ghim phiên bản và rà giấy phép theo D-004); (2) migration là việc của CSDL, không phụ thuộc Hasura: workflow Temporal (#29), sổ cái (#28) dùng cùng bảng; (3) dùng lại image postgis đã có, không thêm phụ thuộc; (4) chạy được bằng role sở hữu riêng thay vì role `hasura`, nên `hasura` không cần quyền DDL. Metadata Hasura (#26) vẫn để ở `apps/<app>/hasura/metadata/`.
+Vì sao SQL thuần + container một lần, không dùng migration của Hasura CLI: (1) migration Hasura chạy bằng role `hasura`, buộc role này có quyền DDL; (2) migration là việc của CSDL, không phụ thuộc Hasura: workflow Temporal (#29), sổ cái (#28) dùng cùng bảng; (3) dùng lại image postgis đã có, không thêm phụ thuộc; (4) chạy được bằng role sở hữu riêng thay vì role `hasura`, nên `hasura` không cần quyền DDL. Metadata Hasura (#26) vẫn để ở `apps/<app>/hasura/metadata/`.
+
+### 7.2. Metadata Hasura của ứng dụng (#26)
+
+Bảng nào lộ ra GraphQL, quan hệ, quyền theo vai trò là **của ứng dụng**, khai báo trong repo ở `apps/<DXOS_APP>/hasura/metadata/` (định dạng thư mục v3 của `hasura-cli`, mỗi bảng một file YAML). Lõi chỉ mount thư mục đó vào `/hasura-metadata`, giống cách `migrate` dùng `apps/<DXOS_APP>/db/`.
+
+Cách áp dụng: dịch vụ `hasura` dùng image `hasura/graphql-engine:v2.51.0-ce.cli-migrations-v3` (cùng phiên bản, vẫn `-ce` theo D-004, Apache-2.0). Entrypoint của image chạy một server tạm chỉ bật metadata API, gọi `hasura-cli metadata apply`, rồi `exec graphql-engine serve`. `HASURA_GRAPHQL_DISALLOW_INCONSISTENT_METADATA=true`: metadata trỏ tới bảng/cột không có thì Hasura dừng khởi động thay vì chạy với quyền thiếu. Thứ tự trong `make up`: `migrate` (tạo bảng) → `hasura` (áp metadata) → APISIX.
+
+Vì sao chọn image `cli-migrations` thay vì một container một lần gọi `replace_metadata`: định dạng thư mục YAML (dễ đọc, dễ review từng bảng trong PR) phải có `hasura-cli` mới gộp được thành JSON; image này đã có sẵn CLI đúng phiên bản và tự áp mỗi lần khởi động, không cần thêm container, không cần chờ Hasura sẵn sàng rồi mới gọi API. Không dùng `/hasura-migrations` của image: migration SQL vẫn do `migrate` làm (mục 7.1).
+
+Sửa quyền: sửa YAML trong `apps/cuu-tro/hasura/metadata/databases/default/tables/`, rồi `docker compose restart hasura` (hoặc `make up`). Metadata trong DB luôn bị thay bằng bản trong repo, nên không sửa quyền bằng API/console (console tắt).
 
 Hàm PL/pgSQL của ứng dụng khai báo `SET search_path FROM CURRENT` (= `cuu_tro, public` lúc migrate), vì Hasura kết nối với `search_path` mặc định không có `cuu_tro`.
 
