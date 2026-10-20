@@ -26,6 +26,10 @@ class Config:
     han_xac_nhan_giay: int
     so_lan_tim_doi: int
     cho_tim_lai_giay: int
+    # Luồng cảm biến (#30): NATS_URL (user cuu-tro-app) render từ OpenBao secret/app/cuu-tro/nats
+    nats_url: str
+    # Khai báo stream/consumer JetStream (apps/cuu-tro/nats/streams.json, mount vào container)
+    nats_streams_file: str
 
 
 def load() -> Config:
@@ -44,4 +48,6 @@ def load() -> Config:
         han_xac_nhan_giay=_int("PHAN_CONG_HAN_XAC_NHAN_GIAY", 6 * 3600),
         so_lan_tim_doi=_int("PHAN_CONG_SO_LAN_TIM_DOI", 10),
         cho_tim_lai_giay=_int("PHAN_CONG_CHO_TIM_LAI_GIAY", 60),
+        nats_url=os.environ.get("NATS_URL", ""),
+        nats_streams_file=os.environ.get("NATS_STREAMS_FILE", "/app/nats/streams.json"),
     )

@@ -8,3 +8,4 @@
 - "!include cuu_tro_supplies.yaml"
 - "!include cuu_tro_supply_movements.yaml"
 - "!include cuu_tro_sensors.yaml"
+- "!include cuu_tro_sensor_readings.yaml"

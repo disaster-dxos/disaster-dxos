@@ -6,6 +6,7 @@
 #
 # Profile:
 #   core   OpenBao, PostgreSQL+PostGIS, Keycloak, APISIX, Hasura CE, SeaweedFS, Temporal, NATS
+#          (JetStream + MQTT có xác thực, #30)
 #          (chạy được trên laptop 16 GB, RAM đo được: docs/architecture.md mục 4)
 #   app    backend của ứng dụng Tầng 2 đang chọn (apps/${DXOS_APP}/compose.yaml, nạp bằng include
 #          bên dưới), vd cuu-tro-worker, cuu-tro-api (#29). make up bật cả core và app.
@@ -498,19 +499,45 @@ services:
       start_period: 15s
     mem_limit: 128m
 
+  bao-agent-nats:
+    <<: *bao-agent
+    command: ["agent", "-config=/openbao/config/agent.hcl"]
+    environment:
+      # Chọn secret/app/<DXOS_APP>/nats và đặt tên user/phạm vi subject trong auth.conf.ctmpl
+      DXOS_APP: ${DXOS_APP:-cuu-tro}
+    volumes:
+      - ./core/openbao/agent-nats.hcl:/openbao/config/agent.hcl:ro
+      - ./core/nats/auth.conf.ctmpl:/openbao/config/auth.conf.ctmpl:ro
+      - ${OPENBAO_LOCAL_DIR:-./.data/openbao}/approle/nats:/openbao/approle:ro
+      - secrets-nats:/out/nats
+    healthcheck:
+      test: ["CMD-SHELL", "grep -q 'thiet-bi' /out/nats/auth.conf"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
   nats:
     <<: *restart
     image: nats:2.15.1-alpine
     profiles: [core]
+    # Xác thực bắt buộc (#30): include secrets/auth.conf do bao-agent-nats render, không cho nặc danh
     command: ["-c", "/etc/nats/nats.conf"]
+    depends_on:
+      bao-agent-nats:
+        condition: service_healthy
     environment:
       GOMEMLIMIT: 200MiB
+      NATS_JS_MAX_MEMORY: ${NATS_JS_MAX_MEMORY:-64MB}
+      NATS_JS_MAX_FILE: ${NATS_JS_MAX_FILE:-1GB}
     volumes:
       - ./core/nats/nats.conf:/etc/nats/nats.conf:ro
+      - secrets-nats:/etc/nats/secrets:ro
       - natsdata:/data
     ports:
       - "127.0.0.1:${NATS_PORT:-4222}:4222"
-      - "127.0.0.1:${NATS_MQTT_PORT:-1883}:1883"
+      # Cổng MQTT cho thiết bị/giả lập. Mặc định chỉ 127.0.0.1; thiết bị thật trong mạng LAN:
+      # NATS_MQTT_BIND=0.0.0.0 (chưa có TLS, xem core/nats/nats.conf)
+      - "${NATS_MQTT_BIND:-127.0.0.1}:${NATS_MQTT_PORT:-1883}:1883"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- 'http://127.0.0.1:8222/healthz?js-enabled-only=true' >/dev/null"]
       interval: 10s
@@ -535,3 +562,4 @@ volumes:
   secrets-hasura: *secrets-tmpfs
   secrets-temporal: *secrets-tmpfs
   secrets-seaweedfs: *secrets-tmpfs
+  secrets-nats: *secrets-tmpfs

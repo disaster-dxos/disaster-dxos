@@ -6,13 +6,14 @@
 | Thư mục | Nội dung | Trạng thái |
 |---|---|---|
 | `keycloak/realm.json` | Realm `disaster`: vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen`; client `dxos-gateway`, `dxos-web`, `dxos-dev-cli` (chỉ dev); 3 người dùng mẫu, mật khẩu lấy từ `.env` | Có |
-| `db/migrations/` | Schema `cuu_tro`: `incidents`, `rescue_teams`, `shelters`, `supplies`, `supply_movements`, `sensors` (PostGIS); `team_members` (#26) | Có (#25, #26) |
+| `db/migrations/` | Schema `cuu_tro`: `incidents`, `rescue_teams`, `shelters`, `supplies`, `supply_movements`, `sensors` (PostGIS); `team_members` (#26); `sensor_readings` chuỗi đo cảm biến (#30) | Có (#25, #26, #30) |
 | `db/seed/` | Dữ liệu giả xã An Lạc (giả định) | Có (#25) |
-| `db/tests/` | 46 ca kiểm thử ràng buộc (Poka-yoke, CHECK, quyền theo search_path, quyền role `cuu_tro_app`) | Có (#25, #26, #29) |
+| `db/tests/` | Kiểm thử ràng buộc (Poka-yoke, CHECK, quyền theo search_path, quyền role `cuu_tro_app`, chuỗi đo cảm biến) | Có (#25, #26, #29, #30) |
 | `hasura/metadata/` | Metadata Hasura: bảng track, quan hệ, quyền theo vai trò JWT | Có (#26) |
-| `workflow/` | Backend Python: Temporal worker (`PhanCongCuuHo`, `Hello`) + API FastAPI khởi chạy workflow qua gateway `/workflow/*`; 36 test pytest | Có (#29) |
-| `compose.yaml` | Dịch vụ `cuu-tro-worker`, `cuu-tro-api`, `bao-agent-cuu-tro` (profile `app`), lõi nạp bằng `include` | Có (#29) |
-| `openbao/` | Policy + template bao agent cho backend (mật khẩu role `cuu_tro_app`) | Có (#29) |
+| `workflow/` | Backend Python: Temporal worker (`PhanCongCuuHo`, `Hello`) + API FastAPI khởi chạy workflow qua gateway `/workflow/*` (#29); consumer cảm biến NATS JetStream + bộ giả lập trạm đo MQTT (#30); pytest | Có (#29, #30) |
+| `compose.yaml` | Dịch vụ `cuu-tro-worker`, `cuu-tro-api`, `cuu-tro-cam-bien`, `bao-agent-cuu-tro` (profile `app`), `cuu-tro-gia-lap` (profile `gia-lap`), lõi nạp bằng `include` | Có (#29, #30) |
+| `openbao/` | Policy + template bao agent cho backend (mật khẩu role `cuu_tro_app`, NATS/MQTT) | Có (#29, #30) |
+| `nats/streams.json` | Khai báo stream/consumer JetStream của ứng dụng (tạo khi `cuu-tro-cam-bien` khởi động) | Có (#30) |
 | `web/` | Web điều phối Nuxt 3 + MapLibre | Tuần 3 |
 | `mobile/` | App hiện trường Flutter | Tuần 5 |
 
@@ -27,6 +28,7 @@ erDiagram
   supplies ||--o{ supply_movements : "phiếu nhập/xuất"
   shelters ||--o{ supply_movements : "nơi nhận"
   rescue_teams ||--o{ team_members : "thành viên"
+  sensors ||--o{ sensor_readings : "chuỗi đo"
 
   incidents {
     uuid id PK
@@ -78,7 +80,15 @@ erDiagram
     numeric warning_threshold
     numeric danger_threshold ">= warning"
     numeric last_value
-    text ngsi_ld_id "Scorpio (#30)"
+    text ngsi_ld_id "Scorpio (tuần 4)"
+  }
+  sensor_readings {
+    bigint id PK
+    uuid sensor_id FK
+    timestamptz observed_at "UK cùng sensor_id"
+    numeric value
+    text level "binh_thuong|canh_bao|nguy_hiem"
+    timestamptz received_at
   }
 ```
 
@@ -96,7 +106,7 @@ Mọi bảng có `created_at`, `updated_at` (trigger tự cập nhật), khóa c
 
 Vì sao trigger mà không phải exclusion constraint: điều kiện "trong 6 giờ" và "tin cũ còn mở" phụ thuộc thời điểm và trạng thái, exclusion constraint (GiST) chỉ so được giá trị cố định của hai dòng.
 
-Phiếu nhập/xuất và leaf sổ cái (#28) không chứa dữ liệu cá nhân (D-007). Chuỗi đo cảm biến theo thời gian để ở #30.
+Phiếu nhập/xuất và leaf sổ cái (#28) không chứa dữ liệu cá nhân (D-007). Chuỗi đo cảm biến: bảng `sensor_readings` (#30, mục "Cảm biến" bên dưới).
 
 ### Chạy
 ```bash
@@ -126,7 +136,8 @@ R = đọc, C = tạo, U = sửa, D = xóa, – = không có (bảng không xu�
 | `shelters` | R · C · U | R | R |
 | `supplies` | R · C · U thông tin mặt hàng (**không** sửa `quantity`) | – | R |
 | `supply_movements` | R · C (phiếu bất biến, không U/D) | – | – |
-| `sensors` | R · U tên, ngưỡng, bật/tắt | R | – |
+| `sensors` | R · U tên, ngưỡng, bật/tắt | R | R thông tin công khai của trạm (#30) |
+| `sensor_readings` | R (quan hệ `sensor`, `sensors.readings`) | R | R (tối đa 500 dòng/truy vấn) |
 | `incident_dedup_config` | không track: không vai trò nào thấy | | |
 
 Cột hệ thống gán từ token, client không tự đặt được: `incidents.created_by`, `supply_movements.created_by` = `X-Hasura-User-Id` (sub Keycloak). Tồn kho chỉ đổi qua phiếu nhập/xuất (trigger, sổ cái #28); cột `ledger_*` và giá trị đo cảm biến do dịch vụ nội bộ ghi (#28, #30), không qua vai trò người dùng.
@@ -239,3 +250,67 @@ uv lock && uv export --frozen --no-dev --no-emit-project -o requirements.txt
 ```
 
 Test: logic thuần (chọn đội, chuyển trạng thái), workflow trên máy chủ test của `temporalio` (tự tua thời gian để thử quá hạn; activity thay bằng bản giả trong bộ nhớ), kiểm JWT/vai trò của API bằng khóa RSA sinh tại chỗ. Lần chạy đầu `temporalio` tải máy chủ test về thư mục tạm. Kiểm thử thật qua gateway: `scripts/smoke-workflow.sh` (trong `make smoke`).
+
+## Cảm biến mực nước (`workflow/cuu_tro_workflow/cam_bien*.py`, `gia_lap.py`, #30)
+
+Luồng IT/OT của ứng dụng: thiết bị (ở đây là bộ giả lập) gửi MQTT vào NATS của lõi, consumer của ứng dụng ghi chuỗi đo vào PostgreSQL và phát cảnh báo khi nước vượt ngưỡng. Lõi chỉ cung cấp NATS có xác thực (user `cuu-tro-thiet-bi` chỉ gửi được vào `cuu-tro.>`, chỉ qua MQTT), không biết topic nào. Vì sao làm vậy và ánh xạ nguyên lý B2: `docs/architecture.md` mục 7.4.
+
+```mermaid
+flowchart LR
+  gl["cuu-tro-gia-lap<br/>(hoặc trạm đo thật)"] -->|"MQTT QoS 1, user cuu-tro-thiet-bi<br/>cuu-tro/cam-bien/AL-MN-02/muc-nuoc"| nats["NATS :1883 (lõi)<br/>topic → subject<br/>cuu-tro.cam-bien.AL-MN-02.muc-nuoc"]
+  nats --> st[("Stream CUU_TRO_CAM_BIEN<br/>file, 7 ngày, 256 MiB")]
+  st -->|"consumer bền ghi-csdl<br/>pull, ack thủ công"| cs["cuu-tro-cam-bien<br/>kiểm payload, so ngưỡng"]
+  cs -->|"role cuu_tro_app, 1 transaction"| db[("sensor_readings<br/>sensors.last_*")]
+  cs -->|"mức tăng lên canh_bao / nguy_hiem<br/>Nats-Msg-Id chống trùng"| cb[("Stream CUU_TRO_CANH_BAO<br/>cuu-tro.canh-bao.cam-bien.&lt;ma_tram&gt;")]
+  cb -.->|"tuần 4–5"| ag["agent cảnh báo<br/>Temporal → Telegram / Centrifugo"]
+  db -->|"/graphql qua APISIX"| ui["dieu-phoi · cuu-ho · tinh-nguyen"]
+```
+
+### Topic và payload
+
+| | Giá trị |
+|---|---|
+| Topic MQTT | `cuu-tro/cam-bien/<ma_tram>/<dai_luong>`, `<dai_luong>` ∈ `muc-nuoc` (cm), `luong-mua` (mm), `gio` (m/s); `<ma_tram>` theo `sensors.code` (`^[A-Z0-9][A-Z0-9_-]{1,31}$`) |
+| Subject NATS | như topic, `/` thành `.`: `cuu-tro.cam-bien.AL-MN-02.muc-nuoc` |
+| Payload | `{"ma_tram": "AL-MN-02", "gia_tri": 215.3, "don_vi": "cm", "thoi_diem": "2026-10-20T08:00:00.000+07:00"}` |
+| Sự kiện cảnh báo | subject `cuu-tro.canh-bao.cam-bien.<ma_tram>`, payload `{"loai": "vuot_nguong", "ma_tram", "ten_tram", "dai_luong", "muc", "muc_truoc", "gia_tri", "nguong", "don_vi", "thoi_diem"}` |
+
+Kiểm tra bản tin (`cam_bien.phan_tich`, có pytest): `ma_tram` trùng topic; `don_vi` đúng đại lượng; `gia_tri` là số hữu hạn trong [-1000, 100000], làm tròn 2 chữ số; `thoi_diem` ISO 8601 **có múi giờ**, không sớm hơn 7 ngày, không muộn hơn 5 phút so với lõi; tối đa 4 KiB; trạm phải có trong `sensors`, đang bật, đúng loại/đơn vị. Sai thì consumer bỏ bản tin (`term`, không giao lại) và ghi log cảnh báo; lỗi CSDL thì `nak` để JetStream giao lại sau 5 giây (tối đa 5 lần).
+
+Mức: `nguy_hiem` khi `gia_tri >= danger_threshold`, `canh_bao` khi `>= warning_threshold`, ngược lại `binh_thuong` (ngưỡng NULL thì bỏ qua mức đó). Chỉ phát cảnh báo khi mức **tăng** so với lần đo liền trước và bản tin là lần đo mới nhất: nước vẫn trên ngưỡng hay rút xuống không phát lại, bản tin gửi bù cũ không phát. Bản tin giao lại (chưa kịp ack) không tạo dòng trùng (`UNIQUE (sensor_id, observed_at)`) và không phát cảnh báo trùng (`Nats-Msg-Id` trong cửa sổ 2 phút).
+
+Stream và consumer khai báo ở `nats/streams.json`; `cuu-tro-cam-bien` tạo hoặc cập nhật khi khởi động.
+
+### Chạy bộ giả lập
+
+```bash
+make up                     # lõi + app: NATS có xác thực, consumer cuu-tro-cam-bien
+make gia-lap                # một bản tin bình thường cho mỗi trạm mẫu (AL-MN-01, AL-MN-02, AL-LM-01)
+make gia-lap-vuot-nguong    # một bản tin trên ngưỡng nguy hiểm cho mỗi trạm → sự kiện cảnh báo
+# Chạy liên tục (mỗi 10 giây; kịch bản vuot-nguong: nước lên dần trong 6 chu kỳ rồi giữ)
+GIA_LAP_KICH_BAN=vuot-nguong docker compose --profile core --profile app --profile gia-lap up -d cuu-tro-gia-lap
+docker compose --profile core --profile app run --rm --no-deps cuu-tro-gia-lap python -m cuu_tro_workflow.gia_lap --help
+```
+
+Bộ giả lập chạy trong container chỉ có mật khẩu thiết bị (`bao-agent-cuu-tro` render vào volume tmpfs riêng `secrets-cuu-tro-thiet-bi`). Chạy từ máy host thì dùng cổng `127.0.0.1:${NATS_MQTT_PORT}` (thiết bị trong LAN: `NATS_MQTT_BIND=0.0.0.0`, chưa TLS):
+
+```bash
+export MQTT_PASSWORD=$(curl -s -H "X-Vault-Token: $(cat .data/openbao/root.token)" \
+  http://127.0.0.1:8200/v1/secret/data/app/cuu-tro/nats | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["data"]["device_password"])')
+cd apps/cuu-tro/workflow && MQTT_HOST=127.0.0.1 MQTT_USERNAME=cuu-tro-thiet-bi uv run python -m cuu_tro_workflow.gia_lap --mot-lan
+```
+
+Xem kết quả:
+
+```bash
+docker compose logs -f cuu-tro-cam-bien     # "cảnh báo AL-MN-02: binh_thuong → nguy_hiem (420.0 cm)"
+docker compose exec cuu-tro-cam-bien bash /opt/dxos/env-from-files.sh /run/secrets/dxos \
+  python -m cuu_tro_workflow.cam_bien_consumer canh-bao-cuoi AL-MN-02
+```
+
+```graphql
+query ChuoiDo { sensors { code last_value last_observed_at
+  readings(order_by: {observed_at: desc}, limit: 10) { observed_at value level } } }
+```
+
+Kiểm thử thật: `scripts/smoke-cam-bien.sh` (trong `make smoke`). NGSI-LD (Scorpio, bản sao số trạm đo) nối vào luồng này ở tuần 4: consumer thứ hai trên cùng stream cập nhật thực thể `sensors.ngsi_ld_id`, không đổi thiết bị hay topic.

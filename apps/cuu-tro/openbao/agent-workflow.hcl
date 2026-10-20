@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # bao agent cho backend apps/cuu-tro (#29): AppRole "app-cuu-tro-workflow". Render chuỗi kết nối
-# PostgreSQL bằng role dịch vụ cuu_tro_app (không phải superuser, không phải role hasura).
+# PostgreSQL bằng role dịch vụ cuu_tro_app (không phải superuser, không phải role hasura), và (#30)
+# NATS_URL cho backend (user cuu-tro-app), MQTT_PASSWORD cho bộ giả lập (user cuu-tro-thiet-bi,
+# volume riêng /out/cuu-tro-thiet-bi: worker/API/consumer không mount, không thấy mật khẩu thiết bị).
 # Tên role/CSDL lấy từ biến môi trường của agent (apps/cuu-tro/compose.yaml).
 
 vault {
@@ -30,4 +32,16 @@ template {
   destination = "/out/cuu-tro/APP_DB_URL"
   perms       = "0444"
   contents    = "{{ with secret \"secret/data/app/cuu-tro/db\" }}postgres://{{ env \"APP_DB_USER\" }}:{{ .Data.data.password | urlquery }}@postgres:5432/{{ env \"POSTGRES_DB\" }}{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro/NATS_URL"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/nats\" }}nats://cuu-tro-app:{{ .Data.data.app_password | urlquery }}@nats:4222{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro-thiet-bi/MQTT_PASSWORD"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/nats\" }}{{ .Data.data.device_password }}{{ end }}"
 }

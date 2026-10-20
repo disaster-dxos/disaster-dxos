@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-# Backend nghiệp vụ của apps/cuu-tro (#29): Temporal worker + API mỏng khởi chạy workflow.
+# Backend nghiệp vụ của apps/cuu-tro (#29): Temporal worker + API mỏng khởi chạy workflow;
+# luồng cảm biến mực nước (#30): giả lập MQTT, consumer NATS JetStream ghi chuỗi đo.
 # Phụ thuộc ghim phiên bản; khóa đầy đủ (kể cả phụ thuộc gián tiếp, kèm hash) ở uv.lock.
 # requirements.txt sinh từ uv.lock cho image Docker và job CI pytest:
 #   uv lock && uv export --frozen --no-dev --no-emit-project -o requirements.txt
@@ -16,6 +17,9 @@ dependencies = [
   "asyncpg==0.32.0",
   "pyjwt[crypto]==2.15.1",
   "httpx==0.28.1",
+  # Cảm biến (#30): consumer JetStream và bộ giả lập gửi MQTT
+  "nats-py==2.16.0",
+  "paho-mqtt==2.1.0",
 ]
 
 [dependency-groups]
