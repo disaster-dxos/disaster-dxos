@@ -12,11 +12,12 @@ Cấu trúc một ứng dụng (điểm cắm vào lõi):
 ```
 apps/<tên>/
 ├── keycloak/realm.json     # realm: vai trò, client, người dùng mẫu (bắt buộc)
-├── db/migrations/          # schema nghiệp vụ (tuần 2)
+├── db/migrations/          # schema nghiệp vụ, SQL đánh số NNNN_<tên>.sql (container migrate)
+├── db/seed/                # dữ liệu mẫu (dữ liệu giả), make seed
+├── db/tests/               # kiểm thử ràng buộc, make test-db
 ├── hasura/metadata/        # quyền GraphQL theo vai trò (tuần 2)
 ├── gateway/routes.yaml     # route APISIX riêng của ứng dụng (tuần 2)
 ├── workflows/              # worker Temporal (Python)
-├── seed/                   # dữ liệu mẫu (dữ liệu giả)
 └── web/, mobile/           # giao diện người dùng cuối
 ```
 

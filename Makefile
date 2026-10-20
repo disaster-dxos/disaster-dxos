@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: up up-bi down logs ps seed license check lint smoke bao-init bao-unseal bao-status
+.PHONY: up up-bi down logs ps migrate seed test-db license check lint smoke bao-init bao-unseal bao-status
 
 # Dùng .env nếu có, nếu không thì .env.example (để CI/máy sạch vẫn kiểm được compose)
 ENV_FILE := $(if $(wildcard .env),.env,.env.example)
@@ -21,11 +21,12 @@ bao-status:    ## Trạng thái seal của OpenBao
 up-bi:         ## Grafana (tuần 4)
 	docker compose --profile bi up -d --build
 
-smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS (cần make up trước)
+smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS, ràng buộc DB ứng dụng (cần make up trước)
 	bash scripts/smoke-openbao.sh
 	bash scripts/smoke-jwt.sh
 	bash scripts/smoke-gateway.sh
 	bash scripts/smoke-core.sh
+	docker compose --profile core run --rm --no-deps migrate test
 
 down:
 	docker compose --profile '*' down
@@ -36,8 +37,14 @@ logs:
 ps:
 	docker compose ps
 
-seed:          ## Bơm dữ liệu mẫu — điền lệnh khi có script (npm run seed / python seed_data.py)
-	@echo "TODO: Sprint 2 — xem db/seed/README.md"
+migrate:       ## Áp migration SQL của apps/$$DXOS_APP/db/migrations (make up tự chạy; chạy lại không lỗi)
+	docker compose --profile core run --rm --no-deps migrate migrate
+
+seed:          ## Nạp dữ liệu giả apps/$$DXOS_APP/db/seed (chạy lại được, cần make up trước)
+	docker compose --profile core run --rm --no-deps migrate seed
+
+test-db:       ## Kiểm thử ràng buộc schema ứng dụng (apps/$$DXOS_APP/db/tests, ROLLBACK sau khi chạy)
+	docker compose --profile core run --rm --no-deps migrate test
 
 license:       ## Thêm header SPDX cho file mới
 	bash scripts/add-license-header.sh

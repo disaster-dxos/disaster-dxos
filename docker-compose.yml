@@ -219,6 +219,33 @@ services:
       - secrets-postgres:/run/secrets/dxos:ro
     mem_limit: 128m
 
+  migrate:
+    # Chạy một lần mỗi lần up, sau postgres-roles: áp migration SQL của ứng dụng đang chọn
+    # (apps/${DXOS_APP}/db/migrations) vào schema riêng của ứng dụng (#25). Lõi chỉ biết quy ước
+    # thư mục, không biết bảng nào. Chạy lại không lỗi (lịch sử + checksum ở dxos_meta).
+    # Seed: make seed · kiểm thử ràng buộc: make test-db. Script: core/postgres/migrate.sh
+    image: postgis/postgis:17-3.5
+    platform: ${POSTGIS_PLATFORM:-linux/amd64}
+    profiles: [core]
+    restart: "no"
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos", "bash", "/opt/dxos/migrate.sh"]
+    command: ["migrate"]
+    depends_on:
+      postgres-roles:
+        condition: service_completed_successfully
+    environment:
+      SECRETS_REQUIRED: POSTGRES_PASSWORD
+      POSTGRES_USER: ${POSTGRES_USER:?Thiếu POSTGRES_USER trong .env}
+      POSTGRES_DB: ${POSTGRES_DB:-disaster}
+      DXOS_APP: ${DXOS_APP:-cuu-tro}
+      HASURA_DB_USER: ${HASURA_DB_USER:-hasura}
+    volumes:
+      - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - ./core/postgres/migrate.sh:/opt/dxos/migrate.sh:ro
+      - ./apps/${DXOS_APP:-cuu-tro}/db:/opt/dxos/app-db:ro
+      - secrets-postgres:/run/secrets/dxos:ro
+    mem_limit: 128m
+
   keycloak:
     <<: *restart
     image: quay.io/keycloak/keycloak:26.8.1
@@ -314,6 +341,9 @@ services:
     command: ["serve"]
     depends_on:
       postgres-roles:
+        condition: service_completed_successfully
+      # Bảng của ứng dụng có trước khi Hasura nạp metadata (#26)
+      migrate:
         condition: service_completed_successfully
       keycloak:
         condition: service_healthy
