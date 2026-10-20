@@ -12,6 +12,11 @@ Client gọi qua API Gateway: APISIX route /workflow/* kiểm JWT + WAF + rate l
   POST /tai-len/su-co/{incident_id}/anh   body = nội dung ảnh (route gateway /workflow/tai-len/*)
   GET  /su-co/{incident_id}/anh           liệt kê ảnh của tin kèm link xem ngắn hạn
   GET  /anh/{media_id}/link?han_giay=N    link xem presigned ngắn hạn cho một ảnh
+Sổ cái minh bạch (#28, luồng: cuu_tro_workflow/so_cai.py, apps/cuu-tro/README.md):
+  POST /kho/phieu                   lập phiếu nhập/xuất (chỉ dieu-phoi) rồi ghi lá lên sổ cái
+  POST /kho/phieu/{id}/ghi-so       ghi lại sổ cái cho phiếu chưa ghi (chỉ dieu-phoi; gửi lại an toàn)
+  GET  /minh-bach/phieu/{ma}        CÔNG KHAI, không cần đăng nhập (route /workflow/minh-bach/*):
+                                    bản ghi không định danh + trạng thái xác minh trên sổ cái
 "Cuu-ho của đội được gán" không viết lại luật ở đây: API hỏi Hasura qua gateway bằng chính JWT
 người dùng; luật lọc theo đội của Hasura metadata (#26) trả null thì người dùng không có quyền.
 """
@@ -23,7 +28,8 @@ import uuid
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Any
+from decimal import Decimal
+from typing import Annotated, Any, Literal
 
 import asyncpg
 import httpx
@@ -34,7 +40,7 @@ from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError
 
-from . import anh, config
+from . import anh, config, so_cai
 from .auth import VAI_TRO_CUU_HO, VAI_TRO_DIEU_PHOI, NguoiDung, XacThuc, can_vai_tro
 from .s3 import KhoAnh, LoiS3
 from .logic import ThamSoPhanCong, TrangThaiPhanCong, XacNhan
@@ -77,6 +83,47 @@ class SoAnh:
         return {"uploaded_at": row["uploaded_at"].isoformat(), "scan_status": row["scan_status"]}
 
 
+class SoPhieu:
+    """Phiếu nhập/xuất bằng role dịch vụ cuu_tro_app (migration 0006): lập phiếu, đọc lại để băm,
+    điền ledger_* một lần. Không đọc created_by (người lập phiếu không lên trang công khai)."""
+
+    _COT = """m.id, m.supply_id, m.direction, m.quantity, m.note, m.shelter_id, m.created_at,
+              m.ledger_index, m.ledger_leaf_hash, m.ledger_logged_at"""
+
+    def __init__(self, pool: asyncpg.Pool) -> None:
+        self._pool = pool
+
+    async def them(self, *, supply_id: str, direction: str, quantity: Decimal, note: str | None,
+                   shelter_id: str | None, created_by: str) -> dict[str, Any]:
+        row = await self._pool.fetchrow(
+            f"""INSERT INTO cuu_tro.supply_movements AS m (supply_id, direction, quantity, note, shelter_id, created_by)
+                VALUES ($1, $2, $3, $4, $5, $6) RETURNING {self._COT}""",
+            uuid.UUID(supply_id), direction, quantity, note, uuid.UUID(shelter_id) if shelter_id else None, created_by,
+        )
+        return dict(row)
+
+    async def doc(self, ma: str) -> dict[str, Any] | None:
+        row = await self._pool.fetchrow(
+            f"""SELECT {self._COT}, s.item_name, s.unit, s.storage_name, sh.name AS shelter_name
+                  FROM cuu_tro.supply_movements m
+                  JOIN cuu_tro.supplies s ON s.id = m.supply_id
+                  LEFT JOIN cuu_tro.shelters sh ON sh.id = m.shelter_id
+                 WHERE m.id = $1""",
+            uuid.UUID(ma),
+        )
+        return dict(row) if row else None
+
+    async def ghi_so(self, ma: str, index: int, leaf_hash: bytes) -> datetime | None:
+        """Điền ledger_* nếu phiếu chưa ghi; None nếu đã có (trigger 0001 chặn ghi đè)."""
+        return await self._pool.fetchval(
+            """UPDATE cuu_tro.supply_movements
+                  SET ledger_index = $2, ledger_leaf_hash = $3, ledger_logged_at = now()
+                WHERE id = $1 AND ledger_index IS NULL
+            RETURNING ledger_logged_at""",
+            uuid.UUID(ma), index, leaf_hash,
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     cfg = config.load()
@@ -87,13 +134,19 @@ async def lifespan(app: FastAPI):
     if not hasattr(st, "temporal"):
         st.temporal = await Client.connect(cfg.temporal_address, namespace=cfg.temporal_namespace)
     pool = None
-    if not hasattr(st, "so_anh") and cfg.db_url:
+    if not (hasattr(st, "so_anh") and hasattr(st, "so_phieu")) and cfg.db_url:
         pool = await asyncpg.create_pool(cfg.db_url, min_size=0, max_size=4)
-        st.so_anh = SoAnh(pool)
+        if not hasattr(st, "so_anh"):
+            st.so_anh = SoAnh(pool)
+        if not hasattr(st, "so_phieu"):
+            st.so_phieu = SoPhieu(pool)
     try:
         async with httpx.AsyncClient(base_url=cfg.gateway_url, timeout=10) as http, \
-                httpx.AsyncClient(timeout=30) as http_s3:
+                httpx.AsyncClient(timeout=30) as http_s3, \
+                httpx.AsyncClient(base_url=cfg.ledger_url, timeout=20) as http_ledger:
             st.http = http
+            if not hasattr(st, "so_cai"):
+                st.so_cai = so_cai.SoCai(http_ledger, cfg.ledger_write_token, cfg.ledger_verifier_key)
             if not hasattr(st, "kho_anh"):
                 st.kho_anh = KhoAnh(endpoint=cfg.s3_endpoint, bucket=cfg.anh_bucket, access_key=cfg.s3_access_key,
                                     secret_key=cfg.s3_secret_key, gateway_public_url=cfg.gateway_public_url,
@@ -321,6 +374,113 @@ async def link_anh(
     _tu_choi(anh.quyen_xem(vai_tro, m))
     response.headers["Cache-Control"] = "no-store"
     return {**m, "link": _link(request, m["object_key"], han_giay or toi_da)}
+
+
+# ---------------- Sổ cái minh bạch (#28) ----------------
+# Khai báo trước GET /{workflow_id}; mọi path dưới đều có nhiều đoạn.
+
+class PhieuVao(BaseModel):
+    supply_id: uuid.UUID
+    direction: Literal["nhap", "xuat"]
+    quantity: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    # Ghi chú hiện trên trang công khai: lý do/chứng từ, KHÔNG ghi tên, SĐT, CCCD
+    note: str | None = Field(None, max_length=200)
+    shelter_id: uuid.UUID | None = None
+
+
+async def ghi_so_phieu(st: Any, dong: dict[str, Any]) -> dict[str, Any]:
+    """Gửi lá của phiếu lên sổ cái và điền ledger_*. Lỗi sổ cái → phiếu vẫn còn, trạng thái chua_ghi_so."""
+    ban_ghi = so_cai.ban_ghi_chuan_hoa(dong)
+    try:
+        kq = await st.so_cai.ghi(so_cai.la_cho_phieu(ban_ghi))
+    except so_cai.LoiSoCai as e:
+        log.error("ghi sổ cái phiếu %s lỗi: %s", ban_ghi["id"], e)
+        return {"trang_thai": so_cai.CHUA_GHI_SO, "loi": str(e)}
+    lh = bytes.fromhex(kq["leaf_hash"])
+    luc = await st.so_phieu.ghi_so(ban_ghi["id"], kq["index"], lh)
+    return {"trang_thai": "da_ghi", "index": kq["index"], "leaf_hash": kq["leaf_hash"],
+            "tree_size": kq.get("tree_size"), "trung": bool(kq.get("duplicate")),
+            "logged_at": luc.isoformat() if luc else None}
+
+
+def _phieu_ra(dong: dict[str, Any]) -> dict[str, Any]:
+    ban_ghi = so_cai.ban_ghi_chuan_hoa(dong)
+    return {"ban_ghi_chuan_hoa": ban_ghi, "sha256": so_cai.sha256_ban_ghi(ban_ghi)}
+
+
+@app.post("/kho/phieu", status_code=201)
+async def lap_phieu(request: Request, vao: PhieuVao, nd: NguoiDungDep, response: Response) -> dict[str, Any]:
+    can_vai_tro(nd, VAI_TRO_DIEU_PHOI)
+    if so_cai.co_so_dinh_danh(vao.note):
+        raise HTTPException(422, "Ghi chú hiện công khai: không ghi SĐT, CCCD (dãy số bắt đầu bằng 0)")
+    st = request.app.state
+    try:
+        dong = await st.so_phieu.them(
+            supply_id=str(vao.supply_id), direction=vao.direction, quantity=vao.quantity,
+            note=vao.note or None, shelter_id=str(vao.shelter_id) if vao.shelter_id else None,
+            created_by=nd.ten_dang_nhap or nd.sub,
+        )
+    except asyncpg.CheckViolationError as e:
+        raise HTTPException(409, "Xuất quá số lượng tồn kho") from e
+    except asyncpg.ForeignKeyViolationError as e:
+        raise HTTPException(404, "Không có mặt hàng hoặc điểm nhận này") from e
+    ghi = await ghi_so_phieu(st, dong)
+    if ghi["trang_thai"] != "da_ghi":
+        # Phiếu đã lập (tồn kho đã đổi) nhưng chưa lên sổ cái: gọi lại POST /kho/phieu/{id}/ghi-so
+        response.status_code = 202
+    return {**_phieu_ra(dong), "so_cai": ghi}
+
+
+@app.post("/kho/phieu/{ma}/ghi-so")
+async def ghi_lai_so(request: Request, ma: uuid.UUID, nd: NguoiDungDep, response: Response) -> dict[str, Any]:
+    can_vai_tro(nd, VAI_TRO_DIEU_PHOI)
+    st = request.app.state
+    dong = await st.so_phieu.doc(str(ma))
+    if dong is None:
+        raise HTTPException(404, f"Không có phiếu {ma}")
+    if dong["ledger_index"] is not None:
+        return {**_phieu_ra(dong), "so_cai": {"trang_thai": "da_ghi", "index": dong["ledger_index"],
+                                               "leaf_hash": bytes(dong["ledger_leaf_hash"]).hex()}}
+    ghi = await ghi_so_phieu(st, dong)
+    if ghi["trang_thai"] != "da_ghi":
+        response.status_code = 503
+    return {**_phieu_ra(dong), "so_cai": ghi}
+
+
+@app.get("/minh-bach/phieu/{ma}")
+async def minh_bach_phieu(request: Request, ma: str, response: Response) -> dict[str, Any]:
+    """Trang "Minh bạch cứu trợ": ai cũng tra được bằng mã phiếu, không cần đăng nhập."""
+    try:
+        ma = str(uuid.UUID(ma))
+    except ValueError as e:
+        raise HTTPException(404, "Mã phiếu không hợp lệ") from e
+    st = request.app.state
+    dong = await st.so_phieu.doc(ma)
+    if dong is None:
+        raise HTTPException(404, "Không có phiếu này")
+    ban_ghi = so_cai.ban_ghi_chuan_hoa(dong)
+    kq = await so_cai.xac_minh(st.so_cai, ban_ghi, dong["ledger_index"],
+                               bytes(dong["ledger_leaf_hash"]) if dong["ledger_leaf_hash"] is not None else None)
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "ma": ma,
+        "trang_thai": kq["trang_thai"],
+        "chi_tiet": kq["chi_tiet"],
+        "ban_ghi_chuan_hoa": ban_ghi,
+        "sha256": kq["sha256_ban_ghi"],
+        # Thông tin hiển thị kèm, KHÔNG nằm trong bản ghi đã băm (tên hàng/kho có thể đổi về sau)
+        "hien_thi": {"mat_hang": dong["item_name"], "don_vi": dong["unit"], "kho": dong["storage_name"],
+                     "diem_nhan": dong["shelter_name"]},
+        "so_cai": {
+            "index": dong["ledger_index"],
+            "leaf_hash": bytes(dong["ledger_leaf_hash"]).hex() if dong["ledger_leaf_hash"] is not None else None,
+            "logged_at": dong["ledger_logged_at"].isoformat() if dong["ledger_logged_at"] else None,
+            "checkpoint": kq.get("checkpoint"),
+            "la": kq.get("la"),
+        },
+        "tu_kiem_chung": "go run ./core/ledger/cmd/ledger-verify -log <gateway>/ledger/ -verifier <khóa công khai> "
+                         "-index <so_cai.index> -record <file lưu phản hồi này>",
+    }
 
 
 @app.get("/{workflow_id}")

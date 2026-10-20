@@ -41,6 +41,16 @@ upstreams:
       send: 35
       read: 35
 
+  - id: ledger
+    type: roundrobin
+    # Sổ cái minh bạch của lõi (#28): chỉ các đường đọc công khai đi qua gateway
+    nodes:
+      "ledger:8090": 1
+    timeout:
+      connect: 5
+      send: 15
+      read: 15
+
 routes:
   # ---------------- /graphql → Hasura /v1/graphql ----------------
   # Chỉ mở đúng một endpoint GraphQL. /v1/metadata, /v2/query, /console không có route ra ngoài.
@@ -202,6 +212,60 @@ routes:
       proxy-rewrite:
         regex_uri: ["^/workflow/(.*)", "/$1"]
       limit-count: *rate-limit
+
+  # ---------------- /workflow/minh-bach/* → trang công khai của ứng dụng (#28) ----------------
+  # Quy ước của lõi: đường /minh-bach/... của API ứng dụng là đường CÔNG KHAI, CHỈ ĐỌC (không cần
+  # đăng nhập), dành cho trang "Minh bạch cứu trợ": người dân tra mã phiếu, API trả bản ghi không định
+  # danh + trạng thái xác minh trên sổ cái. Ưu tiên hơn /workflow/* (priority). Không kiểm JWT; bỏ
+  # header Authorization (API không nhận token ở đường này); WAF + giới hạn tần suất như route API.
+  - id: workflow-public
+    uri: /workflow/minh-bach/*
+    priority: 10
+    methods: [GET, OPTIONS]
+    upstream_id: workflow-api
+    plugins:
+      request-id: {}
+      client-control: *api-body-limit
+      coraza-filter:
+        conf: *waf-api
+      cors: *cors
+      proxy-rewrite:
+        regex_uri: ["^/workflow/(.*)", "/$1"]
+        headers:
+          remove:
+            - Authorization
+      limit-count: *rate-limit
+
+  # ---------------- /ledger/* → sổ cái minh bạch (#28), CHỈ ĐỌC, công khai ----------------
+  # tlog-tiles (C2SP): /ledger/checkpoint (đã ký Ed25519), /ledger/tile/... (tile hash + entry bundle),
+  # /ledger/proof/{index} (inclusion proof), /ledger/verifier (khóa công khai). Ai cũng tải về tự kiểm
+  # được (core/ledger/cmd/ledger-verify). Không cần đăng nhập: lá không chứa dữ liệu cá nhân (D-007).
+  - id: ledger-read
+    uri: /ledger/*
+    methods: [GET, HEAD, OPTIONS]
+    upstream_id: ledger
+    plugins:
+      request-id: {}
+      client-control: *api-body-limit
+      coraza-filter:
+        conf: *waf-api
+      cors: *cors
+      proxy-rewrite:
+        headers:
+          remove:
+            - Authorization
+      limit-count: *rate-limit
+
+  # Ghi sổ cái (POST /ledger/entries) KHÔNG đi qua gateway: chỉ dịch vụ trong mạng nội bộ có token
+  # ghi (core/ledger). Mọi phương thức ghi từ ngoài bị chặn rõ ràng ở đây.
+  - id: ledger-write-deny
+    uri: /ledger/*
+    methods: [POST, PUT, PATCH, DELETE]
+    plugins:
+      serverless-pre-function:
+        phase: rewrite
+        functions:
+          - "return function(conf, ctx) local core = require('apisix.core'); core.response.exit(403, {message = 'Forbidden: ghi sổ cái chỉ từ dịch vụ nội bộ'}) end"
 
   # ---------------- /workflow/* → API workflow của ứng dụng (#29) ----------------
   # /workflow/<đường dẫn> → <app>-api:8000/<đường dẫn>. Gateway kiểm JWT + WAF + rate limit rồi chuyển

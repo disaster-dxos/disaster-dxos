@@ -10,6 +10,8 @@
 #   - S3 (#27): bucket khai báo ở apps/cuu-tro/s3/buckets.conf (s3-buckets của lõi tạo), định danh
 #     S3 cuu-tro-app chỉ dùng bucket cuu-tro-*, khóa secret/app/cuu-tro/s3; route /workflow/tai-len/*
 #     (body nhị phân) và /files/* (chỉ đọc, link presigned) của APISIX.
+#   - Sổ cái (#28): cuu-tro-api ghi lá lên core/ledger (ledger:8090, mạng nội bộ) bằng token
+#     secret/app/cuu-tro/ledger; trang công khai qua route /workflow/minh-bach/* (không JWT).
 # Không mở cổng nào ra máy host: client gọi API qua gateway, worker chỉ kéo việc từ Temporal,
 # consumer cảm biến chỉ kéo bản tin từ NATS. Thiết bị gửi MQTT vào cổng của lõi (nats:1883).
 
@@ -37,7 +39,7 @@ services:
       - secrets-cuu-tro-thiet-bi:/out/cuu-tro-thiet-bi
       - secrets-cuu-tro-api:/out/cuu-tro-api
     healthcheck:
-      test: ["CMD-SHELL", "test -s /out/cuu-tro/APP_DB_URL && test -s /out/cuu-tro/NATS_URL && test -s /out/cuu-tro-thiet-bi/MQTT_PASSWORD && test -s /out/cuu-tro-api/S3_SECRET_KEY"]
+      test: ["CMD-SHELL", "for f in cuu-tro/APP_DB_URL cuu-tro/NATS_URL cuu-tro-thiet-bi/MQTT_PASSWORD cuu-tro-api/S3_SECRET_KEY cuu-tro-api/LEDGER_WRITE_TOKEN; do test -s /out/$$f || exit 1; done"]
       interval: 5s
       timeout: 3s
       retries: 24
@@ -85,7 +87,8 @@ services:
     profiles: [app]
     # Kiểm JWT bằng JWKS công khai của Keycloak, hỏi Hasura bằng JWT người dùng. Ảnh hiện trường (#27):
     # APP_DB_URL (ghi incident_media) + khóa S3 của ứng dụng, volume riêng secrets-cuu-tro-api (không có
-    # mật khẩu NATS/MQTT). env-from-files.sh export rồi exec uvicorn.
+    # mật khẩu NATS/MQTT). Sổ cái (#28): LEDGER_WRITE_TOKEN để lập phiếu nhập/xuất rồi ghi lá lên
+    # core/ledger. env-from-files.sh export rồi exec uvicorn.
     entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos"]
     command: ["uvicorn", "cuu_tro_workflow.api:app", "--host", "0.0.0.0", "--port", "8000",
               "--root-path", "/workflow", "--no-server-header", "--no-access-log"]
@@ -101,12 +104,15 @@ services:
         condition: service_completed_successfully
       bao-agent-cuu-tro:
         condition: service_healthy
+      # Sổ cái của lõi (#28): phiếu nhập/xuất ghi lá ngay khi lập (migration 0006: quyền cuu_tro_app)
+      ledger:
+        condition: service_healthy
       # API không có worker thì workflow không chạy; cũng bảo đảm image đã build trước
       cuu-tro-worker:
         condition: service_started
     environment:
       <<: *cuu-tro-env
-      SECRETS_REQUIRED: APP_DB_URL S3_ACCESS_KEY S3_SECRET_KEY
+      SECRETS_REQUIRED: APP_DB_URL S3_ACCESS_KEY S3_SECRET_KEY LEDGER_WRITE_TOKEN
       KEYCLOAK_INTERNAL_URL: http://keycloak:8080
       KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-disaster}
@@ -123,6 +129,10 @@ services:
       ANH_MAX_BYTES: ${ANH_MAX_BYTES:-10485760}
       ANH_LINK_HAN_GIAY: ${ANH_LINK_HAN_GIAY:-300}
       GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL:-http://localhost:9080}
+      # Sổ cái (#28): ghi và lấy proof trong mạng nội bộ (APISIX chặn mọi phương thức ghi /ledger/*).
+      # Khóa công khai để tự kiểm chữ ký checkpoint; trống = lấy một lần từ ledger lúc chạy.
+      LEDGER_URL: http://ledger:8090
+      LEDGER_VERIFIER_KEY: ${LEDGER_VERIFIER_KEY:-}
     volumes:
       - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
       - secrets-cuu-tro-api:/run/secrets/dxos:ro

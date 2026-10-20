@@ -117,6 +117,49 @@ kv_seed() {
   log "secret/$path: đã tạo"
 }
 
+# ledger_key: sinh khóa ký checkpoint của sổ cái (#28, D-007) MỘT lần, khi secret/core/ledger còn
+# signing_key trống. Ed25519 bằng openssl, đóng gói theo định dạng note (golang.org/x/mod/sumdb/note):
+#   signing_key   PRIVATE+KEY+<origin>+<hash>+<base64(0x01 || seed)>
+#   verifier_key  <origin>+<hash>+<base64(0x01 || khóa công khai)>   (công khai, để tiện tra cứu)
+# hash = 4 byte đầu SHA-256(origin "\n" 0x01 khóa công khai). Origin (LEDGER_ORIGIN) là tên sổ cái ghi
+# trong mọi checkpoint. Khóa đi qua file tạm 0600 rồi stdin của curl, không lên dòng lệnh/màn hình.
+# Đổi khóa: xóa signing_key trong OpenBao rồi chạy lại (mọi người kiểm chứng phải nhận verifier mới).
+ledger_key() {
+  api_ok GET secret/data/core/ledger
+  if [ "$(jget 'bool(d["data"]["data"].get("signing_key"))' <<<"$BODY")" = True ]; then
+    log "secret/core/ledger: đã có khóa ký, giữ nguyên"
+    return 0
+  fi
+  local ver origin="${LEDGER_ORIGIN:-localhost/disaster-dxos/ledger}" tmp payload
+  ver=$(jget 'd["data"]["metadata"]["version"]' <<<"$BODY")
+  tmp=$(mktemp -d)
+  if ! openssl genpkey -algorithm ed25519 -out "$tmp/k.pem" 2>/dev/null; then
+    rm -rf "$tmp"
+    die "openssl không sinh được khóa Ed25519 (cần OpenSSL 1.1.1+ hoặc 3.x)"
+  fi
+  openssl pkey -in "$tmp/k.pem" -outform DER -out "$tmp/k.der"
+  openssl pkey -in "$tmp/k.pem" -pubout -outform DER -out "$tmp/p.der"
+  if ! payload=$(python3 -c '
+import base64, hashlib, json, re, sys
+origin, ver, kder, pder = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
+if not origin or re.search(r"[\s+]", origin):
+    sys.exit("LEDGER_ORIGIN không được rỗng, có khoảng trắng hay dấu +")
+seed = open(kder, "rb").read()[-32:]
+pub = open(pder, "rb").read()[-32:]
+h = hashlib.sha256(origin.encode() + b"\n" + b"\x01" + pub).digest()[:4].hex()
+sk = "PRIVATE+KEY+%s+%s+%s" % (origin, h, base64.b64encode(b"\x01" + seed).decode())
+vk = "%s+%s+%s" % (origin, h, base64.b64encode(b"\x01" + pub).decode())
+print(json.dumps({"options": {"cas": ver}, "data": {"signing_key": sk, "verifier_key": vk}}))
+' "$origin" "$ver" "$tmp/k.der" "$tmp/p.der"); then
+    rm -rf "$tmp"
+    die "không đóng gói được khóa ký sổ cái"
+  fi
+  rm -rf "$tmp"
+  api_ok POST secret/data/core/ledger - <<<"$payload"
+  payload=''
+  log "secret/core/ledger: đã sinh khóa ký checkpoint Ed25519 (origin $origin)"
+}
+
 do_setup() {
   [ -s "$DIR/root.token" ] || die "không có $DIR/root.token (cần root token để cấu hình)"
   ROOT_TOKEN=$(cat "$DIR/root.token")
@@ -138,8 +181,9 @@ do_setup() {
   kv_seed core/hasura         admin_secret=HASURA_GRAPHQL_ADMIN_SECRET
   kv_seed core/temporal-db    password=@rand:24
   kv_seed core/s3             access_key=@rand:10 secret_key=@rand:24
-  # Khóa ký checkpoint Tessera (#28, sinh bằng core/ledger)
+  # Khóa ký checkpoint Tessera (#28): tạo chỗ trống rồi ledger_key sinh khóa đúng một lần
   kv_seed core/ledger         signing_key=@empty
+  ledger_key
   # Role DB dịch vụ của ứng dụng Tầng 2 đang chọn (<schema>_app, #29): postgres-roles tạo role,
   # backend của ứng dụng (worker) đăng nhập bằng role này. Lõi chỉ biết quy ước tên, không biết nghiệp vụ.
   kv_seed "app/$APP/db"       password=@rand:24
@@ -149,6 +193,9 @@ do_setup() {
   # Khóa S3 của ứng dụng (#27): bao-agent-seaweedfs render thành định danh <APP>-app, chỉ dùng được
   # bucket "<APP>-*"; backend của ứng dụng (API ảnh hiện trường) ký request S3 bằng khóa này.
   kv_seed "app/$APP/s3"       access_key=@rand:10 secret_key=@rand:24
+  # Token ghi sổ cái của backend ứng dụng (#28): bao-agent-ledger render thành danh sách dịch vụ được
+  # POST /ledger/entries ("<APP>-api <token>"), bao agent của ứng dụng render cho <APP>-api.
+  kv_seed "app/$APP/ledger"   write_token=@rand:32
 
   # AppRole
   api_ok GET sys/auth

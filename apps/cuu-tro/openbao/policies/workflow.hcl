@@ -17,3 +17,9 @@ path "secret/data/app/cuu-tro/nats" {
 path "secret/data/app/cuu-tro/s3" {
   capabilities = ["read"]
 }
+
+# Sổ cái (#28): bao-agent-cuu-tro render token ghi sổ cái cho cuu-tro-api. Khóa ký checkpoint
+# (secret/core/ledger) KHÔNG đọc được: chỉ dịch vụ ledger của lõi có.
+path "secret/data/app/cuu-tro/ledger" {
+  capabilities = ["read"]
+}

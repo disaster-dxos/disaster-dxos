@@ -20,6 +20,8 @@ dependencies = [
   # Cảm biến (#30): consumer JetStream và bộ giả lập gửi MQTT
   "nats-py==2.16.0",
   "paho-mqtt==2.1.0",
+  # Sổ cái (#28): kiểm chữ ký Ed25519 của checkpoint (đã có sẵn qua pyjwt[crypto], khai báo trực tiếp)
+  "cryptography==50.0.2",
 ]
 
 [dependency-groups]

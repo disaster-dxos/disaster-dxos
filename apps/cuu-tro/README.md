@@ -6,13 +6,13 @@
 | Thư mục | Nội dung | Trạng thái |
 |---|---|---|
 | `keycloak/realm.json` | Realm `disaster`: vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen`; client `dxos-gateway`, `dxos-web`, `dxos-dev-cli` (chỉ dev); 3 người dùng mẫu, mật khẩu lấy từ `.env` | Có |
-| `db/migrations/` | Schema `cuu_tro`: `incidents`, `rescue_teams`, `shelters`, `supplies`, `supply_movements`, `sensors` (PostGIS); `team_members` (#26); `sensor_readings` chuỗi đo cảm biến (#30); `incident_media` ảnh hiện trường (#27) | Có (#25, #26, #30, #27) |
+| `db/migrations/` | Schema `cuu_tro`: `incidents`, `rescue_teams`, `shelters`, `supplies`, `supply_movements`, `sensors` (PostGIS); `team_members` (#26); `sensor_readings` chuỗi đo cảm biến (#30); `incident_media` ảnh hiện trường (#27); quyền lập phiếu + ghi sổ cái cho `cuu_tro_app` (#28) | Có (#25, #26, #30, #27, #28) |
 | `db/seed/` | Dữ liệu giả xã An Lạc (giả định) | Có (#25) |
-| `db/tests/` | Kiểm thử ràng buộc (Poka-yoke, CHECK, quyền theo search_path, quyền role `cuu_tro_app`, chuỗi đo cảm biến, ảnh hiện trường) | Có (#25, #26, #29, #30, #27) |
+| `db/tests/` | Kiểm thử ràng buộc (Poka-yoke, CHECK, quyền theo search_path, quyền role `cuu_tro_app`, chuỗi đo cảm biến, ảnh hiện trường, phiếu kho + sổ cái) | Có (#25, #26, #29, #30, #27, #28) |
 | `hasura/metadata/` | Metadata Hasura: bảng track, quan hệ, quyền theo vai trò JWT | Có (#26) |
-| `workflow/` | Backend Python: Temporal worker (`PhanCongCuuHo`, `Hello`) + API FastAPI khởi chạy workflow qua gateway `/workflow/*` (#29); consumer cảm biến NATS JetStream + bộ giả lập trạm đo MQTT (#30); API ảnh hiện trường (#27); pytest | Có (#29, #30, #27) |
+| `workflow/` | Backend Python: Temporal worker (`PhanCongCuuHo`, `Hello`) + API FastAPI khởi chạy workflow qua gateway `/workflow/*` (#29); consumer cảm biến NATS JetStream + bộ giả lập trạm đo MQTT (#30); API ảnh hiện trường (#27); phiếu nhập/xuất → sổ cái minh bạch + trang công khai (#28); pytest | Có (#29, #30, #27, #28) |
 | `compose.yaml` | Dịch vụ `cuu-tro-worker`, `cuu-tro-api`, `cuu-tro-cam-bien`, `bao-agent-cuu-tro` (profile `app`), `cuu-tro-gia-lap` (profile `gia-lap`), lõi nạp bằng `include` | Có (#29, #30, #27) |
-| `openbao/` | Policy + template bao agent cho backend (mật khẩu role `cuu_tro_app`, NATS/MQTT, khóa S3 của ứng dụng) | Có (#29, #30, #27) |
+| `openbao/` | Policy + template bao agent cho backend (mật khẩu role `cuu_tro_app`, NATS/MQTT, khóa S3 của ứng dụng, token ghi sổ cái) | Có (#29, #30, #27, #28) |
 | `s3/buckets.conf` | Bucket S3 của ứng dụng (`cuu-tro-media`), lõi tạo khi `make up` | Có (#27) |
 | `nats/streams.json` | Khai báo stream/consumer JetStream của ứng dụng (tạo khi `cuu-tro-cam-bien` khởi động) | Có (#30) |
 | `web/` | Web điều phối Nuxt 3 + MapLibre | Tuần 3 |
@@ -136,13 +136,13 @@ R = đọc, C = tạo, U = sửa, D = xóa, – = không có (bảng không xu�
 | `team_members` | R · C (gán) · U (chuyển đội) · D (gỡ khỏi đội) | R dòng của mình | – |
 | `shelters` | R · C · U | R | R |
 | `supplies` | R · C · U thông tin mặt hàng (**không** sửa `quantity`) | – | R |
-| `supply_movements` | R · C (phiếu bất biến, không U/D) | – | – |
+| `supply_movements` | R (lập phiếu qua API `POST /workflow/kho/phieu`, #28; phiếu bất biến, không U/D) | – | – |
 | `sensors` | R · U tên, ngưỡng, bật/tắt | R | R thông tin công khai của trạm (#30) |
 | `sensor_readings` | R (quan hệ `sensor`, `sensors.readings`) | R | R (tối đa 500 dòng/truy vấn) |
 | `incident_media` (#27) | R mọi ảnh (quan hệ `incident`, `incidents.media`) | R ảnh của tin **đội mình** | R chỉ ảnh **mình tải lên**, không có `uploaded_by`, `uploader_role` |
 | `incident_dedup_config` | không track: không vai trò nào thấy | | |
 
-Cột hệ thống gán từ token, client không tự đặt được: `incidents.created_by`, `supply_movements.created_by` = `X-Hasura-User-Id` (sub Keycloak). Tồn kho chỉ đổi qua phiếu nhập/xuất (trigger, sổ cái #28); cột `ledger_*` và giá trị đo cảm biến do dịch vụ nội bộ ghi (#28, #30), không qua vai trò người dùng.
+Cột hệ thống gán từ token, client không tự đặt được: `incidents.created_by` = `X-Hasura-User-Id` (sub Keycloak); `supply_movements.created_by` = tên đăng nhập trong JWT, API gán (#28). Tồn kho chỉ đổi qua phiếu nhập/xuất (trigger, sổ cái #28); cột `ledger_*` và giá trị đo cảm biến do dịch vụ nội bộ ghi (#28, #30), không qua vai trò người dùng.
 
 **Thành viên đội:** `cuu-ho` thấy tin nhờ bảng `team_members (user_id = sub Keycloak, team_id)`: filter `assigned_team.members.user_id = X-Hasura-User-Id`. Điều phối gán/chuyển đội trong ứng dụng, có hiệu lực ngay ở truy vấn sau (không chờ token mới):
 
@@ -298,6 +298,53 @@ curl -s -H "Authorization: Bearer $TOKEN" "$URL" -o anh-tai-ve.jpg
 ```
 
 Kiểm thử: `tests/test_cuu_tro_anh.py` (ký SigV4 khớp ví dụ chính thức của AWS, magic bytes, luật quyền, endpoint với Hasura/S3/CSDL giả); `scripts/smoke-anh.sh` (trong `make smoke`) gọi thật qua APISIX. Luồng dữ liệu: `docs/architecture.md` mục 7.5.
+
+## Sổ cái minh bạch: phiếu nhập/xuất → sổ cái → trang công khai (`workflow/cuu_tro_workflow/so_cai.py`, #28)
+
+Mỗi phiếu nhập/xuất hàng cứu trợ được ghi thành một lá của sổ cái minh bạch của lõi (`core/ledger`, Tessera, D-007). Người dân, nhà tài trợ tra mã phiếu trên trang công khai, hoặc tự tải checkpoint + tile để kiểm, không cần tin hệ thống. Kiến trúc lõi: `docs/architecture.md` mục 5.1.
+
+**Luồng ghi** (`POST /workflow/kho/phieu`, chỉ `dieu-phoi`):
+
+1. `cuu-tro-api` kiểm JWT + vai trò, chặn ghi chú có dãy số dạng SĐT/CCCD (ghi chú hiện công khai) → 422.
+2. `INSERT supply_movements` bằng role `cuu_tro_app` (migration `0006`); trigger cộng/trừ tồn kho (chạy với quyền chủ bảng), xuất quá tồn → 409. `created_by` = tên đăng nhập, chỉ nằm trong CSDL.
+3. **Bản ghi chuẩn hóa**: `{loai: "cuu-tro.phieu-kho/v1", id, supply_id, direction, quantity ("10.00"), note, shelter_id, created_at (UTC, 6 chữ số micro giây)}`, mọi giá trị là chuỗi/null, **không có người lập phiếu**. JSON chuẩn tắc (khóa sắp xếp, không khoảng trắng, UTF-8; trùng RFC 8785 cho object chỉ gồm chuỗi) → SHA-256.
+4. Gửi lá `{type: "cuu-tro.phieu-kho", ref: <mã phiếu>, sha256, attrs: {direction, quantity, at}}` tới `core/ledger` trong mạng nội bộ, kèm token ghi của ứng dụng (OpenBao `secret/app/cuu-tro/ledger`). Ledger trả `index` sau khi checkpoint đã ký chứa lá.
+5. Điền `ledger_index`, `ledger_leaf_hash` (RFC 6962), `ledger_logged_at` đúng một lần (trigger chặn sửa lại).
+
+Sổ cái lỗi ở bước 4 → phiếu vẫn được lập (202, `so_cai.trang_thai = chua_ghi_so`); gọi `POST /workflow/kho/phieu/{mã}/ghi-so` để ghi lại. Gửi lại an toàn: cùng phiếu → cùng lá → sổ cái chống trùng trả index cũ. Phiếu không còn lập được qua Hasura (bỏ quyền insert): mọi phiếu đều đi qua luồng ghi sổ.
+
+**Trang công khai** `GET /workflow/minh-bach/phieu/{mã}` (không đăng nhập, route gateway `/workflow/minh-bach/*`): API đọc phiếu trong CSDL, dựng lại bản ghi chuẩn hóa, băm lại, lấy lá + inclusion proof + checkpoint từ sổ cái rồi tự kiểm: chữ ký checkpoint (Ed25519, khóa công khai của sổ cái), lá đúng loại/mã phiếu, SHA-256 trong lá = SHA-256 vừa tính, leaf hash = giá trị lưu trong CSDL, proof dẫn tới root của checkpoint (RFC 9162).
+
+| `trang_thai` | Nghĩa |
+|---|---|
+| `da_xac_minh` | Bản ghi trong CSDL khớp lá trên sổ cái, lá nằm trong checkpoint đã ký |
+| `khong_khop` | Lệch ở một bước (`chi_tiet` nói rõ): bản ghi bị sửa sau khi ghi sổ, leaf hash trong CSDL bị đổi, hoặc sổ cái/chữ ký không hợp lệ |
+| `chua_ghi_so` | Phiếu chưa lên sổ cái (gọi lại `ghi-so`) |
+| `khong_kiem_duoc` | Không gọi được sổ cái lúc này |
+
+Phản hồi: `ma`, `trang_thai`, `chi_tiet`, `ban_ghi_chuan_hoa` (đúng object đã băm), `sha256`, `hien_thi` (tên hàng, đơn vị, kho, điểm nhận: chỉ để hiển thị, không nằm trong bản ghi đã băm), `so_cai` (`index`, `leaf_hash`, `logged_at`, `checkpoint`, `la`). Không có người lập phiếu, `Cache-Control: no-store`.
+
+**Tự kiểm chứng** (không tin API): lưu phản hồi trang công khai rồi chạy CLI của lõi, CLI chỉ dùng checkpoint + tile công khai, tự dựng proof:
+
+```bash
+curl -s http://localhost:9080/workflow/minh-bach/phieu/<mã> -o phieu.json
+VK=$(curl -s http://localhost:9080/ledger/verifier)   # nên lấy khóa công khai từ nguồn độc lập
+INDEX=$(python3 -c 'import json; print(json.load(open("phieu.json"))["so_cai"]["index"])')
+# Có Go: (cd core/ledger && go run ./cmd/ledger-verify -log http://localhost:9080/ledger/ -verifier "$VK" -index "$INDEX" -record ../../phieu.json)
+# Không có Go: dùng image ledger (đã build khi make up), chỉ thấy gateway
+docker run --rm -i --network disaster-dxos_default --entrypoint /ledger-verify disaster-dxos/ledger:0.1.0 \
+  -log http://apisix:9080/ledger/ -verifier "$VK" -index "$INDEX" -record - < phieu.json
+```
+
+Kết quả `ĐÃ XÁC MINH` (mã 0) hoặc `KHÔNG KHỚP` kèm lý do (mã 1).
+
+| Phương thức, đường dẫn | Quyền | Kết quả |
+|---|---|---|
+| `POST /workflow/kho/phieu` body `{supply_id, direction: nhap\|xuat, quantity (> 0, 2 chữ số thập phân), note?, shelter_id?}` | `dieu-phoi` | `201 {ban_ghi_chuan_hoa, sha256, so_cai: {trang_thai: da_ghi, index, leaf_hash, tree_size, logged_at}}` · `202` sổ cái lỗi (`chua_ghi_so`) · `401/403` · `404` không có hàng/điểm nhận · `409` xuất quá tồn · `422` dữ liệu sai, ghi chú có SĐT/CCCD |
+| `POST /workflow/kho/phieu/{mã}/ghi-so` | `dieu-phoi` | `200` (đã ghi, hoặc ghi lại thành công) · `503` sổ cái vẫn lỗi · `404` |
+| `GET /workflow/minh-bach/phieu/{mã}` | Công khai | `200` như trên · `404` mã không có/sai dạng |
+
+Kiểm thử: `tests/test_cuu_tro_so_cai.py` (14 test: vector JSON chuẩn tắc chung với Go, inclusion proof mọi kích thước cây 1–17, chữ ký checkpoint, endpoint với CSDL + sổ cái giả, sửa CSDL → không khớp, sổ cái tắt → ghi lại); `db/tests/0006_so_cai_phieu_kho.sql` (16 ca quyền); `scripts/smoke-ledger.sh` (47 ca qua APISIX, trong `make smoke`).
 
 ## Cảm biến mực nước (`workflow/cuu_tro_workflow/cam_bien*.py`, `gia_lap.py`, #30)
 
