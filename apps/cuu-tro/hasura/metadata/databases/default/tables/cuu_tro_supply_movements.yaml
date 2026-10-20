@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: Apache-2.0
+# Phiếu nhập/xuất hàng, không chứa dữ liệu cá nhân (D-007).
+#   dieu-phoi   đọc, lập phiếu (created_by gán từ token). Không sửa, không xóa: phiếu bất biến
+#               (trigger #25); cột ledger_* do dịch vụ sổ cái (#28) điền bằng quyền riêng, không qua vai trò người dùng
+table:
+  name: supply_movements
+  schema: cuu_tro
+configuration:
+  custom_name: supply_movements
+  column_config: {}
+  custom_column_names: {}
+  custom_root_fields: {}
+object_relationships:
+  - name: supply
+    using:
+      foreign_key_constraint_on: supply_id
+  - name: shelter
+    using:
+      foreign_key_constraint_on: shelter_id
+insert_permissions:
+  - role: dieu-phoi
+    permission:
+      check: {}
+      set:
+        created_by: x-hasura-user-id
+      columns:
+        - supply_id
+        - direction
+        - quantity
+        - note
+        - shelter_id
+select_permissions:
+  - role: dieu-phoi
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true

@@ -15,7 +15,7 @@ apps/<tên>/
 ├── db/migrations/          # schema nghiệp vụ, SQL đánh số NNNN_<tên>.sql (container migrate)
 ├── db/seed/                # dữ liệu mẫu (dữ liệu giả), make seed
 ├── db/tests/               # kiểm thử ràng buộc, make test-db
-├── hasura/metadata/        # quyền GraphQL theo vai trò (tuần 2)
+├── hasura/metadata/        # bảng track, quan hệ, quyền GraphQL theo vai trò (metadata v3, tự áp khi Hasura khởi động, #26)
 ├── gateway/routes.yaml     # route APISIX riêng của ứng dụng (tuần 2)
 ├── workflows/              # worker Temporal (Python)
 └── web/, mobile/           # giao diện người dùng cuối

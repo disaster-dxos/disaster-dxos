@@ -1,0 +1,3 @@
+# SPDX-License-Identifier: Apache-2.0
+# Metadata Hasura của ứng dụng cuu-tro, định dạng thư mục v3 của hasura-cli (#26).
+version: 3

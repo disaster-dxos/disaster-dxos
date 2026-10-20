@@ -332,13 +332,17 @@ services:
 
   hasura:
     <<: *restart
-    # BẮT BUỘC tag -ce (D-004): image không có -ce kèm thành phần EE độc quyền
-    image: hasura/graphql-engine:v2.51.0-ce
+    # BẮT BUỘC tag -ce (D-004): image không có -ce kèm thành phần EE độc quyền.
+    # Bản cli-migrations-v3 (cùng phiên bản, cùng -ce) có thêm hasura-cli và docker-entrypoint.sh:
+    # khởi động một server tạm chỉ bật metadata API, chạy "hasura-cli metadata apply" với thư mục
+    # metadata của ứng dụng (apps/${DXOS_APP}/hasura/metadata, #26), rồi exec server thật.
+    # Migration SQL KHÔNG đi đường này (không có /hasura-migrations): container migrate làm trước.
+    image: hasura/graphql-engine:v2.51.0-ce.cli-migrations-v3
     profiles: [core]
     # HASURA_GRAPHQL_DATABASE_URL (role hasura, không phải superuser) và HASURA_GRAPHQL_ADMIN_SECRET
     # lấy từ OpenBao qua bao-agent-hasura. Tầng 2 gọi qua APISIX /graphql (#12), không gọi thẳng.
-    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos", "graphql-engine"]
-    command: ["serve"]
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos", "docker-entrypoint.sh"]
+    command: ["graphql-engine", "serve"]
     depends_on:
       postgres-roles:
         condition: service_completed_successfully
@@ -361,11 +365,16 @@ services:
       HASURA_GRAPHQL_JWT_SECRET: >-
         {"jwk_url":"http://keycloak:8080/realms/${KEYCLOAK_REALM:-disaster}/protocol/openid-connect/certs",
         "issuer":"${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}/realms/${KEYCLOAK_REALM:-disaster}"}
-      # Ít kết nối DB cho laptop (mặc định 50)
-      HASURA_GRAPHQL_PG_CONNECTIONS: "10"
+      # Metadata (bảng track, quan hệ, quyền theo vai trò) do ứng dụng cung cấp; lõi chỉ biết quy ước
+      # thư mục, giống migrate. Metadata lệch với DB (bảng/cột không có) → dừng khởi động, không
+      # chạy với quyền thiếu. Kết nối DB (pool 10) khai báo trong databases.yaml của metadata.
+      HASURA_GRAPHQL_METADATA_DIR: /hasura-metadata
+      HASURA_GRAPHQL_DISALLOW_INCONSISTENT_METADATA: "true"
+      HASURA_GRAPHQL_MIGRATIONS_SERVER_TIMEOUT: "60"
     volumes:
       - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
       - secrets-hasura:/run/secrets/dxos:ro
+      - ./apps/${DXOS_APP:-cuu-tro}/hasura/metadata:/hasura-metadata:ro
     ports:
       - "127.0.0.1:${HASURA_PORT:-8081}:8080"
     healthcheck:

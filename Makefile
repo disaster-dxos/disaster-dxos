@@ -21,12 +21,14 @@ bao-status:    ## Trạng thái seal của OpenBao
 up-bi:         ## Grafana (tuần 4)
 	docker compose --profile bi up -d --build
 
-smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS, ràng buộc DB ứng dụng (cần make up trước)
+smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS, ràng buộc DB, phân quyền GraphQL (cần make up trước)
 	bash scripts/smoke-openbao.sh
 	bash scripts/smoke-jwt.sh
 	bash scripts/smoke-gateway.sh
 	bash scripts/smoke-core.sh
 	docker compose --profile core run --rm --no-deps migrate test
+	docker compose --profile core run --rm --no-deps migrate seed
+	bash scripts/smoke-hasura.sh
 
 down:
 	docker compose --profile '*' down

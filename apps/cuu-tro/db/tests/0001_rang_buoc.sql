@@ -144,8 +144,8 @@ SET search_path = cuu_tro, public;
 -- không so được giá trị trước/sau ở đây)
 DO $$ BEGIN
   IF (SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
-       WHERE c.relnamespace = 'cuu_tro'::regnamespace AND t.tgname LIKE '%_updated_at') <> 5 THEN
+       WHERE c.relnamespace = 'cuu_tro'::regnamespace AND t.tgname LIKE '%_updated_at') <> 6 THEN
     RAISE EXCEPTION 'FAIL  thiếu trigger updated_at';
   END IF;
 END $$;
-SELECT 'PASS  5 bảng có trigger updated_at';
+SELECT 'PASS  6 bảng có trigger updated_at';

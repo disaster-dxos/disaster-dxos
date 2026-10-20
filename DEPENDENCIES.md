@@ -17,7 +17,7 @@ Giấy phép kiểm tra ngày 17/10/2026 trên file LICENSE ở repo chính th�
 | PostgreSQL + PostGIS | `postgis/postgis:17-3.5` | PostgreSQL License / GPL-2.0-or-later | github.com/postgis/docker-postgis | Dịch vụ riêng | core | ✔ |
 | Keycloak | `quay.io/keycloak/keycloak:26.8.1` | Apache-2.0 | github.com/keycloak/keycloak | Dịch vụ riêng | core | ✔ |
 | Apache APISIX | `apache/apisix:3.19.0-debian` (nền của image `disaster-dxos/apisix:3.19.0-coraza0.6.0`, `core/apisix/Dockerfile`) | Apache-2.0 | github.com/apache/apisix | Dịch vụ riêng, image gốc chỉ thêm file wasm | core | ✔ |
-| Hasura GraphQL Engine **CE** | `hasura/graphql-engine:v2.51.0-ce` | Apache-2.0 | github.com/hasura/graphql-engine | Dịch vụ riêng | core | ✔ |
+| Hasura GraphQL Engine **CE** (bản kèm `hasura-cli` áp metadata lúc khởi động, #26) | `hasura/graphql-engine:v2.51.0-ce.cli-migrations-v3` | Apache-2.0 | github.com/hasura/graphql-engine | Dịch vụ riêng | core | ✔ |
 | SeaweedFS | `chrislusf/seaweedfs:4.48` | Apache-2.0 | github.com/seaweedfs/seaweedfs | Dịch vụ riêng | core | ✔ |
 | Temporal (server, auto-setup) | `temporalio/auto-setup:1.29.7` | MIT | github.com/temporalio/temporal | Dịch vụ riêng | core | ✔ |
 | Temporal UI (quản trị) | `temporalio/ui:2.56.0` | MIT | github.com/temporalio/ui | Dịch vụ riêng, chỉ mở 127.0.0.1 | core | ✔ |
