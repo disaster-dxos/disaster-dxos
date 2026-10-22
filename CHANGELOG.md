@@ -44,6 +44,9 @@
 - CI thêm job `shellcheck`, `yamllint` (cấu hình `.yamllint.yml`) và `pytest` (tự bỏ qua khi chưa có mã Python); `scripts/lint.sh`, `make lint`; ghim phiên bản action (#31).
 
 ### Changed
+- `README.md` sắp xếp lại theo trình tự kể chuyện sản phẩm: giới thiệu → thách thức → giải pháp → đối tượng → chức năng (đã có / sắp có) → kiến trúc → công nghệ → luồng nghiệp vụ → hướng phát triển → cài đặt từ máy sạch → đóng góp, báo lỗi, giấy phép. Ảnh mới trong `docs/images/`: banner có tiêu đề, vòng tròn 6 chức năng nhãn tiếng Việt, kiến trúc tổng quan dạng biểu tượng, luồng kêu cứu 5 bước, luồng minh bạch 4 bước (đội tạo bằng công cụ AI; biểu tượng là hình minh họa, không phải logo chính thức). Cấu hình, lệnh OpenBao, thêm ứng dụng vào `apps/`, kiểm thử chuyển sang `docs/cai-dat.md`; hướng dẫn chạy từ máy sạch, tài khoản mẫu, xử lý lỗi giữ nguyên trong README (#51).
+- Sơ đồ chi tiết `kien-truc.svg`, `luong-cuu-tro.svg` chỉ dùng trong `docs/architecture.md` (mục 1 và 6) (#51).
+
 - `README.md` viết lại thuần tiếng Việt: banner, huy hiệu giấy phép/phiên bản/CI, bài toán, sơ đồ kiến trúc và luồng, yêu cầu máy, các bước chạy từ máy sạch kèm thời gian và dung lượng đo thật, tài khoản mẫu, cấu hình, cách thêm ứng dụng mới vào `apps/`, kiểm thử, xử lý lỗi thường gặp; thêm `README.en.md` ngắn (#32).
 - `.env.example`: cách xử lý lỗi "HTTPS required" nay chỉ tạo lại volume `pgdata` (giữ OpenBao) thay vì `docker compose down -v`, lệnh cũ xóa cả dữ liệu OpenBao trong khi key mở khóa vẫn ở `.data/openbao/` (#32).
 - Kiểm thử DB `0001` dùng `ledger_index` rất lớn để không trùng lá thật trên volume đã có sổ cái (#28).
@@ -58,6 +61,9 @@
 - Mật khẩu superuser PostgreSQL (`secret/core/postgres`) và admin secret Hasura (`secret/core/hasura`) chuyển từ `.env` sang OpenBao; thêm `secret/core/hasura-db`, `secret/core/temporal-db`; `secret/core/s3` nối vào SeaweedFS (`-s3.config` do agent render). `.env.example` bỏ `POSTGRES_PASSWORD`, `HASURA_GRAPHQL_ADMIN_SECRET`, thêm `HASURA_DB_USER`, `TEMPORAL_DB_USER`, `SEAWEEDFS_VOLUME_SIZE_MB`. Bản cũ nâng cấp: giữ 2 biến cũ cho lần `make up` đầu (#11).
 - Hasura bỏ `claims_map` trong `HASURA_GRAPHQL_JWT_SECRET`, đọc namespace mặc định `https://hasura.io/jwt/claims` (#13); tắt telemetry; kết nối DB bằng role `hasura` (#11).
 - Áp D-007: chốt Tessera (driver POSIX) cho sổ cái minh bạch, Trillian là dự phòng; `docs/architecture.md` thêm mục `core/ledger` (API, không đưa dữ liệu cá nhân lên sổ cái, khóa ký trong OpenBao, trang "Minh bạch cứu trợ"); cập nhật `NOTICE`, `DEPENDENCIES.md`; script SPDX quét thêm `*.go` và `go.mod` (#34).
+
+### Removed
+- `README.en.md`: README chỉ còn bản tiếng Việt (#51).
 
 ### Fixed
 - Sửa cảnh báo lint trong mã cũ: chú thích bỏ qua SC2094 (dương tính giả) ở `scripts/spdx-files.sh`, cho phép dòng `#END` bắt buộc của APISIX trong `core/apisix/apisix.yaml` (#31).
