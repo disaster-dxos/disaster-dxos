@@ -12,13 +12,14 @@ Mọi cấu hình qua biến môi trường trong `.env`, có giải thích tron
 | `DXOS_APP` | `cuu-tro` | Ứng dụng Tầng 2 cắm vào lõi: tên thư mục trong `apps/` |
 | `COMPOSE_PROJECT_NAME` | `disaster-dxos` | Tiền tố tên container, volume, mạng |
 | `KEYCLOAK_PORT`, `KEYCLOAK_PUBLIC_URL` | `8080`, `http://localhost:8080` | Đổi cổng thì đổi cả URL (giá trị `iss` của token) |
-| `APISIX_PORT`, `GATEWAY_PUBLIC_URL` | `9080`, `http://localhost:9080` | Cổng gateway và URL công khai mà link ảnh trỏ tới |
+| `APISIX_PORT`, `GATEWAY_PUBLIC_URL` | `9080`, `http://localhost:9080` | Cổng gateway và URL công khai: địa chỉ mở web điều phối (#64), link ảnh trỏ tới, `redirect_uri` của client `dxos-web` (Keycloak đọc lúc import realm lần đầu) |
 | `KEYCLOAK_REALM` | `disaster` | Tên realm |
 | `KC_REALM_SSL_REQUIRED` | `external` | Realm đòi HTTPS khi nào; xem lỗi "HTTPS required" trong README |
 | `OPENBAO_DEV_AUTO_UNSEAL` | `true` | Tự mở khóa OpenBao khi khởi động lại. **Chỉ cho máy dev**; triển khai thật đặt `false` |
 | `POSTGIS_PLATFORM` | `linux/amd64` | Image PostGIS chỉ có amd64 |
 | `GW_RATE_LIMIT_COUNT`, `GW_RATE_LIMIT_WINDOW` | `300`, `60` | Giới hạn request theo IP |
-| `GW_CORS_ALLOW_ORIGINS` | `http://localhost:3000` | Origin web được gọi API |
+| `GW_CORS_ALLOW_ORIGINS` | `http://localhost:3000` | Origin web được gọi API. Web chạy trong compose mở qua chính gateway nên cùng origin, không cần; `localhost:3000` dành cho `npm run dev` |
+| `GW_WEB_RATE_LIMIT_COUNT` | `600` | Rate limit route web `/*` (request / `GW_RATE_LIMIT_WINDOW` giây / IP) |
 | `PHAN_CONG_*` | 20 km, 6 giờ, 10 lần, 60 s | Bán kính tìm đội, hạn xác nhận, số lần và khoảng chờ tìm lại |
 
 Thêm biến mới thì thêm vào `.env.example` kèm chú thích.
@@ -63,9 +64,24 @@ Không sửa gì trong `core/`. Chi tiết và lý do: [`architecture.md`](archi
 |---|---|---|
 | `make check` | Header SPDX của mọi file mã, `docker-compose.yml` hợp lệ ở mọi profile | Docker |
 | `make lint` | `shellcheck` mọi `*.sh`, `yamllint --strict` mọi YAML | `shellcheck`, `yamllint` |
-| `make smoke` | 339 ca chạy thật qua gateway và CSDL | `make up` trước |
+| `make smoke` | 339 ca chạy thật qua gateway và CSDL, cộng 31 ca web điều phối (`scripts/smoke-web.sh`, #64) | `make up` trước |
 | `make test-db` | Ràng buộc CSDL của ứng dụng (ROLLBACK sau khi chạy) | `make up` trước |
 | `make test-py` | pytest backend `apps/<DXOS_APP>/workflow` | [`uv`](https://docs.astral.sh/uv/) |
 | `cd core/ledger && go test ./...` | Sổ cái: lá, ghi/proof trên log POSIX thật, CLI kiểm chứng | Go 1.26 |
 
 CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) chạy 7 job bắt buộc trên mỗi PR: `license`, `build-from-source`, `shellcheck`, `yamllint`, `pytest`, `go-test`, `go-licenses`.
+
+## Web điều phối (#64)
+
+`make up` build và chạy `cuu-tro-web` (profile `app`). Web không mở cổng ra host, chỉ đi qua APISIX:
+
+| URL | Ghi chú |
+|---|---|
+| http://localhost:9080/ | Trang điều phối; chưa đăng nhập thì chuyển sang Keycloak (`http://localhost:8080`, client `dxos-web`, `redirect_uri` `http://localhost:9080/auth/callback`) |
+| http://localhost:9080/_nuxt/…, /logo/… | Tệp tĩnh, cache `immutable` |
+
+Route `/*` của APISIX có ưu tiên thấp nhất và chỉ nhận GET/HEAD, nên `/graphql`, `/files/*`, `/workflow/*`, `/ledger/*`, `/api/v1/me`, `/healthz` không đổi. Header bảo mật (CSP có hash script, `X-Frame-Options: DENY`, `nosniff`) do web đặt, xem `apps/cuu-tro/web/server/plugins/bao-mat.ts`.
+
+Đổi địa chỉ công khai (vd máy chủ thật): đặt `GATEWAY_PUBLIC_URL` (và `KEYCLOAK_PUBLIC_URL`) trong `.env` rồi `make up`; image web không cần build lại vì Nitro chèn URL vào trang lúc chạy. Realm chỉ import lần đầu: nếu CSDL Keycloak đã có (vd nâng cấp từ v0.1.0), thêm `<GATEWAY_PUBLIC_URL>/*` vào "Valid redirect URIs" và "Valid post logout redirect URIs", `<GATEWAY_PUBLIC_URL>` vào "Web origins" của client `dxos-web` trong trang quản trị Keycloak (realm `disaster` → Clients), hoặc tạo lại CSDL như mục lỗi "HTTPS required" trong README.
+
+Build riêng image web: `docker compose --profile '*' build cuu-tro-web`, hoặc `docker build --build-context logo=docs/images/logo -t disaster-dxos/cuu-tro-web:0.1.0 apps/cuu-tro/web`.

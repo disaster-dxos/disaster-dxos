@@ -5,7 +5,7 @@
 
 ![Web điều phối: bản đồ và danh sách tin kêu cứu (dữ liệu giả)](../../../docs/images/web-dieu-phoi.png)
 
-> Trạng thái (#59): khung web, đăng nhập Keycloak, bố cục, logo. Danh sách và bản đồ đang dùng **dữ liệu giả** (`utils/tin-gia.ts`). Việc tiếp theo: #60 (subscription GraphQL), #61 (phân công), #62 (trạm đo), #63 (trang minh bạch), #64 (đưa web vào compose + smoke).
+> Trạng thái (#59): khung web, đăng nhập Keycloak, bố cục, logo. Danh sách và bản đồ đang dùng **dữ liệu giả** (`utils/tin-gia.ts`). Việc tiếp theo: #60 (subscription GraphQL), #61 (phân công), #62 (trạm đo), #63 (trang minh bạch), #64 (đưa web vào compose + smoke: đã có, xem mục Chạy).
 
 ## Đăng nhập: OIDC Authorization Code + PKCE
 
@@ -24,7 +24,11 @@ Kiểu vector OpenFreeMap `liberty` (dữ liệu © những người đóng góp
 
 ## Chạy
 
-Cần Node.js ≥ 22.12. Lõi (`make up` ở gốc repo) phải chạy để có Keycloak ở `http://localhost:8080`; client `dxos-web` chỉ chấp nhận `redirect_uri` `http://localhost:3000/*`.
+**Trong stack (#64):** `make up` ở gốc repo build image từ `Dockerfile` (Node build → Nitro node server, user không phải root) và chạy dịch vụ `cuu-tro-web`, mở qua APISIX tại **http://localhost:9080/** (`GATEWAY_PUBLIC_URL`). Không mở cổng riêng ra host. Kiểm: `bash scripts/smoke-web.sh` (cũng trong `make smoke`).
+
+Vì sao Nitro node server mà không phải trang tĩnh: với `ssr: false` Nitro vẫn chèn `runtimeConfig` (URL Keycloak, gateway lấy từ `NUXT_PUBLIC_*` lúc chạy) vào trang và đặt header bảo mật (`server/plugins/bao-mat.ts`: CSP có hash của script inline, `frame-ancestors 'none'`, `X-Frame-Options`, `nosniff`). Một image dùng cho mọi địa chỉ, không build lại.
+
+**Phát triển:** cần Node.js ≥ 22.12. Lõi (`make up` ở gốc repo) phải chạy để có Keycloak ở `http://localhost:8080`; client `dxos-web` chấp nhận `redirect_uri` `http://localhost:3000/*` (dev) và `${GATEWAY_PUBLIC_URL}/*` (qua gateway).
 
 ```bash
 cd apps/cuu-tro/web
@@ -38,18 +42,19 @@ Biến môi trường `NUXT_PUBLIC_*`: xem `.env.example` ở gốc repo (mục 
 ## Kiểm thử
 
 ```bash
-npm test              # Vitest: PKCE (vector RFC 7636), URL OIDC, state/nonce, hạn token, dữ liệu bản đồ
+npm test              # Vitest: PKCE (vector RFC 7636), URL OIDC, state/nonce, hạn token, dữ liệu bản đồ, CSP
 npm run typecheck     # vue-tsc
 npm run licenses      # giấy phép mọi gói npm trong package-lock.json
 ```
 
-CI chạy cả bốn lệnh và `npm run build` ở job `web` (`.github/workflows/ci.yml`).
+CI chạy cả bốn lệnh, `npm run build`, rồi build image Docker và chạy thử ở job `web` (`.github/workflows/ci.yml`).
 
 ## Cấu trúc
 
 | Thư mục | Nội dung |
 |---|---|
 | `pages/` | `index.vue` (trang điều phối), `auth/callback.vue` |
+| `server/` | Nitro: `plugins/bao-mat.ts` (header bảo mật), `utils/csp.ts` (dựng CSP, hàm thuần có test) |
 | `components/` | `AppHeader.vue` (logo, người dùng, đăng xuất), `BanDo.vue` (MapLibre), `DanhSachTin.vue` |
 | `composables/` | `useAuth.ts` (phiên đăng nhập), `useNow.ts` |
 | `utils/` | Hàm thuần, có test: `pkce.ts`, `oidc.ts`, `session.ts`, `ban-do.ts`, `tin-gia.ts` |

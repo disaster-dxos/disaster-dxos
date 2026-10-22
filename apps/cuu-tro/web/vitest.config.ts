@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Test đơn vị cho phần không cần mạng (utils/): PKCE, phiên đăng nhập, dữ liệu bản đồ.
+// Test đơn vị cho phần không cần mạng (utils/, server/utils/): PKCE, phiên đăng nhập, dữ liệu bản đồ, CSP.
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
 

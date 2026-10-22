@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+# Không đưa thư mục sinh ra và phụ thuộc cài sẵn trên máy vào build context (image tự npm ci)
+node_modules/
+.nuxt/
+.output/
+.cache/
+.env
+.env.*
+Dockerfile
+.dockerignore

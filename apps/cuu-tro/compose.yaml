@@ -12,7 +12,9 @@
 #     (body nhị phân) và /files/* (chỉ đọc, link presigned) của APISIX.
 #   - Sổ cái (#28): cuu-tro-api ghi lá lên core/ledger (ledger:8090, mạng nội bộ) bằng token
 #     secret/app/cuu-tro/ledger; trang công khai qua route /workflow/minh-bach/* (không JWT).
-# Không mở cổng nào ra máy host: client gọi API qua gateway, worker chỉ kéo việc từ Temporal,
+#   - Web điều phối (#64): route APISIX /* (ưu tiên thấp nhất) → <DXOS_APP>-web:3000
+#     (GW_WEB_UPSTREAM_HOST/PORT); client Keycloak dxos-web nhận redirect ${GATEWAY_PUBLIC_URL}/*.
+# Không mở cổng nào ra máy host: client gọi API và mở web qua gateway, worker chỉ kéo việc từ Temporal,
 # consumer cảm biến chỉ kéo bản tin từ NATS. Thiết bị gửi MQTT vào cổng của lõi (nats:1883).
 
 x-cuu-tro-env: &cuu-tro-env
@@ -206,6 +208,37 @@ services:
       - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
       - secrets-cuu-tro-thiet-bi:/run/secrets/dxos:ro
     mem_limit: 64m
+
+  cuu-tro-web:
+    # Web điều phối (#59, #64): Nuxt build từ mã nguồn (apps/cuu-tro/web/Dockerfile), chạy Nitro node
+    # server, user không phải root. Mở qua APISIX (route /*, có Coraza WAF), không mở cổng ra host:
+    # http://localhost:9080/ (GATEWAY_PUBLIC_URL). Không có bí mật: dxos-web là client công khai (PKCE);
+    # chỉ có URL công khai, Nitro chèn vào trang lúc chạy (runtimeConfig NUXT_PUBLIC_*).
+    build:
+      context: ./apps/cuu-tro/web
+      # Bộ logo của repo nằm ngoài thư mục web (nuxt.config.ts phục vụ ở /logo)
+      additional_contexts:
+        logo: ./docs/images/logo
+    image: disaster-dxos/cuu-tro-web:0.1.0
+    restart: unless-stopped
+    profiles: [app]
+    environment:
+      NUXT_PUBLIC_KEYCLOAK_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
+      NUXT_PUBLIC_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-disaster}
+      NUXT_PUBLIC_KEYCLOAK_CLIENT_ID: dxos-web
+      NUXT_PUBLIC_GATEWAY_URL: ${GATEWAY_PUBLIC_URL:-http://localhost:9080}
+      NUXT_PUBLIC_MAP_STYLE_URL: ${NUXT_PUBLIC_MAP_STYLE_URL:-https://tiles.openfreemap.org/styles/liberty}
+    # Mã chỉ đọc, không ghi gì ra đĩa
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    mem_limit: 128m
 
 volumes:
   # Bí mật đã render (tmpfs, mất khi dừng); uid/gid của user openbao trong image agent
