@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/logo/logo-ngang-nen-trang.png">
+    <img src="docs/images/logo/logo-ngang.png" width="480" alt="Logo Disaster DX-OS: khiên che mái nhà trên sóng lũ, có sóng tín hiệu và phao cứu sinh; khẩu hiệu Ứng phó Thiên tai và Cứu trợ Cộng đồng">
+  </picture>
+</p>
+
 ![DTU_DZ_1 · Disaster DX-OS: Hệ điều hành Ứng phó Thiên tai & Cứu trợ Cộng đồng](docs/images/banner.webp)
 
 # Disaster DX-OS

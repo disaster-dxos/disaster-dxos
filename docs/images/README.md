@@ -17,3 +17,20 @@ Mọi tệp trong thư mục này do đội DTU_DZ_1 tạo và cấp phép cùng
 **Biểu tượng trong `kien-truc-tong-quan.webp` là hình minh họa do công cụ AI vẽ lại, không phải logo chính thức** của các dự án. Tên và nhãn hiệu (Apache APISIX, Keycloak, Hasura, SeaweedFS, Temporal, Tessera, OpenBao, NATS, PostgreSQL, PostGIS) thuộc dự án hoặc tổ chức tương ứng; dùng ở đây chỉ để chỉ thành phần mà hệ thống sử dụng. Ảnh này là tổng quan giản lược; kiến trúc chính xác xem `kien-truc.svg` và [`docs/architecture.md`](../architecture.md).
 
 Sửa sơ đồ: sửa trực tiếp tệp `.svg` (văn bản, có `viewBox`, font hệ thống), xem trước bằng trình duyệt. Hệ thống đổi (thêm dịch vụ, đổi luồng) thì cập nhật sơ đồ trong cùng PR.
+
+## `logo/` — Logo và bộ nhận diện
+
+Logo do đội tạo bằng công cụ AI (ChatGPT) theo prompt của đội, đội và người hướng dẫn đã duyệt (22/10/2026). Logo ngang (biểu tượng + chữ tên + khẩu hiệu) do ChatGPT vẽ trọn; các cỡ biểu tượng, favicon và ảnh xem trước được cắt, thu nhỏ và ghép từ đó bằng ImageMagick. Biểu tượng: khiên, mái nhà, sóng tín hiệu, sóng lũ, phao cứu sinh. Màu: navy `#12355B` (chữ tên, viền), cam cứu hộ `#F07B1D`, xanh nước `#1FA2C9`.
+
+| Tệp | Nội dung | Dùng ở |
+|---|---|---|
+| `logo/mark.png` | Biểu tượng gốc, nền trong suốt (1024×1024) | Nguồn để xuất cỡ khác |
+| `logo/mark-512.png` | Biểu tượng 512×512 | Ảnh đại diện org GitHub |
+| `logo/mark-180.png` | Biểu tượng 180×180 | `apple-touch-icon` của web |
+| `logo/mark-64.png`, `logo/mark-32.png` | Biểu tượng 64×64 và 32×32 | Favicon PNG của web |
+| `logo/favicon.ico` | Favicon nhiều cỡ | Web điều phối Nuxt (tuần 3) |
+| `logo/logo-ngang.png` | Logo ngang, nền trong suốt (1836×610) | Đầu `README.md` ở chế độ sáng, slide, chân tài liệu |
+| `logo/logo-ngang-nen-trang.png` | Logo ngang trên nền trắng (1856×630) | Đầu `README.md` ở chế độ tối (chữ navy khó đọc trên nền tối), Word, slide không hỗ trợ nền trong suốt |
+| `logo/xem-truoc.png` | Ảnh xem trước 1280×640 | Social preview của repo GitHub (Settings → Social preview, tải lên bằng tay) |
+
+Quy tắc dùng: không đổi màu, kéo méo, thêm bóng hoặc gradient; logo ngang rộng ít nhất 240 px, biểu tượng ít nhất 32 px; trên nền tối dùng bản nền trắng hoặc đặt biểu tượng trong ô trắng.
