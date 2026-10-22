@@ -15,7 +15,7 @@
 | `openbao/` | Policy + template bao agent cho backend (mật khẩu role `cuu_tro_app`, NATS/MQTT, khóa S3 của ứng dụng, token ghi sổ cái) | Có (#29, #30, #27, #28) |
 | `s3/buckets.conf` | Bucket S3 của ứng dụng (`cuu-tro-media`), lõi tạo khi `make up` | Có (#27) |
 | `nats/streams.json` | Khai báo stream/consumer JetStream của ứng dụng (tạo khi `cuu-tro-cam-bien` khởi động) | Có (#30) |
-| `web/` | Web điều phối Nuxt 3 + MapLibre | Tuần 3 |
+| `web/` | Web điều phối Nuxt 3 + Tailwind + MapLibre: đăng nhập Keycloak OIDC + PKCE (client `dxos-web`), bản đồ + danh sách tin kêu cứu (dữ liệu giả); xem `web/README.md` | Khung (#59) |
 | `mobile/` | App hiện trường Flutter | Tuần 5 |
 
 ## Dữ liệu (`db/`, #25)

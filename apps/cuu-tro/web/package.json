@@ -1,0 +1,33 @@
+{
+  "name": "cuu-tro-web",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Web điều phối cứu trợ (Tầng 2) của Disaster DX-OS",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "test": "vitest run",
+    "typecheck": "nuxt typecheck",
+    "licenses": "node scripts/check-licenses.mjs"
+  },
+  "dependencies": {
+    "maplibre-gl": "5.24.0",
+    "nuxt": "3.21.11"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.3",
+    "@types/geojson": "7946.0.16",
+    "@types/node": "22.20.5",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5",
+    "vue-tsc": "3.3.13"
+  }
+}

@@ -1,0 +1,16 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+@import "tailwindcss";
+
+/* Màu theo bộ nhận diện Team 1 (navy, cam cứu hộ, xanh nước) */
+@theme {
+  --color-navy: #12355B;
+  --color-navy-700: #1b4675;
+  --color-cam: #F07B1D;
+  --color-cam-600: #d9690f;
+  --color-nuoc: #1FA2C9;
+  --color-chu: #334155;
+  --font-sans: Arial, "Helvetica Neue", system-ui, sans-serif;
+}
+
+html, body, #__nuxt { height: 100%; }
+body { @apply bg-slate-100 text-chu antialiased; }
