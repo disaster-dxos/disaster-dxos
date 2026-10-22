@@ -44,6 +44,7 @@
 - CI thêm job `shellcheck`, `yamllint` (cấu hình `.yamllint.yml`) và `pytest` (tự bỏ qua khi chưa có mã Python); `scripts/lint.sh`, `make lint`; ghim phiên bản action (#31).
 
 ### Changed
+- Ảnh luồng kêu cứu và luồng minh bạch trong README dùng nhãn tiếng Việt (#53).
 - `README.md` sắp xếp lại theo trình tự kể chuyện sản phẩm: giới thiệu → thách thức → giải pháp → đối tượng → chức năng (đã có / sắp có) → kiến trúc → công nghệ → luồng nghiệp vụ → hướng phát triển → cài đặt từ máy sạch → đóng góp, báo lỗi, giấy phép. Ảnh mới trong `docs/images/`: banner có tiêu đề, vòng tròn 6 chức năng nhãn tiếng Việt, kiến trúc tổng quan dạng biểu tượng, luồng kêu cứu 5 bước, luồng minh bạch 4 bước (đội tạo bằng công cụ AI; biểu tượng là hình minh họa, không phải logo chính thức). Cấu hình, lệnh OpenBao, thêm ứng dụng vào `apps/`, kiểm thử chuyển sang `docs/cai-dat.md`; hướng dẫn chạy từ máy sạch, tài khoản mẫu, xử lý lỗi giữ nguyên trong README (#51).
 - Sơ đồ chi tiết `kien-truc.svg`, `luong-cuu-tro.svg` chỉ dùng trong `docs/architecture.md` (mục 1 và 6) (#51).
 
