@@ -9,6 +9,10 @@ Disaster DX-OS gồm hai tầng, đúng mô hình Open-Core của đề:
 
 ## 1. Sơ đồ tổng thể
 
+Sơ đồ dưới vẽ những gì đang chạy thật trong `make up`: Tầng 2 `apps/cuu-tro` chỉ đi qua APISIX, bốn dịch vụ bắt buộc của đề đánh số ①–④, cùng luồng JWT, cảm biến, sổ cái và bí mật. Sơ đồ Mermaid tiếp theo là kiến trúc đích, gồm cả thành phần tuần 3–5.
+
+![Sơ đồ kiến trúc chi tiết: Tầng 2 apps/cuu-tro gọi lõi Tầng 1 core/ qua APISIX](images/kien-truc.svg)
+
 ```mermaid
 flowchart TB
   subgraph T2["Tầng 2 · Ứng dụng (H-P-D-I)"]
@@ -369,6 +373,12 @@ sequenceDiagram
 Giới hạn hiện tại: khóa công khai lấy từ chính máy chủ thì chỉ chứng minh toàn vẹn so với khóa đang công bố; triển khai thật cần công bố khóa ở nơi độc lập (tài liệu phát hành) và đặt `LEDGER_VERIFIER_KEY`. Consistency proof (log không bị viết lại) và witness công khai của transparency.dev để tuần 6.
 
 ## 6. Luồng nghiệp vụ chính (đích tuần 3–5)
+
+Hai luồng đã chạy được: kêu cứu → phân công đội gần nhất → xác nhận, và phiếu nhập/xuất kho → sổ cái → kiểm chứng công khai. API và lệnh mẫu của từng bước nằm trong `apps/cuu-tro/README.md`.
+
+![Luồng kêu cứu → phân công → xác nhận và luồng phiếu kho → sổ cái → kiểm chứng công khai](images/luong-cuu-tro.svg)
+
+Luồng đích đầy đủ, thêm AI bóc tách tin có người duyệt, bản sao số trạm đo và thông báo:
 
 ```mermaid
 flowchart LR
