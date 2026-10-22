@@ -77,7 +77,7 @@ flowchart TB
 ```
 
 Đường liền: luồng dữ liệu. Đường đứt: xác thực, khóa và bí mật.
-Hiện profile `core` có `openbao` (+ 8 bao agent), `postgres` (+ `postgres-roles`), `keycloak`, `apisix`, `hasura`, `seaweedfs`, `temporal` (+ `temporal-ui`), `nats` (#11; bắt buộc xác thực, MQTT cho thiết bị, #30), `ledger` (sổ cái Tessera, #28) và route gateway `/graphql`, `/files/*`, `/workflow/*`, `/ledger/*` (đọc công khai, #28), `/api/v1/me` sau Coraza WAF (#12, mục 3.3); các thành phần còn lại tuần 3–5 (xem `docs/PLAN.md`).
+Hiện profile `core` có `openbao` (+ 8 bao agent), `postgres` (+ `postgres-roles`), `keycloak`, `apisix`, `hasura`, `seaweedfs`, `temporal` (+ `temporal-ui`), `nats` (#11; bắt buộc xác thực, MQTT cho thiết bị, #30), `ledger` (sổ cái Tessera, #28) và route gateway `/graphql`, `/files/*`, `/workflow/*`, `/ledger/*` (đọc công khai, #28), `/api/v1/me` sau Coraza WAF (#12, mục 3.3), route `/*` cho web điều phối `cuu-tro-web` (profile `app`, #64); các thành phần còn lại tuần 3–5 (xem `docs/PLAN.md`).
 
 ## 2. Ánh xạ 4 dịch vụ bắt buộc của đề
 
@@ -212,6 +212,7 @@ Tầng 2 chỉ thấy cổng `9080` của APISIX. Hasura (`8081`), SeaweedFS S3 
 | `/workflow/*` | GET, POST, OPTIONS | API workflow của ứng dụng `<DXOS_APP>-api:8000` (`GW_WORKFLOW_UPSTREAM_HOST/PORT`), bỏ tiền tố `/workflow` | Bắt buộc, chuyển nguyên Bearer token (API kiểm lại) | Bộ `api` | Body 1 MiB; rate limit như trên | #29, mục 7.3 |
 | `/api/v1/me` | GET, OPTIONS | Keycloak userinfo | Bắt buộc | Bộ `api` | rate limit như trên | Route mẫu v0.0.1 |
 | `/healthz` | GET | không (APISIX tự trả) | Không | – | 20 request / 10 s / IP | Healthcheck; smoke dùng để kiểm `limit-count` |
+| `/`, `/*` (#64) | GET, HEAD | Web Tầng 2 của ứng dụng `<DXOS_APP>-web:3000` (`GW_WEB_UPSTREAM_HOST/PORT`) | Không (web tự đăng nhập OIDC + PKCE), bỏ header `Authorization` | Bộ `web`: không đọc body; tham số `iss` miễn nhóm luật SSRF/RFI | `GW_WEB_RATE_LIMIT_COUNT` (mặc định 600) / `GW_RATE_LIMIT_WINDOW` | Ưu tiên thấp nhất: mọi route trên có đường dẫn cụ thể hơn luôn thắng. CSP và header bảo mật do web đặt |
 
 Thứ tự xử lý một request (priority của plugin trong APISIX):
 

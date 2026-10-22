@@ -2,7 +2,7 @@
 # Yêu cầu PoF: license đầy đủ (#1), build được 100% từ mã nguồn (#3), lint/test từng thành phần (#31).
 # Tên job ổn định để bật bắt buộc trong bảo vệ nhánh: license, build-from-source, shellcheck, yamllint, pytest.
 # Sổ cái core/ledger (Go, #28): go-test (gofmt, go vet, go test) và go-licenses (chỉ giấy phép OSI).
-# Web điều phối (Nuxt, #59): job web (giấy phép npm, Vitest, typecheck, build), chưa bắt buộc.
+# Web điều phối (Nuxt, #59): job web (giấy phép npm, Vitest, typecheck, build, image Docker #64), chưa bắt buộc.
 name: ci
 on:
   push:
@@ -134,3 +134,17 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
+      # Image chạy thật (apps/cuu-tro/web/Dockerfile, #64): build từ nguồn rồi chạy thử, kiểm trang chủ,
+      # header bảo mật và user không phải root. build-from-source cũng dựng image này qua compose.
+      - name: Build image Docker
+        run: docker build --build-context logo=../../../docs/images/logo -t cuu-tro-web:ci .
+      - name: Chạy thử image
+        run: |
+          docker run -d --name web -p 127.0.0.1:3000:3000 --read-only --cap-drop ALL cuu-tro-web:ci
+          for _ in $(seq 1 30); do curl -sf -o /dev/null http://127.0.0.1:3000/ && break; sleep 1; done
+          curl -s -D h.txt -o index.html http://127.0.0.1:3000/
+          grep -qi '^content-security-policy:.*frame-ancestors' h.txt
+          grep -qi '^x-frame-options: DENY' h.txt
+          grep -q 'id="__nuxt"' index.html
+          test "$(docker exec web id -u)" != 0
+          docker rm -f web

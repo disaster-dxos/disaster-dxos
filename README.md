@@ -144,11 +144,13 @@ make up
 make smoke
 ```
 
+Sau `make up`, mở web điều phối qua gateway: **http://localhost:9080/** (đăng nhập bằng tài khoản mẫu bên dưới).
+
 | Bước | Việc xảy ra |
 |---|---|
 | `cp .env.example .env` | Cấu hình cho máy dev. Không có bí mật nào trong file này; `KC_DEMO_USER_PASSWORD` chỉ là mật khẩu của tài khoản mẫu |
-| `make up` | Chạy OpenBao, khởi tạo (Shamir 3 mảnh, ngưỡng 2), mở khóa, sinh ngẫu nhiên mọi bí mật lõi, rồi chạy profile `core` + `app`: kéo image, build 3 image từ mã nguồn (APISIX + Coraza, sổ cái Go, backend Python), áp migration, áp metadata Hasura, tạo bucket |
-| `make smoke` | Nạp dữ liệu giả rồi kiểm 339 ca: OpenBao, JWT, route gateway + WAF, ràng buộc CSDL, phân quyền GraphQL, workflow phân công, cảm biến MQTT, ảnh hiện trường, sổ cái |
+| `make up` | Chạy OpenBao, khởi tạo (Shamir 3 mảnh, ngưỡng 2), mở khóa, sinh ngẫu nhiên mọi bí mật lõi, rồi chạy profile `core` + `app`: kéo image, build 4 image từ mã nguồn (APISIX + Coraza, sổ cái Go, backend Python, web Nuxt), áp migration, áp metadata Hasura, tạo bucket |
+| `make smoke` | Nạp dữ liệu giả rồi kiểm 339 ca: OpenBao, JWT, route gateway + WAF, ràng buộc CSDL, phân quyền GraphQL, workflow phân công, cảm biến MQTT, ảnh hiện trường, sổ cái; từ #64 thêm 31 ca web điều phối qua gateway (`scripts/smoke-web.sh`) |
 
 Đo thật ngày 22/10/2026 trên bản clone sạch từ GitHub, chạy ở thư mục khác thư mục mã gốc (Mac Apple Silicon, Docker Desktop, Docker Engine 28.5, chưa có image nào trên máy): `make up` lần đầu 2 phút 36 giây (gồm kéo khoảng 6,9 GB image và build), lần sau 48 giây; `make smoke` 72 giây, đạt 339/339. Mạng chậm hơn thì lần đầu lâu hơn.
 
@@ -170,7 +172,7 @@ Tài khoản trong realm `disaster` là **dữ liệu giả** của `apps/cuu-tr
 
 Dữ liệu mẫu là xã An Lạc giả định (`make seed`, `make smoke` cũng tự nạp).
 
-Thử nhanh qua gateway (client `dxos-dev-cli` chỉ dùng khi dev):
+Web điều phối: http://localhost:9080/ chuyển sang trang đăng nhập Keycloak (client `dxos-web`, PKCE) rồi quay về bản đồ. Thử nhanh API qua gateway (client `dxos-dev-cli` chỉ dùng khi dev):
 
 ```bash
 set -a; . ./.env; set +a

@@ -8,8 +8,8 @@
 #   core   OpenBao, PostgreSQL+PostGIS, Keycloak, APISIX, Hasura CE, SeaweedFS, Temporal, NATS
 #          (JetStream + MQTT có xác thực, #30), sổ cái minh bạch ledger (Tessera, #28)
 #          (chạy được trên laptop 16 GB, RAM đo được: docs/architecture.md mục 4)
-#   app    backend của ứng dụng Tầng 2 đang chọn (apps/${DXOS_APP}/compose.yaml, nạp bằng include
-#          bên dưới), vd cuu-tro-worker, cuu-tro-api (#29). make up bật cả core và app.
+#   app    backend và web của ứng dụng Tầng 2 đang chọn (apps/${DXOS_APP}/compose.yaml, nạp bằng include
+#          bên dưới), vd cuu-tro-worker, cuu-tro-api (#29), cuu-tro-web (#64). make up bật cả core và app.
 #   gis, ai, bi, sec   xem TODO cuối file
 #
 # Chạy: cp .env.example .env && make up   (make up tự khởi tạo/mở khóa OpenBao lần đầu)
@@ -293,6 +293,8 @@ services:
       # (KC_GATEWAY_CLIENT_SECRET đến từ OpenBao; mật khẩu user mẫu là dữ liệu giả của ứng dụng)
       KC_DEMO_USER_PASSWORD: ${KC_DEMO_USER_PASSWORD:?Thiếu KC_DEMO_USER_PASSWORD trong .env}
       KC_REALM_SSL_REQUIRED: ${KC_REALM_SSL_REQUIRED:-external}
+      # Web Tầng 2 mở qua gateway (#64): redirect_uri/web origin của client web trong realm
+      GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL:-http://localhost:9080}
       JAVA_OPTS_KC_HEAP: "-XX:MaxRAMPercentage=70"
     volumes:
       # Realm (vai trò, client, người dùng mẫu) do ứng dụng cung cấp, không thuộc lõi
@@ -340,6 +342,10 @@ services:
       # ước <DXOS_APP>-api:8000 (cuu-tro-api trong apps/cuu-tro/compose.yaml); lõi không gắn cứng tên.
       GW_WORKFLOW_UPSTREAM_HOST: ${GW_WORKFLOW_UPSTREAM_HOST:-${DXOS_APP:-cuu-tro}-api}
       GW_WORKFLOW_UPSTREAM_PORT: ${GW_WORKFLOW_UPSTREAM_PORT:-8000}
+      # Upstream của route /* (web Tầng 2, #64): quy ước <DXOS_APP>-web:3000 (cuu-tro-web)
+      GW_WEB_UPSTREAM_HOST: ${GW_WEB_UPSTREAM_HOST:-${DXOS_APP:-cuu-tro}-web}
+      GW_WEB_UPSTREAM_PORT: ${GW_WEB_UPSTREAM_PORT:-3000}
+      GW_WEB_RATE_LIMIT_COUNT: ${GW_WEB_RATE_LIMIT_COUNT:-600}
     volumes:
       - ./core/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
       - ./core/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro

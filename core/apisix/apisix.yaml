@@ -51,6 +51,19 @@ upstreams:
       send: 15
       read: 15
 
+  - id: web
+    type: roundrobin
+    # Web Tầng 2 của ứng dụng (#64), không thuộc lõi: mặc định quy ước <DXOS_APP>-web:3000
+    # (docker-compose.yml). Lõi chạy một mình (không có app) thì route /* trả 502/503.
+    nodes:
+      - host: "${{GW_WEB_UPSTREAM_HOST:=web}}"
+        port: ${{GW_WEB_UPSTREAM_PORT:=3000}}
+        weight: 1
+    timeout:
+      connect: 5
+      send: 15
+      read: 15
+
 routes:
   # ---------------- /graphql → Hasura /v1/graphql ----------------
   # Chỉ mở đúng một endpoint GraphQL. /v1/metadata, /v2/query, /console không có route ra ngoài.
@@ -304,6 +317,49 @@ routes:
       proxy-rewrite:
         uri: /realms/${{KEYCLOAK_REALM:=disaster}}/protocol/openid-connect/userinfo
       limit-count: *rate-limit
+
+  # ---------------- /* → web Tầng 2 của ứng dụng (#64), CHỈ GET/HEAD ----------------
+  # Trang web (SPA) và tệp tĩnh: /, /auth/callback, /_nuxt/*, /logo/*... Mọi route khác có đường dẫn
+  # cụ thể hơn nên luôn thắng (/graphql, /files/*, /workflow/*, /ledger/*, /api/v1/me, /healthz, chặn
+  # /v1/*, /v2/*, /console); route này chỉ nhận GET/HEAD nên PUT/DELETE /files/* vẫn 404.
+  # Không kiểm JWT ở gateway: web tự đăng nhập Keycloak (OIDC + PKCE) rồi gọi API qua các route trên
+  # kèm Bearer token. WAF vẫn bật (URI, tham số, header); bỏ header Authorization (web không cần token).
+  # Header bảo mật (CSP, X-Frame-Options, nosniff) do web đặt (apps/<app>/web/server/plugins).
+  - id: web
+    uris: [/, /*]
+    priority: -10
+    methods: [GET, HEAD]
+    upstream_id: web
+    plugins:
+      request-id: {}
+      client-control: *api-body-limit
+      coraza-filter:
+        conf:
+          directives_map:
+            web:
+              - Include @recommended-conf
+              - SecRuleEngine On
+              - SecRequestBodyAccess Off
+              - SecResponseBodyAccess Off
+              - Include @crs-setup-conf
+              - Include @owasp_crs/*.conf
+              # Keycloak gọi lại /auth/callback kèm iss=<URL realm> (RFC 9207), vd http://localhost:8080/...
+              # hay http://<IP>:8080/...: luật SSRF (934110) và RFI (931100) chặn nhầm. Chỉ bỏ hai nhóm
+              # luật này cho đúng tham số iss; luật XSS/SQLi vẫn kiểm iss
+              - SecRuleUpdateTargetByTag "attack-ssrf" "!ARGS:iss"
+              - SecRuleUpdateTargetByTag "attack-rfi" "!ARGS:iss"
+          default_directives: web
+      proxy-rewrite:
+        headers:
+          remove:
+            - Authorization
+      limit-count:
+        # Một lần mở trang tải khoảng 10-20 tệp: giới hạn riêng, cao hơn route API
+        count: ${{GW_WEB_RATE_LIMIT_COUNT:=600}}
+        time_window: ${{GW_RATE_LIMIT_WINDOW:=60}}
+        key_type: var
+        key: remote_addr
+        rejected_code: 429
 
   # Kiểm tra sống của gateway, không cần token. Giới hạn chặt (20 request / 10 giây / IP)
   # để smoke test kiểm được limit-count mà không phải chờ lâu.
