@@ -56,7 +56,56 @@
       "attributes": {
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "http://localhost:3000/*"
-      }
+      },
+      "protocolMappers": [
+        {
+          "name": "hasura-allowed-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true",
+            "claim.name": "https://hasura\\.io/jwt/claims.x-hasura-allowed-roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
+        },
+        {
+          "name": "hasura-default-role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true",
+            "claim.name": "https://hasura\\.io/jwt/claims.x-hasura-default-role",
+            "user.attribute": "hasura_default_role",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "aggregate.attrs": "false"
+          }
+        },
+        {
+          "name": "hasura-user-id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true",
+            "claim.name": "https://hasura\\.io/jwt/claims.x-hasura-user-id",
+            "user.attribute": "id",
+            "jsonType.label": "String"
+          }
+        }
+      ]
     },
     {
       "clientId": "dxos-dev-cli",
@@ -66,11 +115,61 @@
       "publicClient": true,
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": true,
-      "implicitFlowEnabled": false
+      "implicitFlowEnabled": false,
+      "protocolMappers": [
+        {
+          "name": "hasura-allowed-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true",
+            "claim.name": "https://hasura\\.io/jwt/claims.x-hasura-allowed-roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
+        },
+        {
+          "name": "hasura-default-role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true",
+            "claim.name": "https://hasura\\.io/jwt/claims.x-hasura-default-role",
+            "user.attribute": "hasura_default_role",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "aggregate.attrs": "false"
+          }
+        },
+        {
+          "name": "hasura-user-id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true",
+            "claim.name": "https://hasura\\.io/jwt/claims.x-hasura-user-id",
+            "user.attribute": "id",
+            "jsonType.label": "String"
+          }
+        }
+      ]
     }
   ],
   "users": [
     {
+      "id": "9b000000-0000-4000-8000-000000000001",
       "username": "dieuphoi01",
       "enabled": true,
       "emailVerified": true,
@@ -87,9 +186,15 @@
       "realmRoles": [
         "default-roles-disaster",
         "dieu-phoi"
-      ]
+      ],
+      "attributes": {
+        "hasura_default_role": [
+          "dieu-phoi"
+        ]
+      }
     },
     {
+      "id": "9b000000-0000-4000-8000-000000000002",
       "username": "cuuho01",
       "enabled": true,
       "emailVerified": true,
@@ -106,9 +211,15 @@
       "realmRoles": [
         "default-roles-disaster",
         "cuu-ho"
-      ]
+      ],
+      "attributes": {
+        "hasura_default_role": [
+          "cuu-ho"
+        ]
+      }
     },
     {
+      "id": "9b000000-0000-4000-8000-000000000003",
       "username": "tinhnguyen01",
       "enabled": true,
       "emailVerified": true,
@@ -125,7 +236,107 @@
       "realmRoles": [
         "default-roles-disaster",
         "tinh-nguyen"
+      ],
+      "attributes": {
+        "hasura_default_role": [
+          "tinh-nguyen"
+        ]
+      }
+    }
+  ],
+  "browserFlow": "browser-otp-dieu-phoi",
+  "authenticatorConfig": [
+    {
+      "alias": "cond-role-dieu-phoi",
+      "config": {
+        "condUserRole": "dieu-phoi",
+        "negate": "false"
+      }
+    }
+  ],
+  "authenticationFlows": [
+    {
+      "alias": "browser-otp-dieu-phoi",
+      "description": "Trình duyệt: cookie hoặc mật khẩu; vai trò dieu-phoi bắt buộc OTP",
+      "providerId": "basic-flow",
+      "topLevel": true,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "requirement": "ALTERNATIVE",
+          "priority": 10,
+          "userSetupAllowed": false,
+          "authenticator": "auth-cookie",
+          "authenticatorFlow": false
+        },
+        {
+          "requirement": "ALTERNATIVE",
+          "priority": 20,
+          "userSetupAllowed": false,
+          "authenticatorFlow": true,
+          "flowAlias": "browser-otp-dieu-phoi forms"
+        }
+      ]
+    },
+    {
+      "alias": "browser-otp-dieu-phoi forms",
+      "description": "Mật khẩu rồi OTP có điều kiện",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false,
+          "authenticator": "auth-username-password-form",
+          "authenticatorFlow": false
+        },
+        {
+          "requirement": "CONDITIONAL",
+          "priority": 20,
+          "userSetupAllowed": false,
+          "authenticatorFlow": true,
+          "flowAlias": "browser-otp-dieu-phoi otp"
+        }
+      ]
+    },
+    {
+      "alias": "browser-otp-dieu-phoi otp",
+      "description": "OTP khi user có vai trò dieu-phoi; chưa cài thì bị bắt cài (CONFIGURE_TOTP)",
+      "providerId": "basic-flow",
+      "topLevel": false,
+      "builtIn": false,
+      "authenticationExecutions": [
+        {
+          "requirement": "REQUIRED",
+          "priority": 10,
+          "userSetupAllowed": false,
+          "authenticator": "conditional-user-role",
+          "authenticatorFlow": false,
+          "authenticatorConfig": "cond-role-dieu-phoi"
+        },
+        {
+          "requirement": "REQUIRED",
+          "priority": 20,
+          "userSetupAllowed": false,
+          "authenticator": "auth-otp-form",
+          "authenticatorFlow": false
+        }
       ]
     }
-  ]
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"validations\":{\"length\":{\"min\":3,\"max\":255},\"username-prohibited-characters\":{},\"up-username-not-idn-homograph\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"email\",\"displayName\":\"${email}\",\"validations\":{\"email\":{},\"length\":{\"max\":255}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"hasura_default_role\",\"displayName\":\"Vai trò mặc định (Hasura)\",\"validations\":{\"options\":{\"options\":[\"dieu-phoi\",\"cuu-ho\",\"tinh-nguyen\"]}},\"annotations\":{\"inputType\":\"select\"},\"permissions\":{\"view\":[\"admin\"],\"edit\":[\"admin\"]},\"multivalued\":false}],\"groups\":[{\"name\":\"user-metadata\",\"displayHeader\":\"User metadata\",\"displayDescription\":\"Attributes, which refer to user metadata\"}]}"
+          ]
+        }
+      }
+    ]
+  }
 }

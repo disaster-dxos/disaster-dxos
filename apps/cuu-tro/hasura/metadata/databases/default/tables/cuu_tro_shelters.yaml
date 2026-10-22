@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: Apache-2.0
+# Điểm trú ẩn: thông tin công khai cho mọi vai trò đã đăng nhập (SĐT là của điểm trú ẩn, không
+# phải cá nhân).
+#   dieu-phoi   đọc, tạo, sửa (sức chứa, số người đang ở, trạng thái). Không xóa (tạm đóng = status tam_dong)
+#   cuu-ho, tinh-nguyen   chỉ đọc
+table:
+  name: shelters
+  schema: cuu_tro
+configuration:
+  custom_name: shelters
+  column_config: {}
+  custom_column_names: {}
+  custom_root_fields: {}
+array_relationships:
+  - name: supplies
+    using:
+      foreign_key_constraint_on:
+        column: shelter_id
+        table:
+          name: supplies
+          schema: cuu_tro
+insert_permissions:
+  - role: dieu-phoi
+    permission:
+      check: {}
+      columns: &shelter-columns
+        - name
+        - location
+        - address_text
+        - capacity
+        - current_occupancy
+        - status
+        - contact_phone
+select_permissions:
+  - role: dieu-phoi
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+  - role: cuu-ho
+    permission:
+      columns: "*"
+      filter: {}
+  - role: tinh-nguyen
+    permission:
+      columns: "*"
+      filter: {}
+update_permissions:
+  - role: dieu-phoi
+    permission:
+      columns: *shelter-columns
+      filter: {}
+      check: {}

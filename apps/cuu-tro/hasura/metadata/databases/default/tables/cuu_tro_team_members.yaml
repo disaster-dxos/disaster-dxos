@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: Apache-2.0
+# Thành viên đội (user Keycloak ↔ đội), nền của lọc theo hàng cho cuu-ho (migration 0002).
+#   dieu-phoi   đọc, gán (thêm), chuyển đội, gỡ thành viên. Xóa ở đây là gỡ liên kết, không mất dữ liệu nghiệp vụ
+#   cuu-ho      chỉ đọc dòng của chính mình (biết mình thuộc đội nào)
+table:
+  name: team_members
+  schema: cuu_tro
+configuration:
+  custom_name: team_members
+  column_config: {}
+  custom_column_names: {}
+  custom_root_fields: {}
+object_relationships:
+  - name: team
+    using:
+      foreign_key_constraint_on: team_id
+insert_permissions:
+  - role: dieu-phoi
+    permission:
+      check: {}
+      columns:
+        - user_id
+        - team_id
+        - username
+select_permissions:
+  - role: dieu-phoi
+    permission:
+      columns: "*"
+      filter: {}
+  - role: cuu-ho
+    permission:
+      columns: "*"
+      filter:
+        user_id:
+          _eq: x-hasura-user-id
+update_permissions:
+  - role: dieu-phoi
+    permission:
+      columns:
+        - team_id
+        - username
+      filter: {}
+      check: {}
+delete_permissions:
+  - role: dieu-phoi
+    permission:
+      filter: {}

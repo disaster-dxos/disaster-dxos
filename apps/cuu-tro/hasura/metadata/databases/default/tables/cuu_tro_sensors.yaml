@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: Apache-2.0
+# Trạm cảm biến. Giá trị đo (last_value, last_observed_at) do consumer NATS cuu-tro-cam-bien (#30)
+# ghi bằng role DB cuu_tro_app, không qua vai trò người dùng. Chuỗi đo: quan hệ readings.
+#   dieu-phoi   đọc; chỉnh tên, ngưỡng cảnh báo/nguy hiểm, bật/tắt trạm. Không tạo/xóa
+#   cuu-ho      chỉ đọc (đội hiện trường cần mực nước)
+#   tinh-nguyen chỉ đọc thông tin công khai của trạm (#30, đi kèm quyền đọc sensor_readings);
+#               không thấy ngsi_ld_id, thời điểm tạo/sửa
+table:
+  name: sensors
+  schema: cuu_tro
+configuration:
+  custom_name: sensors
+  column_config: {}
+  custom_column_names: {}
+  custom_root_fields: {}
+array_relationships:
+  - name: readings
+    using:
+      foreign_key_constraint_on:
+        column: sensor_id
+        table:
+          name: sensor_readings
+          schema: cuu_tro
+select_permissions:
+  - role: dieu-phoi
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+  - role: cuu-ho
+    permission:
+      columns: "*"
+      filter: {}
+  - role: tinh-nguyen
+    permission:
+      columns:
+        - id
+        - code
+        - name
+        - kind
+        - unit
+        - location
+        - warning_threshold
+        - danger_threshold
+        - last_value
+        - last_observed_at
+        - active
+      filter: {}
+update_permissions:
+  - role: dieu-phoi
+    permission:
+      columns:
+        - name
+        - warning_threshold
+        - danger_threshold
+        - active
+      filter: {}
+      check: {}

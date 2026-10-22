@@ -1,5 +1,5 @@
 Disaster DX-OS
-Copyright 2026 <Tên đội> — OLP PMNM 2026
+Copyright 2026 DTU_DZ_1 – OLP PMNM 2026
 
 Sản phẩm được cấp phép theo Apache License 2.0 (xem LICENSE).
 Các thành phần nguồn mở dưới đây được dùng dưới dạng thư viện qua trình quản lý gói
@@ -10,15 +10,17 @@ Trạng thái: Đã xác minh 17/10/2026 (D-004) — đọc LICENSE ở repo ch�
 | Lớp | Thành phần | Image / phiên bản ghim | Giấy phép |
 |---|---|---|---|
 | SSO/MFA | Keycloak | `quay.io/keycloak/keycloak:26.8.1` | Apache-2.0 |
-| API Gateway | Apache APISIX (+ Coraza WAF, coraza-proxy-wasm) | `apache/apisix:3.19.0-debian` | Apache-2.0 |
-| Bí mật | OpenBao | `openbao/openbao:2.7.1` | MPL-2.0 |
+| API Gateway | Apache APISIX (image gốc làm nền, chỉ thêm file wasm) | `apache/apisix:3.19.0-debian` → `core/apisix/Dockerfile` | Apache-2.0 |
+| WAF | Coraza WAF – coraza-proxy-wasm (file `.wasm` của bản phát hành chính thức, kiểm SHA-256 lúc build, không chép mã nguồn), nhúng OWASP Core Rule Set 4.14 và các thư viện Go: libinjection-go (BSD-3-Clause), proxy-wasm-go-sdk, coraza-wasilibs (Apache-2.0), gjson, nottinygc, aho-corasick (MIT) | `coraza-proxy-wasm` 0.6.0 | Apache-2.0 (Coraza, OWASP CRS) |
+| Bí mật | OpenBao (dịch vụ riêng, image gốc không sửa; server + bao agent) | `openbao/openbao:2.7.1` | MPL-2.0 |
 | CSDL + GIS | PostgreSQL + PostGIS (dịch vụ riêng) | `postgis/postgis:17-3.5` | PostgreSQL / GPL-2.0 |
-| Tự sinh API | Hasura GraphQL Engine v2 **Community Edition** (chỉ tag `-ce`, không dùng image EE) | `hasura/graphql-engine:v2.51.0-ce` | Apache-2.0 |
+| Tự sinh API | Hasura GraphQL Engine v2 **Community Edition** (chỉ tag `-ce`, không dùng image EE) | `hasura/graphql-engine:v2.51.0-ce.cli-migrations-v3` (kèm `hasura-cli`, cùng giấy phép) | Apache-2.0 |
 | Object storage | SeaweedFS (S3) | `chrislusf/seaweedfs:4.48` | Apache-2.0 |
-| Workflow | Temporal + Python SDK | `temporalio/auto-setup:1.29.7`, `temporalio/ui:2.56.0` | MIT |
-| Event + IoT | NATS JetStream (MQTT tích hợp) | `nats:2.15.1-alpine` | Apache-2.0 |
+| Workflow | Temporal + Python SDK | `temporalio/auto-setup:1.29.7`, `temporalio/ui:2.56.0`; `temporalio` 1.34.0 (PyPI) | MIT |
+| Backend Python `apps/cuu-tro/workflow` | FastAPI, Uvicorn, asyncpg, PyJWT, cryptography, HTTPX, nats-py, paho-mqtt (EPL-2.0 OR BSD-3-Clause, dùng theo BSD-3-Clause) và phụ thuộc gián tiếp (danh sách đủ: DEPENDENCIES.md mục 2) | PyPI, ghim trong `uv.lock`; image nền `python:3.12.13-slim-bookworm` | MIT / BSD-3-Clause / Apache-2.0 / PSF-2.0 / MPL-2.0 (certifi) |
+| Event + IoT | NATS JetStream (MQTT tích hợp, bắt buộc xác thực) | `nats:2.15.1-alpine` | Apache-2.0 |
 | NGSI-LD broker | Scorpio Broker (chạy với `postgis/postgis`) | ghim tag ở tuần 4 | BSD-3-Clause |
-| Sổ cái minh bạch | Transparency log: Tessera (đề xuất, chờ đội chốt) hoặc Trillian — thay immudb (BSL 1.1, không OSI) | build từ nguồn, tuần 4 | Apache-2.0 |
+| Sổ cái minh bạch | Tessera (transparency-dev/tessera, Apache-2.0) – đã chốt D-007, thư viện Go khai báo qua go.mod, nhúng trong dịch vụ `core/ledger`; kèm transparency-dev/formats, transparency-dev/merkle (Apache-2.0), golang.org/x/mod (BSD-3-Clause) và phụ thuộc gián tiếp Apache-2.0/BSD-3-Clause/MIT/MPL-2.0 (danh sách đủ: DEPENDENCIES.md mục 2, kiểm bằng `go-licenses` trong CI); thay immudb (BSL 1.1, không OSI) | `disaster-dxos/ledger:0.1.0` build từ nguồn (`core/ledger`, Tessera v1.0.4; bước build `golang:1.26.10-alpine3.24`, image chạy `scratch`) | Apache-2.0 |
 | Quét mã độc | ClamAV (dịch vụ riêng) | ghim tag ở tuần 2+ | GPL-2.0 |
 | Web điều phối | Vue 3 / Nuxt 3 + Tailwind + MapLibre GL JS | npm | MIT / BSD-3-Clause |
 | App hiện trường | Flutter, offline-first | pub | BSD-3-Clause |

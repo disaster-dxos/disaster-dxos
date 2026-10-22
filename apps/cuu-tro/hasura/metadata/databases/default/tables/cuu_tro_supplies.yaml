@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: Apache-2.0
+# Hàng cứu trợ tồn theo mặt hàng × điểm lưu.
+#   dieu-phoi   đọc, tạo mặt hàng, sửa thông tin mặt hàng. KHÔNG sửa trực tiếp quantity: tồn kho chỉ
+#               đổi qua phiếu supply_movements (trigger cộng/trừ, sổ cái #28). Không xóa
+#   tinh-nguyen chỉ đọc (biết điểm nào thiếu hàng)
+table:
+  name: supplies
+  schema: cuu_tro
+configuration:
+  custom_name: supplies
+  column_config: {}
+  custom_column_names: {}
+  custom_root_fields: {}
+object_relationships:
+  - name: shelter
+    using:
+      foreign_key_constraint_on: shelter_id
+array_relationships:
+  - name: movements
+    using:
+      foreign_key_constraint_on:
+        column: supply_id
+        table:
+          name: supply_movements
+          schema: cuu_tro
+insert_permissions:
+  - role: dieu-phoi
+    permission:
+      check: {}
+      columns: &supply-columns
+        - item_name
+        - unit
+        - storage_name
+        - shelter_id
+        - location
+select_permissions:
+  - role: dieu-phoi
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+  - role: tinh-nguyen
+    permission:
+      columns: "*"
+      filter: {}
+update_permissions:
+  - role: dieu-phoi
+    permission:
+      columns: *supply-columns
+      filter: {}
+      check: {}

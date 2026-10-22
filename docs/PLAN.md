@@ -24,30 +24,31 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 
 ## Tuần 2 · 22–28/10 · Lõi headless → v0.1.0
 - [x] [V1] Tách `core/` (Tầng 1, không chứa nghiệp vụ) và `apps/` (nghiệp vụ thiên tai); cập nhật `docs/architecture.md`
-- [ ] [V1] Gộp Hasura CE, SeaweedFS, Temporal, NATS, OpenBao từ `core-next` vào `core`, chạy được trên laptop 16 GB
-- [ ] [V1] APISIX: route `/graphql`, `/files`, `/workflow` kiểm JWT Keycloak; bật Coraza WAF
-- [ ] [V1] Keycloak: claim vai trò mặc định ổn định cho Hasura (sửa `realm_access.roles[0]`); bật OTP cho `dieu-phoi`
-- [ ] [V1] OpenBao giữ bí mật DB, client Keycloak, khóa S3 (bỏ chế độ dev)
-- [ ] [V2] Schema PostGIS trong `apps/`: incidents, rescue_teams, shelters, supplies, sensors (migration)
-- [ ] [V2] Hasura trên schema `apps/`, phân quyền theo vai trò trong JWT
-- [ ] [V2] SeaweedFS S3 + API tải ảnh hiện trường qua gateway
-- [ ] [V2] Chốt transparency log: Tessera hay Trillian (ghi `DECISIONS`), dựng bản chạy thử
-- [ ] [V3] Temporal worker Python "hello" gọi được qua gateway
-- [ ] [V3] NATS JetStream bật MQTT, gửi thử bản tin cảm biến
-- [ ] [V1] CI: lint/test cho từng thành phần (shellcheck, yamllint, pytest khi có mã Python)
+- [x] [V1] Gộp Hasura CE, SeaweedFS, Temporal, NATS từ `core-next` vào `core` (OpenBao đã vào `core` ở #14), chạy được trên laptop 16 GB; chuyển `POSTGRES_PASSWORD`, secret Hasura, khóa S3 sang OpenBao (#11; RAM đo ~1,4–1,9 GB)
+- [x] [V1] APISIX: route `/graphql`, `/files`, `/workflow` kiểm JWT Keycloak; bật Coraza WAF (#12; `/workflow` giữ chỗ 503 tới #29, cấp URL presigned S3 ở #27)
+- [x] [V1] Keycloak: claim vai trò mặc định ổn định cho Hasura (sửa `realm_access.roles[0]`); bật OTP cho `dieu-phoi`
+- [x] [V1] OpenBao giữ bí mật DB, client Keycloak, khóa S3 (bỏ chế độ dev) (#14: OpenBao server + AppRole; #11: superuser PostgreSQL, role Hasura/Temporal, admin secret Hasura, khóa S3)
+- [x] [V2] Schema PostGIS trong `apps/`: incidents, rescue_teams, shelters, supplies, sensors (migration) (#25; schema `cuu_tro`, chặn tin trùng SĐT trong 200 m bằng trigger, `make seed`, `make test-db`)
+- [x] [V2] Hasura trên schema `apps/`, phân quyền theo vai trò trong JWT (#26; metadata `apps/cuu-tro/hasura/metadata/` tự áp khi khởi động, `cuu-ho` lọc theo `team_members`, `tinh-nguyen` không thấy SĐT, `scripts/smoke-hasura.sh` 33 ca qua gateway)
+- [x] [V2] SeaweedFS S3 + API tải ảnh hiện trường qua gateway (#27; bucket `cuu-tro-media` do ứng dụng khai báo, khóa S3 riêng của ứng dụng chỉ bucket `cuu-tro-*`, tải lên qua `/workflow/tai-len/*` kiểm magic bytes + kích thước, xem bằng link presigned ngắn hạn qua `/files/*` chỉ đọc, bảng `incident_media`, `scripts/smoke-anh.sh`; ClamAV để sau)
+- [x] [V1] Chốt transparency log: Tessera, driver POSIX (D-007); tài liệu + SPDX cho Go (#34)
+- [x] [V2] Dựng bản chạy thử `core/ledger` (Go + Tessera): ghi 1 phiếu, lấy proof, xác minh (#28; dịch vụ `ledger` trong `core`, khóa ký Ed25519 trong OpenBao, ghi chỉ trong mạng nội bộ bằng token dịch vụ, `/ledger/*` đọc công khai; phiếu nhập/xuất qua `POST /workflow/kho/phieu` → sổ cái → trang công khai `/workflow/minh-bach/phieu/{mã}`; CLI `ledger-verify` tự kiểm từ tile; `scripts/smoke-ledger.sh`; CI `go-test`, `go-licenses`)
+- [x] [V3] Temporal worker Python "hello" gọi được qua gateway (#29; mở rộng thành khung `PhanCongCuuHo` + API `/workflow/*`, role DB `cuu_tro_app`, `scripts/smoke-workflow.sh` 20 ca)
+- [x] [V3] NATS JetStream bật MQTT, gửi thử bản tin cảm biến (#30; MQTT + NATS bắt buộc xác thực từ OpenBao, bộ giả lập `gia_lap`, stream `CUU_TRO_CAM_BIEN` → `sensor_readings`, cảnh báo vượt ngưỡng lên `cuu-tro.canh-bao.cam-bien.*`, `scripts/smoke-cam-bien.sh`)
+- [x] [V1] CI: lint/test cho từng thành phần (shellcheck, yamllint, pytest khi có mã Python)
 - [ ] [V1] README song ngữ: hướng dẫn chạy từ máy sạch · Release v0.1.0
 
 ## Tuần 3 · 29/10–04/11 · Luồng nghiệp vụ chính
 - [ ] [V2] API kêu cứu + Poka-yoke (bắt buộc tọa độ, chặn trùng SĐT trong bán kính 200 m)
-- [ ] [V1] Temporal workflow: tiếp nhận → phân công đội gần nhất → xác nhận đã cứu → đóng
+- [ ] [V1] Temporal workflow: tiếp nhận → phân công đội gần nhất → xác nhận đã cứu → đóng (khung chạy được từ #29; còn: tự khởi chạy khi có tin mới, quá hạn → báo điều phối + phân công lại, ưu tiên theo `urgency`)
 - [ ] [V3] Web Nuxt: đăng nhập Keycloak (PKCE), bản đồ MapLibre hiển thị sự cố realtime (subscription)
 - [ ] [V3] Màn hình phân công + cập nhật trạng thái
 - [ ] [V1] Centrifugo OSS: đẩy thông báo realtime
 
 ## Tuần 4 · 05–11/11 · Tầng [D] + lên mạng → v0.2.0
-- [ ] [V2] Mô phỏng cảm biến mực nước (Python → MQTT)
-- [ ] [V2] NATS → Scorpio: thực thể trạm đo NGSI-LD (bản sao số)
-- [ ] [V1] Cảnh báo vượt ngưỡng → Temporal → thông báo Telegram
+- [ ] [V2] Mô phỏng cảm biến mực nước (Python → MQTT) (khung có từ #30: `cuu_tro_workflow.gia_lap`, kịch bản `binh-thuong`/`vuot-nguong`; còn: thêm trạm, dữ liệu theo trận lũ mẫu)
+- [ ] [V2] NATS → Scorpio: thực thể trạm đo NGSI-LD (bản sao số) (consumer thứ hai trên stream `CUU_TRO_CAM_BIEN` của #30)
+- [ ] [V1] Cảnh báo vượt ngưỡng → Temporal → thông báo Telegram (sự kiện đã phát lên stream `CUU_TRO_CANH_BAO` từ #30)
 - [ ] [V2] Sổ cái minh bạch: niêm phong nhập/xuất hàng, tiền cứu trợ + endpoint xác minh
 - [ ] [V2] Xuất dữ liệu cũ ra Parquet + truy vấn DuckDB
 - [ ] [V2] Grafana dashboard điều hành

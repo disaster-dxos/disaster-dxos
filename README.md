@@ -1,19 +1,220 @@
-# Disaster DX-OS — Hệ điều hành Ứng phó Thiên tai & Cứu trợ Cộng đồng
+![DTU_DZ_1 · Disaster DX-OS: Hệ điều hành Ứng phó Thiên tai & Cứu trợ Cộng đồng](docs/images/banner.webp)
 
-> OLP PMNM 2026 · Đề tài DX-OS Open-Core · Giấy phép [Apache-2.0](LICENSE)
+# Disaster DX-OS
 
-**VI:** Nền tảng nguồn mở giúp chính quyền địa phương, đội cứu hộ và tình nguyện viên tiếp nhận tin kêu cứu, điều phối cứu hộ trên bản đồ thời gian thực và quản lý hàng cứu trợ minh bạch.
+**Hệ điều hành Ứng phó Thiên tai & Cứu trợ Cộng đồng**: nền tảng nguồn mở giúp chính quyền xã, đội cứu hộ và tình nguyện viên tiếp nhận tin kêu cứu, điều phối cứu hộ theo vị trí thật và công khai hàng cứu trợ để ai cũng kiểm chứng được.
 
-**EN:** An open-source platform for local authorities, rescue teams and volunteers to triage distress calls, coordinate rescue on a real-time map, and manage relief supplies transparently.
+[![Giấy phép Apache-2.0](https://img.shields.io/badge/gi%E1%BA%A5y%20ph%C3%A9p-Apache--2.0-blue)](LICENSE)
+[![Phiên bản](https://img.shields.io/github/v/release/disaster-dxos/disaster-dxos?label=phi%C3%AAn%20b%E1%BA%A3n)](https://github.com/disaster-dxos/disaster-dxos/releases)
+[![CI](https://github.com/disaster-dxos/disaster-dxos/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/disaster-dxos/disaster-dxos/actions/workflows/ci.yml)
 
-## Trạng thái
-Đang xây dựng. Xem [`docs/de-thi-mapping.md`](docs/de-thi-mapping.md) và [`CHANGELOG.md`](CHANGELOG.md).
+Bài dự thi OLP Phần mềm Nguồn mở 2026, đề tài DX-OS Open-Core, đội DTU_DZ_1.
 
-## Chạy nhanh
+## 🧭 Giới thiệu
+
+Miền Trung mỗi năm hứng nhiều cơn bão và lũ. Trong vài giờ nước lên, cán bộ xã phải cùng lúc nghe điện thoại kêu cứu, tìm đội ca nô còn rảnh, theo dõi mực nước và chia hàng cứu trợ, phần lớn bằng sổ tay, nhóm chat và trí nhớ. Disaster DX-OS đưa tất cả việc đó lên một hệ thống chung: một lõi nguồn mở dùng lại được, và một ứng dụng cứu trợ chạy trên lõi đó.
+
+## ⚠️ Thách thức
+
+- **Tin kêu cứu rải rác:** đến qua điện thoại, mạng xã hội, người quen báo hộ; nhiều tin thiếu vị trí.
+- **Cứu trợ trùng hoặc sót:** cùng một nhà được báo nhiều lần, trong khi nhà khác không ai tới.
+- **Thiếu bức tranh thời gian thực:** người điều phối không biết mực nước đang ra sao, đội nào đang rảnh, đội nào ở gần.
+- **Tiền và hàng thiếu minh bạch:** hàng đi qua nhiều tay, người dân và nhà tài trợ khó biết hàng đã đến đâu.
+
+## 💡 Giải pháp
+
+- **Chặn sai ngay từ đầu (Poka-yoke):** tin kêu cứu bắt buộc có tọa độ; tin trùng số điện thoại trong 200 m và 6 giờ bị chặn ngay trong CSDL.
+- **Phân công theo vị trí thật:** workflow tìm đội sẵn sàng gần nhất, gán đội, chờ đội xác nhận có hạn, quá hạn thì tìm lại.
+- **Số liệu hiện trường tự động:** trạm đo mực nước gửi dữ liệu liên tục, vượt ngưỡng thì phát cảnh báo.
+- **Minh bạch kiểm chứng được:** mỗi phiếu nhập/xuất hàng được ghi vào sổ cái chỉ-thêm; ai cũng tự kiểm được, không cần tài khoản, không cần tin máy chủ.
+
+![Hàng cứu trợ được ghi thành chuỗi khối kiểm chứng được, người dân đứng xem](docs/images/minh-bach-cuu-tro.webp)
+
+## 👥 Đối tượng
+
+| Ai | Dùng để làm gì | Vai trò trong hệ thống |
+|---|---|---|
+| Chính quyền xã, người điều phối | Nhận tin, phân công đội, quản lý kho hàng cứu trợ | `dieu-phoi` (bắt buộc OTP) |
+| Đội cứu hộ | Nhận việc, cập nhật hiện trường, xác nhận đã cứu | `cuu-ho` |
+| Tình nguyện viên | Báo tin kêu cứu hộ người dân, gửi ảnh hiện trường | `tinh-nguyen` |
+| Người dân | Gửi kêu cứu, xem cảnh báo | qua tình nguyện viên (sắp có app riêng) |
+| Nhà tài trợ, báo chí | Tự kiểm chứng tiền và hàng cứu trợ | công khai, không cần tài khoản |
+
+## 📱 Chức năng
+
+![Sáu chức năng chính: kêu cứu, bản đồ thời gian thực, phân công cứu hộ, cảnh báo mực nước, sổ cái minh bạch, AI bóc tách tin kêu cứu](docs/images/vong-chuc-nang.webp)
+
+| Chức năng | Trạng thái |
+|---|---|
+| **Kêu cứu** có tọa độ, chặn tin trùng | ✅ Đã có ở v0.1 (API GraphQL, phân quyền theo vai trò) |
+| **Phân công cứu hộ** đội gần nhất, chờ xác nhận | ✅ Đã có ở v0.1 (workflow Temporal, API `/workflow`) |
+| **Cảnh báo mực nước** từ trạm đo | ✅ Đã có ở v0.1: trạm đo (giả lập) → MQTT → phát sự kiện vượt ngưỡng · 🔜 thông báo Telegram (tuần 4) |
+| **Sổ cái minh bạch** tiền và hàng cứu trợ | ✅ Đã có ở v0.1 (Tessera, trang công khai, CLI tự kiểm) |
+| **Bản đồ thời gian thực** cho người điều phối | 🔜 Tuần 3 (web Nuxt + MapLibre; dữ liệu và GraphQL đã sẵn) |
+| **AI bóc tách tin kêu cứu** tự do, người duyệt lại | 🔜 Tuần 5 (Ollama + Qwen2.5 7B/14B) |
+
+Ngoài ra đã có: tải và xem ảnh hiện trường qua link ngắn hạn. Ánh xạ từng yêu cầu của đề vào mã nguồn: [`docs/de-thi-mapping.md`](docs/de-thi-mapping.md).
+
+## 🗺️ Kiến trúc
+
+![Kiến trúc tổng quan: người dùng đi qua APISIX và Keycloak vào Hasura, SeaweedFS, Temporal, sổ cái; dữ liệu trên PostgreSQL + PostGIS; OpenBao giữ bí mật; trạm đo gửi MQTT vào NATS](docs/images/kien-truc-tong-quan.webp)
+
+Hệ thống có hai tầng theo mô hình Open-Core của đề. **Tầng 1** (`core/`) là lõi headless: chỉ có API, không có giao diện người dùng cuối và không chứa nghiệp vụ thiên tai. Lõi có đủ 4 dịch vụ bắt buộc: **SSO** (Keycloak, có OTP), **API Gateway** (APISIX + Coraza WAF), **dữ liệu** có cấu trúc (PostgreSQL + PostGIS, GraphQL tự sinh bằng Hasura CE) và phi cấu trúc (SeaweedFS S3), **workflow engine** (Temporal); thêm NATS cho sự kiện và IoT, sổ cái Tessera, OpenBao giữ mọi bí mật. **Tầng 2** (`apps/cuu-tro/`) là ứng dụng cứu trợ, chỉ gọi lõi qua APISIX; muốn dùng lõi cho bài toán khác thì thêm một thư mục trong `apps/`, không sửa `core/`.
+
+Sơ đồ chi tiết, luồng JWT, route gateway, quản lý bí mật: [`docs/architecture.md`](docs/architecture.md).
+
+## ⚙️ Công nghệ
+
+| Lớp | Thành phần | Giấy phép |
+|---|---|---|
+| SSO / MFA | Keycloak 26.8 | Apache-2.0 |
+| API Gateway | Apache APISIX 3.19 + Coraza WAF (OWASP CRS 4.14) | Apache-2.0 |
+| Dữ liệu có cấu trúc | PostgreSQL 17 + PostGIS 3.5, Hasura GraphQL Engine CE v2.51 | PostgreSQL, GPL-2.0 (dịch vụ riêng), Apache-2.0 |
+| Dữ liệu phi cấu trúc | SeaweedFS (S3) | Apache-2.0 |
+| Workflow | Temporal 1.29 + Python SDK | MIT |
+| Sự kiện, IoT | NATS JetStream + MQTT | Apache-2.0 |
+| Sổ cái minh bạch | Tessera (Go, `core/ledger`) | Apache-2.0 |
+| Bí mật | OpenBao | MPL-2.0 |
+| Backend ứng dụng | Python 3.12, FastAPI | PSF-2.0, MIT |
+| Sắp có | Nuxt 3 + MapLibre, Flutter, Scorpio NGSI-LD, Centrifugo, Ollama + Qwen2.5, Qdrant, Grafana, ClamAV | MIT, BSD-3, Apache-2.0, AGPL-3.0/GPL-2.0 (dịch vụ riêng) |
+
+Phiên bản và giấy phép từng image, thư viện: [`DEPENDENCIES.md`](DEPENDENCIES.md).
+
+## 🔄 Luồng nghiệp vụ
+
+**Kêu cứu → cứu hộ**
+
+![Luồng kêu cứu 5 bước: báo tin, kiểm tra, điều phối, đội gần nhất, đã cứu](docs/images/luong-keu-cuu.webp)
+
+1. **Báo tin:** người dân hoặc tình nguyện viên gửi tin kêu cứu kèm tọa độ.
+2. **Kiểm tra:** CSDL từ chối tin thiếu tọa độ và tin trùng số điện thoại trong 200 m / 6 giờ.
+3. **Điều phối:** người điều phối bấm phân công, hệ thống khởi chạy workflow Temporal.
+4. **Đội gần nhất:** workflow tìm đội sẵn sàng gần nhất bằng PostGIS, gán đội và chờ xác nhận có hạn.
+5. **Đã cứu:** đội cứu hộ xác nhận, tin được đóng, đội trở lại trạng thái sẵn sàng.
+
+**Hàng cứu trợ → kiểm chứng công khai**
+
+![Luồng minh bạch 4 bước: phiếu cứu trợ, băm, sổ cái công khai, ai cũng kiểm chứng được](docs/images/luong-minh-bach.webp)
+
+1. **Phiếu cứu trợ:** người điều phối lập phiếu nhập hoặc xuất kho, tồn kho tự cập nhật.
+2. **Băm:** bản ghi phiếu chuẩn hóa, không chứa thông tin cá nhân, được băm SHA-256.
+3. **Sổ cái công khai:** dấu băm được ghi vào transparency log Tessera, chỉ thêm, không sửa, có chữ ký.
+4. **Ai cũng kiểm chứng được:** trang công khai hoặc công cụ `ledger-verify` tự kiểm phiếu từ dữ liệu công khai, không cần tài khoản.
+
+API và lệnh mẫu của từng bước: [`apps/cuu-tro/README.md`](apps/cuu-tro/README.md).
+
+## 🚀 Hướng phát triển
+
+Theo [`docs/PLAN.md`](docs/PLAN.md):
+
+- **Tuần 3:** web điều phối Nuxt 3 với bản đồ MapLibre thời gian thực, màn hình phân công; tự khởi chạy phân công khi có tin mới; thông báo realtime qua Centrifugo.
+- **Tuần 4:** trạm đo thành bản sao số NGSI-LD trên Scorpio; cảnh báo vượt ngưỡng gửi Telegram; dữ liệu cũ ra Parquet + DuckDB; dashboard Grafana; lên VPS có HTTPS.
+- **Tuần 5:** AI bóc tách tin kêu cứu tự do thành dữ liệu có cấu trúc, người điều phối duyệt lại; app hiện trường Flutter chạy được khi mất mạng; demo công khai.
+- **Tuần 6–7:** sửa theo phản hồi người dùng thật, module mẫu cho `apps/`, phát hành v1.0.0.
+
+## 🛠️ Cài đặt từ máy sạch
+
+### Yêu cầu máy
+
+| Mục | Tối thiểu |
+|---|---|
+| Hệ điều hành | Linux, macOS (Intel hoặc Apple Silicon). Windows qua WSL 2 về lý thuyết chạy được, đội chưa kiểm thử |
+| Docker | Docker Engine 24+ hoặc Docker Desktop, **Docker Compose 2.20+** (cần `include`) |
+| RAM cấp cho Docker | 4 GB trở lên. Đo thật: cả hệ thống dùng khoảng 2,0 GB sau `make smoke` |
+| Ổ trống | 10 GB trở lên. Đo thật: image khoảng 6,9 GB, build cache khoảng 0,8 GB, cộng volume dữ liệu |
+| Công cụ | `git`, `make`, `bash`, `curl`, `python3`, `openssl` |
+| Cổng trống | `8080` (Keycloak), `9080` (APISIX); chỉ trên `127.0.0.1`: `8200`, `15432`, `8081`, `8333`, `7233`, `8088`, `4222`, `1883` |
+
+Không bắt buộc: [`uv`](https://docs.astral.sh/uv/) để chạy pytest, Go 1.26 để chạy `go test`, `shellcheck` + `yamllint` cho `make lint`.
+
+### Chạy
+
 ```bash
+git clone https://github.com/disaster-dxos/disaster-dxos.git
+cd disaster-dxos
 cp .env.example .env
 make up
+make smoke
 ```
 
-## Đóng góp
-Xem [`CONTRIBUTING.md`](CONTRIBUTING.md) và [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
+| Bước | Việc xảy ra |
+|---|---|
+| `cp .env.example .env` | Cấu hình cho máy dev. Không có bí mật nào trong file này; `KC_DEMO_USER_PASSWORD` chỉ là mật khẩu của tài khoản mẫu |
+| `make up` | Chạy OpenBao, khởi tạo (Shamir 3 mảnh, ngưỡng 2), mở khóa, sinh ngẫu nhiên mọi bí mật lõi, rồi chạy profile `core` + `app`: kéo image, build 3 image từ mã nguồn (APISIX + Coraza, sổ cái Go, backend Python), áp migration, áp metadata Hasura, tạo bucket |
+| `make smoke` | Nạp dữ liệu giả rồi kiểm 339 ca: OpenBao, JWT, route gateway + WAF, ràng buộc CSDL, phân quyền GraphQL, workflow phân công, cảm biến MQTT, ảnh hiện trường, sổ cái |
+
+Đo thật ngày 22/10/2026 trên bản clone sạch từ GitHub, chạy ở thư mục khác thư mục mã gốc (Mac Apple Silicon, Docker Desktop, Docker Engine 28.5, chưa có image nào trên máy): `make up` lần đầu 2 phút 36 giây (gồm kéo khoảng 6,9 GB image và build), lần sau 48 giây; `make smoke` 72 giây, đạt 339/339. Mạng chậm hơn thì lần đầu lâu hơn.
+
+**Giữ kín `.data/openbao/`.** Lần đầu `make up` ghi unseal key và root token vào đây (đã nằm trong `.gitignore`); mất thư mục này thì không mở khóa được dữ liệu OpenBao. Sau khi khởi động lại máy, nếu OpenBao còn khóa: `make bao-unseal`.
+
+Lệnh khác: `make ps`, `make logs`, `make down` (dừng, giữ dữ liệu), `make seed` (nạp lại dữ liệu giả), `make gia-lap` và `make gia-lap-vuot-nguong` (giả lập trạm đo gửi MQTT), `make bao-status`, `make bao-init`. Danh sách đầy đủ trong [`Makefile`](Makefile).
+
+Cấu hình qua biến môi trường, lệnh OpenBao, cách thêm ứng dụng mới vào `apps/`, kiểm thử và lint: [`docs/cai-dat.md`](docs/cai-dat.md).
+
+### Tài khoản mẫu và thử API
+
+Tài khoản trong realm `disaster` là **dữ liệu giả** của `apps/cuu-tro`, chỉ dùng trên máy dev. Mật khẩu là giá trị `KC_DEMO_USER_PASSWORD` trong `.env`.
+
+| Tên đăng nhập | Vai trò | Ghi chú |
+|---|---|---|
+| `dieuphoi01` | `dieu-phoi` (cán bộ xã) | Đăng nhập qua trình duyệt bị bắt cài OTP |
+| `cuuho01` | `cuu-ho` | Thành viên "Đội ca nô Biên phòng" trong dữ liệu mẫu |
+| `tinhnguyen01` | `tinh-nguyen` | Chỉ thấy tin mình tạo, không thấy SĐT người báo |
+
+Dữ liệu mẫu là xã An Lạc giả định (`make seed`, `make smoke` cũng tự nạp).
+
+Thử nhanh qua gateway (client `dxos-dev-cli` chỉ dùng khi dev):
+
+```bash
+set -a; . ./.env; set +a
+TOKEN=$(curl -s -X POST http://localhost:8080/realms/disaster/protocol/openid-connect/token \
+  -d grant_type=password -d client_id=dxos-dev-cli -d username=dieuphoi01 \
+  --data-urlencode password="$KC_DEMO_USER_PASSWORD" | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+
+# Tin kêu cứu qua GraphQL (Hasura lọc theo vai trò trong JWT)
+curl -s -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"query":"{ incidents(limit: 3) { id description status } }"}' http://localhost:9080/graphql
+
+# Không có token thì gateway trả 401
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:9080/graphql
+
+# Khóa công khai của sổ cái, đọc không cần đăng nhập
+curl -s http://localhost:9080/ledger/verifier
+```
+
+Phân công đội, xác nhận, tải ảnh, lập phiếu kho, trang minh bạch, tự kiểm sổ cái bằng `ledger-verify`: xem [`apps/cuu-tro/README.md`](apps/cuu-tro/README.md).
+
+### Xử lý lỗi thường gặp
+
+| Hiện tượng | Nguyên nhân | Cách xử lý |
+|---|---|---|
+| `Bind for 0.0.0.0:8080 failed: port is already allocated` | Cổng đã có chương trình khác dùng | Đổi `KEYCLOAK_PORT` (kèm `KEYCLOAK_PUBLIC_URL`), `APISIX_PORT` (kèm `GATEWAY_PUBLIC_URL`) hoặc biến `*_PORT` tương ứng trong `.env`, rồi `make up`. Tìm chương trình đang chiếm: `lsof -i :8080` |
+| Dịch vụ đứng ở `Waiting`, `openbao` unhealthy, `make bao-status` báo `Sealed true` | OpenBao luôn khởi động ở trạng thái khóa | `make bao-unseal`. Nếu báo thiếu key: kiểm tra `.data/openbao/` còn nguyên |
+| `make smoke` lỗi `HTTPS required`, hoặc lấy token từ máy host trả 403 | Realm `external` chỉ cho HTTP với IP riêng; VPN, proxy hoặc mạng của Docker Desktop làm Keycloak thấy IP công khai (đã gặp khi kiểm chứng máy sạch) | Chỉ trên máy dev: đặt `KC_REALM_SSL_REQUIRED=none` trong `.env`. Realm chỉ import lần đầu nên tạo lại CSDL (giữ OpenBao): `make down && docker volume rm disaster-dxos_pgdata && make up` |
+| Container thoát mã 137, `docker inspect` báo `OOMKilled` | Docker được cấp quá ít RAM | Tăng RAM cho Docker Desktop lên 4 GB trở lên; xem mức dùng bằng `docker stats` |
+| `no space left on device` khi kéo image hoặc build | Thiếu ổ | Cần khoảng 10 GB trống. Dọn: `make down && docker image prune -a -f && docker builder prune -f` (giữ volume dữ liệu) |
+| PostgreSQL khởi động và chạy chậm hơn trên Mac Apple Silicon | `postgis/postgis` chỉ có image amd64 (`POSTGIS_PLATFORM=linux/amd64`), Docker chạy giả lập | Bình thường, vẫn đạt `make smoke`. Bật "Use Rosetta for x86_64/amd64 emulation" trong Docker Desktop để nhanh hơn |
+| `/workflow/*` trả 502 hoặc 503 | Backend ứng dụng chưa chạy | `make ps` xem `cuu-tro-api`; chạy lại `make up` (bật cả profile `app`) |
+| Muốn làm lại từ đầu | | Xóa **mọi** dữ liệu dev: `docker compose --profile '*' down -v`, xóa thư mục `.data/openbao/`, rồi `make up`. Không chạy `down -v` mà giữ `.data/openbao/`: key cũ không mở được volume OpenBao mới |
+
+## 🤝 Đóng góp
+
+Quy trình: issue → nhánh `feature/<số-issue>-<tên-ngắn>` tách từ `develop` → PR về `develop` theo mẫu → CI xanh + 1 người duyệt → merge squash. Commit theo Conventional Commits, mô tả tiếng Việt. Trước khi mở PR: `make check`, `make lint`, thêm dòng vào `CHANGELOG.md`, file mới có header `SPDX-License-Identifier: Apache-2.0` (`make license`).
+
+Chi tiết: [`CONTRIBUTING.md`](CONTRIBUTING.md). Quy tắc ứng xử: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
+
+## 🐛 Báo lỗi
+
+Mở issue tại [GitHub Issues](https://github.com/disaster-dxos/disaster-dxos/issues) theo mẫu "Báo lỗi": mô tả, cách tái hiện, môi trường (hệ điều hành, RAM, `docker compose version`).
+
+## 📜 Giấy phép
+
+Mã nguồn phát hành theo [Apache-2.0](LICENSE). Bản quyền và ghi nhận thành phần bên thứ ba: [`NOTICE`](NOTICE). Phiên bản và giấy phép từng image, thư viện: [`DEPENDENCIES.md`](DEPENDENCIES.md).
+
+- Chỉ dùng thành phần có giấy phép được OSI công nhận.
+- Thành phần copyleft (PostGIS GPL-2.0; sắp có ClamAV GPL-2.0, Grafana AGPL-3.0) chạy như dịch vụ riêng bằng image gốc, không sửa, không nhúng vào mã của dự án.
+- Ảnh minh họa trong `docs/images/` do đội tạo bằng công cụ AI, sơ đồ SVG do đội vẽ; cấp phép cùng repo. Biểu tượng trong ảnh kiến trúc là hình minh họa, không phải logo chính thức ([`docs/images/README.md`](docs/images/README.md)).
+
+## 📝 CHANGELOG
+
+Theo [SemVer](https://semver.org/lang/vi/). Bản mới nhất: [v0.1.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.1.0) (22/10/2026, lõi Tầng 1 đầy đủ + ứng dụng cứu trợ, sổ cái minh bạch); bản trước: [v0.0.1](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.0.1) (19/10/2026, khung dự án + profile `core`). Thay đổi chưa phát hành và lịch sử: [`CHANGELOG.md`](CHANGELOG.md).

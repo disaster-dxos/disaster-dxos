@@ -1,6 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
-# Route của API Gateway (standalone). APISIX tự nạp lại khi file đổi.
-# Quy ước: mọi API nghiệp vụ nằm dưới /api/, bắt buộc Bearer JWT do Keycloak realm "disaster" ký.
+# Route của API Gateway (standalone, #12). APISIX tự nạp lại khi file đổi.
+# Bảng route, luồng JWT và WAF: docs/architecture.md mục 3.3.
+#
+# Quy ước:
+#  - Mọi route nghiệp vụ bắt buộc Bearer JWT do Keycloak realm "disaster" ký (openid-connect,
+#    kiểm chữ ký bằng JWKS, không gọi introspection). Hasura vẫn kiểm JWT lần 2 (Zero-Trust).
+#  - Thứ tự xử lý một request: Coraza WAF + OWASP CRS chặn (403) → kiểm JWT (401) → limit-count
+#    theo IP (429) → upstream. WAF và JWT ở pha rewrite, limit-count ở pha access của APISIX.
+#  - ${{TÊN:=mặc định}} là biến môi trường, APISIX thay khi nạp file (khai báo trong
+#    config.yaml nginx_config.envs, đặt giá trị trong .env).
 # File PHẢI kết thúc bằng dòng "#END".
 
 upstreams:
@@ -8,44 +16,312 @@ upstreams:
     type: roundrobin
     nodes:
       "keycloak:8080": 1
+  - id: hasura
+    type: roundrobin
+    nodes:
+      "hasura:8080": 1
+  - id: seaweedfs-s3
+    type: roundrobin
+    # SeaweedFS tính chữ ký SigV4 theo X-Forwarded-Host mà APISIX gửi, tức host công khai của
+    # gateway (vd localhost:9080). Dịch vụ cấp URL presigned (#27) ký cho host đó, path không có /files.
+    nodes:
+      "seaweedfs:8333": 1
+  - id: workflow-api
+    type: roundrobin
+    # API workflow của ứng dụng Tầng 2 (#29), không thuộc lõi: host/port lấy từ biến môi trường,
+    # mặc định theo quy ước <DXOS_APP>-api:8000 (docker-compose.yml). Dạng mảng vì APISIX chỉ thay
+    # biến ${{...}} trong giá trị, không thay trong khóa. Lõi chạy một mình (không có app) thì
+    # route này trả 502/503, các route khác không ảnh hưởng.
+    nodes:
+      - host: "${{GW_WORKFLOW_UPSTREAM_HOST:=workflow-api}}"
+        port: ${{GW_WORKFLOW_UPSTREAM_PORT:=8000}}
+        weight: 1
+    timeout:
+      connect: 5
+      send: 35
+      read: 35
+
+  - id: ledger
+    type: roundrobin
+    # Sổ cái minh bạch của lõi (#28): chỉ các đường đọc công khai đi qua gateway
+    nodes:
+      "ledger:8090": 1
+    timeout:
+      connect: 5
+      send: 15
+      read: 15
 
 routes:
-  # Route mẫu v0.0.1: trả thông tin người dùng từ token (Keycloak userinfo).
-  # Không token / token sai → APISIX trả 401, request không tới upstream.
-  - id: api-me
-    uri: /api/v1/me
-    methods: [GET]
-    upstream_id: keycloak
+  # ---------------- /graphql → Hasura /v1/graphql ----------------
+  # Chỉ mở đúng một endpoint GraphQL. /v1/metadata, /v2/query, /console không có route ra ngoài.
+  - id: graphql
+    uri: /graphql
+    methods: [GET, POST, OPTIONS]
+    upstream_id: hasura
+    # Subscription của Hasura đi qua WebSocket (vẫn cần header Authorization lúc bắt tay)
+    enable_websocket: true
     plugins:
       request-id: {}
-      openid-connect:
+      client-control: &api-body-limit
+        # Body API JSON tối đa 1 MiB (vượt → 413), khớp SecRequestBodyLimit của WAF
+        max_body_size: 1048576
+      serverless-pre-function: &waf-read-body
+        # APISIX chỉ đưa body cho plugin wasm khi biến wasm_process_req_body khác rỗng
+        # (apisix/wasm.lua); coraza-proxy-wasm viết cho Envoy nên không tự bật. Hàm này chạy
+        # trước Coraza (priority 10000 > 7999) để WAF đọc được body JSON/GraphQL.
+        phase: rewrite
+        functions:
+          - "return function(conf, ctx) ngx.var.wasm_process_req_body = 'on' end"
+      coraza-filter:
+        conf: &waf-api
+          directives_map:
+            # Bộ luật cho API JSON: đọc body (GraphQL), OWASP CRS v4 paranoia 1, chặn khi vượt ngưỡng
+            api:
+              - Include @recommended-conf
+              - SecRuleEngine On
+              - SecResponseBodyAccess Off
+              - SecRequestBodyLimit 1048576
+              - SecRequestBodyLimitAction Reject
+              - Include @crs-setup-conf
+              - Include @owasp_crs/*.conf
+          default_directives: api
+      cors: &cors
+        allow_origins: "${{GW_CORS_ALLOW_ORIGINS:=http://localhost:3000}}"
+        allow_methods: "GET,POST,PUT,DELETE,OPTIONS"
+        allow_headers: "Authorization,Content-Type,X-Request-Id,X-Hasura-Role"
+        expose_headers: "X-Request-Id,X-RateLimit-Limit,X-RateLimit-Remaining,X-RateLimit-Reset"
+        max_age: 3600
+      openid-connect: &oidc-pass-token
         client_id: dxos-gateway
         client_secret: $env://KC_GATEWAY_CLIENT_SECRET
-        discovery: http://keycloak:8080/realms/disaster/.well-known/openid-configuration
+        discovery: http://keycloak:8080/realms/${{KEYCLOAK_REALM:=disaster}}/.well-known/openid-configuration
         bearer_only: true
         use_jwks: true
         set_userinfo_header: false
+        # Chuyển nguyên Bearer token cho Hasura tự kiểm lại và đọc claim x-hasura-*
         set_access_token_header: true
         access_token_in_authorization_header: true
       proxy-rewrite:
-        uri: /realms/disaster/protocol/openid-connect/userinfo
-      limit-count:
-        count: 120
-        time_window: 60
+        uri: /v1/graphql
+        headers:
+          remove:
+            # Không cho client ngoài thử admin secret qua gateway
+            - X-Hasura-Admin-Secret
+      limit-count: &rate-limit
+        count: ${{GW_RATE_LIMIT_COUNT:=300}}
+        time_window: ${{GW_RATE_LIMIT_WINDOW:=60}}
         key_type: var
         key: remote_addr
         rejected_code: 429
 
-  # Kiểm tra sống của gateway, không cần token
-  - id: health
-    uri: /healthz
-    methods: [GET]
+  # Endpoint quản trị của Hasura: chặn rõ ràng từ ngoài (quản trị chỉ qua 127.0.0.1:8081)
+  - id: hasura-admin-deny
+    uris: [/v1/*, /v2/*, /console, /console/*, /healthz/hasura]
     plugins:
       serverless-pre-function:
         phase: rewrite
         functions:
-          - "return function(conf, ctx) local core = require('apisix.core'); core.response.exit(200, {status = 'ok'}) end"
+          - "return function(conf, ctx) local core = require('apisix.core'); core.response.exit(403, {message = 'Forbidden: endpoint quản trị không mở qua gateway'}) end"
 
-  # TODO tuần 2: /graphql → hasura:8080, /files → seaweedfs:8333, /workflow → dịch vụ Temporal
-  # TODO tuần 2: Coraza WAF (coraza-proxy-wasm) trước các route /api
+  # ---------------- /files/* → SeaweedFS S3 gateway (CHỈ ĐỌC) ----------------
+  # /files/<bucket>/<key> → seaweedfs:8333/<bucket>/<key>. Gateway kiểm JWT (header Authorization)
+  # rồi bỏ header này; S3 kiểm chữ ký SigV4 dạng presigned (tham số X-Amz-* trên URL).
+  # Kiểm quyền THEO OBJECT (#27): gateway chỉ biết "người dùng đã đăng nhập", không biết ai được xem
+  # object nào. Quyền theo object nằm ở chữ ký presigned: chỉ backend của ứng dụng giữ khóa S3, nó
+  # kiểm vai trò + quyền theo hàng (Hasura) rồi mới ký URL cho ĐÚNG một object, phương thức GET, hạn
+  # ngắn (mặc định 5 phút). Đổi key, đổi phương thức, hết hạn hay không có chữ ký → S3 trả 403.
+  # Chỉ GET/HEAD: không có đường ghi/xóa S3 từ ngoài. Tải ảnh lên đi qua API của ứng dụng
+  # (/workflow/tai-len/*), nơi kiểm loại tệp bằng magic bytes và kích thước trước khi ghi S3.
+  - id: files
+    uri: /files/*
+    methods: [GET, HEAD, OPTIONS]
+    upstream_id: seaweedfs-s3
+    plugins:
+      request-id: {}
+      client-control:
+        # Chỉ đọc nên body không cần lớn; giữ giới hạn chung để request bất thường bị 413
+        max_body_size: ${{GW_FILES_MAX_BODY_BYTES:=20971520}}
+      coraza-filter:
+        conf:
+          directives_map:
+            # Tệp nhị phân: không đọc body (tránh báo nhầm và tốn RAM), vẫn kiểm URI, tham số, header.
+            # Cho phép thêm PUT/DELETE và kiểu nội dung ảnh/tệp mà S3 cần.
+            files:
+              - Include @recommended-conf
+              - SecRuleEngine On
+              - SecRequestBodyAccess Off
+              - SecResponseBodyAccess Off
+              - Include @crs-setup-conf
+              - "SecAction \"id:900200,phase:1,pass,t:none,nolog,setvar:'tx.allowed_methods=GET HEAD POST OPTIONS PUT DELETE'\""
+              # Khối gập ">-" nối các dòng bằng một dấu cách, đúng định dạng danh sách "|a| |b|" của CRS
+              - >-
+                SecAction "id:900220,phase:1,pass,t:none,nolog,setvar:'tx.allowed_request_content_type=
+                |application/x-www-form-urlencoded| |multipart/form-data| |application/json| |application/xml|
+                |text/plain| |application/octet-stream| |image/jpeg| |image/png| |image/webp| |image/heic|
+                |video/mp4| |application/pdf|'"
+              - Include @owasp_crs/*.conf
+          default_directives: files
+      cors: *cors
+      openid-connect:
+        client_id: dxos-gateway
+        client_secret: $env://KC_GATEWAY_CLIENT_SECRET
+        discovery: http://keycloak:8080/realms/${{KEYCLOAK_REALM:=disaster}}/.well-known/openid-configuration
+        bearer_only: true
+        use_jwks: true
+        set_userinfo_header: false
+        set_access_token_header: false
+      proxy-rewrite:
+        regex_uri: ["^/files/(.*)", "/$1"]
+        headers:
+          remove:
+            # Header Authorization của S3 dành cho chữ ký SigV4, không chuyển JWT sang S3
+            - Authorization
+      limit-count: *rate-limit
+
+  # ---------------- /workflow/tai-len/* → API của ứng dụng, tải tệp nhị phân (#27) ----------------
+  # Quy ước của lõi: đường dẫn /tai-len/... của API ứng dụng nhận body nhị phân (ảnh hiện trường),
+  # lớn hơn giới hạn 1 MiB của API JSON. Ưu tiên hơn route /workflow/* (priority). Gateway kiểm JWT,
+  # WAF (không đọc body nhị phân, vẫn kiểm URI/tham số/header), giới hạn body GW_UPLOAD_MAX_BODY_BYTES
+  # (vượt → 413) rồi chuyển nguyên Bearer token; API kiểm lại JWT, quyền, magic bytes, giới hạn riêng.
+  - id: workflow-upload
+    uri: /workflow/tai-len/*
+    priority: 10
+    methods: [POST, OPTIONS]
+    upstream_id: workflow-api
+    plugins:
+      request-id: {}
+      client-control:
+        max_body_size: ${{GW_UPLOAD_MAX_BODY_BYTES:=20971520}}
+      coraza-filter:
+        conf:
+          directives_map:
+            upload:
+              - Include @recommended-conf
+              - SecRuleEngine On
+              - SecRequestBodyAccess Off
+              - SecResponseBodyAccess Off
+              - Include @crs-setup-conf
+              # Kiểu nội dung client khai báo chỉ để qua WAF; API không tin, tự kiểm magic bytes
+              - >-
+                SecAction "id:900220,phase:1,pass,t:none,nolog,setvar:'tx.allowed_request_content_type=
+                |application/octet-stream| |image/jpeg| |image/png| |image/webp|'"
+              - Include @owasp_crs/*.conf
+          default_directives: upload
+      cors: *cors
+      openid-connect: *oidc-pass-token
+      proxy-rewrite:
+        regex_uri: ["^/workflow/(.*)", "/$1"]
+      limit-count: *rate-limit
+
+  # ---------------- /workflow/minh-bach/* → trang công khai của ứng dụng (#28) ----------------
+  # Quy ước của lõi: đường /minh-bach/... của API ứng dụng là đường CÔNG KHAI, CHỈ ĐỌC (không cần
+  # đăng nhập), dành cho trang "Minh bạch cứu trợ": người dân tra mã phiếu, API trả bản ghi không định
+  # danh + trạng thái xác minh trên sổ cái. Ưu tiên hơn /workflow/* (priority). Không kiểm JWT; bỏ
+  # header Authorization (API không nhận token ở đường này); WAF + giới hạn tần suất như route API.
+  - id: workflow-public
+    uri: /workflow/minh-bach/*
+    priority: 10
+    methods: [GET, OPTIONS]
+    upstream_id: workflow-api
+    plugins:
+      request-id: {}
+      client-control: *api-body-limit
+      coraza-filter:
+        conf: *waf-api
+      cors: *cors
+      proxy-rewrite:
+        regex_uri: ["^/workflow/(.*)", "/$1"]
+        headers:
+          remove:
+            - Authorization
+      limit-count: *rate-limit
+
+  # ---------------- /ledger/* → sổ cái minh bạch (#28), CHỈ ĐỌC, công khai ----------------
+  # tlog-tiles (C2SP): /ledger/checkpoint (đã ký Ed25519), /ledger/tile/... (tile hash + entry bundle),
+  # /ledger/proof/{index} (inclusion proof), /ledger/verifier (khóa công khai). Ai cũng tải về tự kiểm
+  # được (core/ledger/cmd/ledger-verify). Không cần đăng nhập: lá không chứa dữ liệu cá nhân (D-007).
+  - id: ledger-read
+    uri: /ledger/*
+    methods: [GET, HEAD, OPTIONS]
+    upstream_id: ledger
+    plugins:
+      request-id: {}
+      client-control: *api-body-limit
+      coraza-filter:
+        conf: *waf-api
+      cors: *cors
+      proxy-rewrite:
+        headers:
+          remove:
+            - Authorization
+      limit-count: *rate-limit
+
+  # Ghi sổ cái (POST /ledger/entries) KHÔNG đi qua gateway: chỉ dịch vụ trong mạng nội bộ có token
+  # ghi (core/ledger). Mọi phương thức ghi từ ngoài bị chặn rõ ràng ở đây.
+  - id: ledger-write-deny
+    uri: /ledger/*
+    methods: [POST, PUT, PATCH, DELETE]
+    plugins:
+      serverless-pre-function:
+        phase: rewrite
+        functions:
+          - "return function(conf, ctx) local core = require('apisix.core'); core.response.exit(403, {message = 'Forbidden: ghi sổ cái chỉ từ dịch vụ nội bộ'}) end"
+
+  # ---------------- /workflow/* → API workflow của ứng dụng (#29) ----------------
+  # /workflow/<đường dẫn> → <app>-api:8000/<đường dẫn>. Gateway kiểm JWT + WAF + rate limit rồi chuyển
+  # nguyên Bearer token: API kiểm lại chữ ký và đọc vai trò (vd chỉ dieu-phoi được khởi chạy phân công).
+  # Endpoint: apps/cuu-tro/README.md mục "Workflow".
+  - id: workflow
+    uri: /workflow/*
+    methods: [GET, POST, OPTIONS]
+    upstream_id: workflow-api
+    plugins:
+      request-id: {}
+      client-control: *api-body-limit
+      serverless-pre-function: *waf-read-body
+      coraza-filter:
+        conf: *waf-api
+      cors: *cors
+      openid-connect: *oidc-pass-token
+      proxy-rewrite:
+        regex_uri: ["^/workflow/(.*)", "/$1"]
+      limit-count: *rate-limit
+
+  # ---------------- /api/v1/me (route mẫu v0.0.1) ----------------
+  # Trả thông tin người dùng từ token (Keycloak userinfo). Không token / token sai → 401.
+  - id: api-me
+    uri: /api/v1/me
+    methods: [GET, OPTIONS]
+    upstream_id: keycloak
+    plugins:
+      request-id: {}
+      client-control: *api-body-limit
+      serverless-pre-function: *waf-read-body
+      coraza-filter:
+        conf: *waf-api
+      cors: *cors
+      openid-connect: *oidc-pass-token
+      proxy-rewrite:
+        uri: /realms/${{KEYCLOAK_REALM:=disaster}}/protocol/openid-connect/userinfo
+      limit-count: *rate-limit
+
+  # Kiểm tra sống của gateway, không cần token. Giới hạn chặt (20 request / 10 giây / IP)
+  # để smoke test kiểm được limit-count mà không phải chờ lâu.
+  - id: health
+    uri: /healthz
+    methods: [GET]
+    plugins:
+      limit-count:
+        count: 20
+        time_window: 10
+        key_type: var
+        key: remote_addr
+        rejected_code: 429
+      serverless-post-function:
+        # Pha access, sau limit-count: vượt giới hạn thì 429 trước khi trả 200
+        phase: access
+        functions:
+          - "return function(conf, ctx) local core = require('apisix.core'); core.response.exit(200, {status = 'ok'}) end"
+# APISIX standalone bắt buộc dòng "#END" cuối file
+# yamllint disable-line rule:comments
 #END

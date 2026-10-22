@@ -5,34 +5,203 @@
 # nằm trong apps/<tên>/, chọn bằng biến DXOS_APP (mặc định: cuu-tro).
 #
 # Profile:
-#   core       PostgreSQL+PostGIS, Keycloak, APISIX (v0.0.1, chạy được trên laptop 16 GB)
-#   core-next  Hasura CE, SeaweedFS, Temporal, NATS, OpenBao (khai báo sẵn; tuần 2 gộp vào core)
+#   core   OpenBao, PostgreSQL+PostGIS, Keycloak, APISIX, Hasura CE, SeaweedFS, Temporal, NATS
+#          (JetStream + MQTT có xác thực, #30), sổ cái minh bạch ledger (Tessera, #28)
+#          (chạy được trên laptop 16 GB, RAM đo được: docs/architecture.md mục 4)
+#   app    backend của ứng dụng Tầng 2 đang chọn (apps/${DXOS_APP}/compose.yaml, nạp bằng include
+#          bên dưới), vd cuu-tro-worker, cuu-tro-api (#29). make up bật cả core và app.
 #   gis, ai, bi, sec   xem TODO cuối file
 #
-# Chạy: cp .env.example .env && make up
+# Chạy: cp .env.example .env && make up   (make up tự khởi tạo/mở khóa OpenBao lần đầu)
+# Bí mật của dịch vụ lõi nằm trong OpenBao, không nằm trong .env (#14). bao agent render
+# thành file trên volume tmpfs, core/openbao/env-from-files.sh export trước khi chạy dịch vụ.
 # Quy tắc: mọi image ghim phiên bản cụ thể, lấy từ nguồn gốc, KHÔNG dùng "latest".
 
 name: ${COMPOSE_PROJECT_NAME:-disaster-dxos}
 
+# Dịch vụ backend của ứng dụng Tầng 2 nằm trong thư mục ứng dụng, không nằm trong file lõi này (#29).
+# Quy ước: mỗi apps/<tên>/ có compose.yaml (có thể chỉ "services: {}"); dịch vụ của nó dùng profile
+# "app", được dùng volume/dịch vụ của lõi. project_directory "." để đường dẫn tương đối và .env tính
+# từ gốc repo như file này.
+include:
+  - path: apps/${DXOS_APP:-cuu-tro}/compose.yaml
+    project_directory: .
+
 x-restart: &restart
   restart: unless-stopped
 
+# Một bao agent cho mỗi dịch vụ đọc bí mật: mỗi agent có AppRole + policy chỉ đọc riêng
+x-bao-agent: &bao-agent
+  <<: *restart
+  image: openbao/openbao:2.7.1
+  profiles: [core]
+  depends_on:
+    openbao:
+      condition: service_healthy
+  mem_limit: 64m
+
+# Volume tmpfs chứa bí mật đã render: nằm trong RAM, mất khi dừng container
+x-secrets-tmpfs: &secrets-tmpfs
+  driver: local
+  driver_opts:
+    type: tmpfs
+    device: tmpfs
+    # uid/gid của user openbao trong image (agent ghi); dịch vụ chỉ mount read-only
+    o: "uid=100,gid=1000,mode=0755,size=1m"
+
 services:
   # ======================= profile: core =======================
+  openbao:
+    <<: *restart
+    # Chế độ server, lưu trữ raft trên volume baodata. Khởi động ở trạng thái sealed:
+    # make bao-init (lần đầu) hoặc openbao-unseal (dev) / make bao-unseal (thủ công).
+    image: openbao/openbao:2.7.1
+    profiles: [core]
+    command: ["server"]
+    environment:
+      BAO_ADDR: http://127.0.0.1:8200
+    volumes:
+      - ./core/openbao/openbao.hcl:/openbao/config/openbao.hcl:ro
+      - baodata:/openbao/file
+    ports:
+      - "127.0.0.1:${OPENBAO_PORT:-8200}:8200"
+    healthcheck:
+      # bao status: 0 = đã mở khóa; 2 = sealed/chưa init → unhealthy, dịch vụ phụ thuộc chờ
+      test: ["CMD", "bao", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 10s
+    mem_limit: 256m
+
+  openbao-unseal:
+    # CHỈ DÙNG CHO DEV: tự mở khóa sau khi khởi động lại bằng key trong ${OPENBAO_LOCAL_DIR}/unseal.
+    # Tắt: OPENBAO_DEV_AUTO_UNSEAL=false (bắt buộc trên VPS). Xem core/openbao/dev-auto-unseal.sh
+    restart: on-failure
+    image: openbao/openbao:2.7.1
+    profiles: [core]
+    entrypoint: ["/bin/sh", "/opt/dxos/dev-auto-unseal.sh"]
+    depends_on:
+      - openbao
+    environment:
+      BAO_ADDR: http://openbao:8200
+      OPENBAO_DEV_AUTO_UNSEAL: ${OPENBAO_DEV_AUTO_UNSEAL:-false}
+    volumes:
+      - ./core/openbao/dev-auto-unseal.sh:/opt/dxos/dev-auto-unseal.sh:ro
+      - ${OPENBAO_LOCAL_DIR:-./.data/openbao}/unseal:/openbao/unseal:ro
+    mem_limit: 64m
+
+  bao-agent-keycloak:
+    <<: *bao-agent
+    command: ["agent", "-config=/openbao/config/agent.hcl"]
+    volumes:
+      - ./core/openbao/agent-keycloak.hcl:/openbao/config/agent.hcl:ro
+      - ${OPENBAO_LOCAL_DIR:-./.data/openbao}/approle/keycloak:/openbao/approle:ro
+      - secrets-keycloak:/out/keycloak
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /out/keycloak/KC_DB_PASSWORD && test -s /out/keycloak/KC_GATEWAY_CLIENT_SECRET"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
+  bao-agent-apisix:
+    <<: *bao-agent
+    command: ["agent", "-config=/openbao/config/agent.hcl"]
+    volumes:
+      - ./core/openbao/agent-apisix.hcl:/openbao/config/agent.hcl:ro
+      - ${OPENBAO_LOCAL_DIR:-./.data/openbao}/approle/apisix:/openbao/approle:ro
+      - secrets-apisix:/out/apisix
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /out/apisix/KC_GATEWAY_CLIENT_SECRET"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
+  bao-agent-postgres:
+    <<: *bao-agent
+    command: ["agent", "-config=/openbao/config/agent.hcl"]
+    volumes:
+      - ./core/openbao/agent-postgres.hcl:/openbao/config/agent.hcl:ro
+      - ${OPENBAO_LOCAL_DIR:-./.data/openbao}/approle/postgres:/openbao/approle:ro
+      - secrets-postgres:/out/postgres
+    environment:
+      # Chọn secret/app/<DXOS_APP>/db trong template APP_DB_PASSWORD (agent-postgres.hcl)
+      DXOS_APP: ${DXOS_APP:-cuu-tro}
+    healthcheck:
+      test: ["CMD-SHELL", "for f in POSTGRES_PASSWORD KEYCLOAK_DB_PASSWORD HASURA_DB_PASSWORD TEMPORAL_DB_PASSWORD APP_DB_PASSWORD; do test -s /out/postgres/$$f || exit 1; done"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
+  bao-agent-hasura:
+    <<: *bao-agent
+    command: ["agent", "-config=/openbao/config/agent.hcl"]
+    environment:
+      # Dùng trong template agent-hasura.hcl để ghép HASURA_GRAPHQL_DATABASE_URL
+      HASURA_DB_USER: ${HASURA_DB_USER:-hasura}
+      POSTGRES_DB: ${POSTGRES_DB:-disaster}
+    volumes:
+      - ./core/openbao/agent-hasura.hcl:/openbao/config/agent.hcl:ro
+      - ${OPENBAO_LOCAL_DIR:-./.data/openbao}/approle/hasura:/openbao/approle:ro
+      - secrets-hasura:/out/hasura
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /out/hasura/HASURA_GRAPHQL_DATABASE_URL && test -s /out/hasura/HASURA_GRAPHQL_ADMIN_SECRET"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
+  bao-agent-temporal:
+    <<: *bao-agent
+    command: ["agent", "-config=/openbao/config/agent.hcl"]
+    volumes:
+      - ./core/openbao/agent-temporal.hcl:/openbao/config/agent.hcl:ro
+      - ${OPENBAO_LOCAL_DIR:-./.data/openbao}/approle/temporal:/openbao/approle:ro
+      - secrets-temporal:/out/temporal
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /out/temporal/POSTGRES_PWD"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
+  bao-agent-seaweedfs:
+    <<: *bao-agent
+    command: ["agent", "-config=/openbao/config/agent.hcl"]
+    volumes:
+      - ./core/openbao/agent-seaweedfs.hcl:/openbao/config/agent.hcl:ro
+      - ${OPENBAO_LOCAL_DIR:-./.data/openbao}/approle/seaweedfs:/openbao/approle:ro
+      - secrets-seaweedfs:/out/seaweedfs
+    environment:
+      # Chọn secret/app/<DXOS_APP>/s3 và tên định danh/tiền tố bucket của ứng dụng (#27)
+      DXOS_APP: ${DXOS_APP:-cuu-tro}
+    healthcheck:
+      # Cả định danh lõi lẫn định danh của ứng dụng đã render
+      test: ["CMD-SHELL", "grep -q dxos-core /out/seaweedfs/s3.json && grep -q \"$${DXOS_APP}-app\" /out/seaweedfs/s3.json"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
   postgres:
     <<: *restart
     image: postgis/postgis:17-3.5
     platform: ${POSTGIS_PLATFORM:-linux/amd64}
-    profiles: [core, core-next]
+    profiles: [core]
+    # POSTGRES_PASSWORD (superuser) và KEYCLOAK_DB_PASSWORD lấy từ OpenBao qua bao-agent-postgres.
+    # Cả hai chỉ có tác dụng ở lần initdb đầu (volume pgdata trống); sau đó postgres-roles đồng bộ.
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos", "docker-entrypoint.sh"]
+    command: ["postgres", "-c", "shared_buffers=${POSTGRES_SHARED_BUFFERS:-128MB}", "-c", "max_connections=${POSTGRES_MAX_CONNECTIONS:-100}"]
+    depends_on:
+      bao-agent-postgres:
+        condition: service_healthy
     environment:
+      SECRETS_REQUIRED: POSTGRES_PASSWORD KEYCLOAK_DB_PASSWORD
       POSTGRES_USER: ${POSTGRES_USER:?Thiếu POSTGRES_USER trong .env}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Thiếu POSTGRES_PASSWORD trong .env}
       POSTGRES_DB: ${POSTGRES_DB:-disaster}
       KEYCLOAK_DB: ${KEYCLOAK_DB:-keycloak}
       KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER:-keycloak}
-      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Thiếu KEYCLOAK_DB_PASSWORD trong .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - secrets-postgres:/run/secrets/dxos:ro
       - ./core/postgres/init/20-create-databases.sh:/docker-entrypoint-initdb.d/20-create-databases.sh:ro
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-15432}:5432"
@@ -44,34 +213,92 @@ services:
       start_period: 30s
     mem_limit: 1g
 
-  keycloak:
-    <<: *restart
-    image: quay.io/keycloak/keycloak:26.8.1
-    profiles: [core, core-next]
-    command: ["start-dev", "--import-realm"]
+  postgres-roles:
+    # Chạy một lần mỗi lần up: tạo/đồng bộ role keycloak, hasura, temporal (không dịch vụ nào dùng
+    # superuser). Dùng lại image postgis, không kéo thêm image. Script: core/postgres/sync-roles.sh
+    image: postgis/postgis:17-3.5
+    platform: ${POSTGIS_PLATFORM:-linux/amd64}
+    profiles: [core]
+    restart: "no"
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos", "bash", "/opt/dxos/sync-roles.sh"]
     depends_on:
       postgres:
         condition: service_healthy
     environment:
+      SECRETS_REQUIRED: POSTGRES_PASSWORD KEYCLOAK_DB_PASSWORD HASURA_DB_PASSWORD TEMPORAL_DB_PASSWORD APP_DB_PASSWORD
+      POSTGRES_USER: ${POSTGRES_USER:?Thiếu POSTGRES_USER trong .env}
+      POSTGRES_DB: ${POSTGRES_DB:-disaster}
+      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER:-keycloak}
+      HASURA_DB_USER: ${HASURA_DB_USER:-hasura}
+      TEMPORAL_DB_USER: ${TEMPORAL_DB_USER:-temporal}
+      # Role dịch vụ của ứng dụng: <DXOS_APP đổi - thành _>_app (cuu_tro_app), chưa có quyền gì (#29)
+      DXOS_APP: ${DXOS_APP:-cuu-tro}
+    volumes:
+      - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - ./core/postgres/sync-roles.sh:/opt/dxos/sync-roles.sh:ro
+      - secrets-postgres:/run/secrets/dxos:ro
+    mem_limit: 128m
+
+  migrate:
+    # Chạy một lần mỗi lần up, sau postgres-roles: áp migration SQL của ứng dụng đang chọn
+    # (apps/${DXOS_APP}/db/migrations) vào schema riêng của ứng dụng (#25). Lõi chỉ biết quy ước
+    # thư mục, không biết bảng nào. Chạy lại không lỗi (lịch sử + checksum ở dxos_meta).
+    # Seed: make seed · kiểm thử ràng buộc: make test-db. Script: core/postgres/migrate.sh
+    image: postgis/postgis:17-3.5
+    platform: ${POSTGIS_PLATFORM:-linux/amd64}
+    profiles: [core]
+    restart: "no"
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos", "bash", "/opt/dxos/migrate.sh"]
+    command: ["migrate"]
+    depends_on:
+      postgres-roles:
+        condition: service_completed_successfully
+    environment:
+      SECRETS_REQUIRED: POSTGRES_PASSWORD
+      POSTGRES_USER: ${POSTGRES_USER:?Thiếu POSTGRES_USER trong .env}
+      POSTGRES_DB: ${POSTGRES_DB:-disaster}
+      DXOS_APP: ${DXOS_APP:-cuu-tro}
+      HASURA_DB_USER: ${HASURA_DB_USER:-hasura}
+    volumes:
+      - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - ./core/postgres/migrate.sh:/opt/dxos/migrate.sh:ro
+      - ./apps/${DXOS_APP:-cuu-tro}/db:/opt/dxos/app-db:ro
+      - secrets-postgres:/run/secrets/dxos:ro
+    mem_limit: 128m
+
+  keycloak:
+    <<: *restart
+    image: quay.io/keycloak/keycloak:26.8.1
+    profiles: [core]
+    # KC_DB_PASSWORD, KC_BOOTSTRAP_ADMIN_PASSWORD, KC_GATEWAY_CLIENT_SECRET lấy từ OpenBao
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos", "/opt/keycloak/bin/kc.sh"]
+    command: ["start-dev", "--import-realm"]
+    depends_on:
+      postgres-roles:
+        condition: service_completed_successfully
+      bao-agent-keycloak:
+        condition: service_healthy
+    environment:
+      SECRETS_REQUIRED: KC_DB_PASSWORD KC_BOOTSTRAP_ADMIN_PASSWORD KC_GATEWAY_CLIENT_SECRET
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/${KEYCLOAK_DB:-keycloak}
       KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
-      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Thiếu KEYCLOAK_DB_PASSWORD trong .env}
       # "iss" của token luôn là URL công khai; URL nội bộ (jwks, token) theo host gọi tới
       KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       KC_HTTP_ENABLED: "true"
       KC_HEALTH_ENABLED: "true"
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?Thiếu KC_BOOTSTRAP_ADMIN_PASSWORD trong .env}
       # Giá trị thay vào placeholder ${...} trong apps/<app>/keycloak/realm.json khi import
-      KC_GATEWAY_CLIENT_SECRET: ${KC_GATEWAY_CLIENT_SECRET:?Thiếu KC_GATEWAY_CLIENT_SECRET trong .env}
+      # (KC_GATEWAY_CLIENT_SECRET đến từ OpenBao; mật khẩu user mẫu là dữ liệu giả của ứng dụng)
       KC_DEMO_USER_PASSWORD: ${KC_DEMO_USER_PASSWORD:?Thiếu KC_DEMO_USER_PASSWORD trong .env}
       KC_REALM_SSL_REQUIRED: ${KC_REALM_SSL_REQUIRED:-external}
       JAVA_OPTS_KC_HEAP: "-XX:MaxRAMPercentage=70"
     volumes:
       # Realm (vai trò, client, người dùng mẫu) do ứng dụng cung cấp, không thuộc lõi
       - ./apps/${DXOS_APP:-cuu-tro}/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
+      - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - secrets-keycloak:/run/secrets/dxos:ro
     ports:
       - "${KEYCLOAK_PORT:-8080}:8080"
     healthcheck:
@@ -85,16 +312,39 @@ services:
 
   apisix:
     <<: *restart
-    image: apache/apisix:3.19.0-debian
-    profiles: [core, core-next]
+    # Image gốc apache/apisix:3.19.0-debian + coraza-proxy-wasm 0.6.0 (OWASP CRS v4), kiểm SHA-256
+    # lúc build (core/apisix/Dockerfile, #12). Tên image cục bộ, không đẩy lên registry.
+    build:
+      context: ./core/apisix
+    image: disaster-dxos/apisix:3.19.0-coraza0.6.0
+    profiles: [core]
+    # KC_GATEWAY_CLIENT_SECRET lấy từ OpenBao (secret/core/gateway) qua bao-agent-apisix
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos", "/docker-entrypoint.sh"]
+    command: ["docker-start"]
     depends_on:
       keycloak:
         condition: service_healthy
+      bao-agent-apisix:
+        condition: service_healthy
     environment:
-      KC_GATEWAY_CLIENT_SECRET: ${KC_GATEWAY_CLIENT_SECRET:?Thiếu KC_GATEWAY_CLIENT_SECRET trong .env}
+      SECRETS_REQUIRED: KC_GATEWAY_CLIENT_SECRET
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-disaster}
+      # CORS cho web Tầng 2 (danh sách origin cách nhau bởi dấu phẩy) và rate limit theo IP (#12)
+      GW_CORS_ALLOW_ORIGINS: ${GW_CORS_ALLOW_ORIGINS:-http://localhost:3000}
+      GW_RATE_LIMIT_COUNT: ${GW_RATE_LIMIT_COUNT:-300}
+      GW_RATE_LIMIT_WINDOW: ${GW_RATE_LIMIT_WINDOW:-60}
+      GW_FILES_MAX_BODY_BYTES: ${GW_FILES_MAX_BODY_BYTES:-20971520}
+      # Route /workflow/tai-len/* (#27): tải tệp nhị phân lên API của ứng dụng, giới hạn body riêng
+      GW_UPLOAD_MAX_BODY_BYTES: ${GW_UPLOAD_MAX_BODY_BYTES:-20971520}
+      # Upstream của route /workflow/*: API workflow của ứng dụng Tầng 2 (#29). Mặc định theo quy
+      # ước <DXOS_APP>-api:8000 (cuu-tro-api trong apps/cuu-tro/compose.yaml); lõi không gắn cứng tên.
+      GW_WORKFLOW_UPSTREAM_HOST: ${GW_WORKFLOW_UPSTREAM_HOST:-${DXOS_APP:-cuu-tro}-api}
+      GW_WORKFLOW_UPSTREAM_PORT: ${GW_WORKFLOW_UPSTREAM_PORT:-8000}
     volumes:
       - ./core/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
       - ./core/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
+      - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - secrets-apisix:/run/secrets/dxos:ro
     ports:
       - "${APISIX_PORT:-9080}:9080"
     healthcheck:
@@ -103,75 +353,144 @@ services:
       timeout: 5s
       retries: 10
       start_period: 15s
-    mem_limit: 512m
+    # Coraza + OWASP CRS nạp trong mỗi worker nginx: đo ~240 MB lúc khởi động, ~370 MB sau smoke + 560 request
+    mem_limit: 768m
 
-  # ===================== profile: core-next (tuần 2) =====================
   hasura:
     <<: *restart
-    # BẮT BUỘC tag -ce (D-004): image không có -ce kèm thành phần EE độc quyền
-    image: hasura/graphql-engine:v2.51.0-ce
-    profiles: [core-next]
+    # BẮT BUỘC tag -ce (D-004): image không có -ce kèm thành phần EE độc quyền.
+    # Bản cli-migrations-v3 (cùng phiên bản, cùng -ce) có thêm hasura-cli và docker-entrypoint.sh:
+    # khởi động một server tạm chỉ bật metadata API, chạy "hasura-cli metadata apply" với thư mục
+    # metadata của ứng dụng (apps/${DXOS_APP}/hasura/metadata, #26), rồi exec server thật.
+    # Migration SQL KHÔNG đi đường này (không có /hasura-migrations): container migrate làm trước.
+    image: hasura/graphql-engine:v2.51.0-ce.cli-migrations-v3
+    profiles: [core]
+    # HASURA_GRAPHQL_DATABASE_URL (role hasura, không phải superuser) và HASURA_GRAPHQL_ADMIN_SECRET
+    # lấy từ OpenBao qua bao-agent-hasura. Tầng 2 gọi qua APISIX /graphql (#12), không gọi thẳng.
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos", "docker-entrypoint.sh"]
+    command: ["graphql-engine", "serve"]
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres-roles:
+        condition: service_completed_successfully
+      # Bảng của ứng dụng có trước khi Hasura nạp metadata (#26)
+      migrate:
+        condition: service_completed_successfully
       keycloak:
         condition: service_healthy
+      bao-agent-hasura:
+        condition: service_healthy
     environment:
-      HASURA_GRAPHQL_DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-disaster}
-      HASURA_GRAPHQL_ADMIN_SECRET: ${HASURA_GRAPHQL_ADMIN_SECRET:?Thiếu HASURA_GRAPHQL_ADMIN_SECRET trong .env}
-      # Tầng 1 headless: tắt console
+      SECRETS_REQUIRED: HASURA_GRAPHQL_DATABASE_URL HASURA_GRAPHQL_ADMIN_SECRET
+      # Tầng 1 headless: tắt console, tắt dev mode, không gửi telemetry
       HASURA_GRAPHQL_ENABLE_CONSOLE: "false"
       HASURA_GRAPHQL_DEV_MODE: "false"
+      HASURA_GRAPHQL_ENABLE_TELEMETRY: "false"
       HASURA_GRAPHQL_UNAUTHORIZED_ROLE: anonymous
-      # Vai trò lấy từ realm_access.roles trong JWT của Keycloak.
-      # TODO tuần 2: roles[0] KHÔNG ổn định (có thể là offline_access). Thêm mapper Keycloak
-      # sinh claim vai trò nghiệp vụ mặc định rồi đổi x-hasura-default-role sang claim đó.
+      # Kiểm lại JWT của Keycloak (Zero-Trust). Không cần claims_map: Keycloak đã phát claim
+      # trong namespace mặc định https://hasura.io/jwt/claims (#13, docs/architecture.md mục 3.1)
       HASURA_GRAPHQL_JWT_SECRET: >-
         {"jwk_url":"http://keycloak:8080/realms/${KEYCLOAK_REALM:-disaster}/protocol/openid-connect/certs",
-        "issuer":"${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}/realms/${KEYCLOAK_REALM:-disaster}",
-        "claims_map":{"x-hasura-allowed-roles":{"path":"$$.realm_access.roles"},
-        "x-hasura-default-role":{"path":"$$.realm_access.roles[0]"},
-        "x-hasura-user-id":{"path":"$$.sub"}}}
+        "issuer":"${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}/realms/${KEYCLOAK_REALM:-disaster}"}
+      # Metadata (bảng track, quan hệ, quyền theo vai trò) do ứng dụng cung cấp; lõi chỉ biết quy ước
+      # thư mục, giống migrate. Metadata lệch với DB (bảng/cột không có) → dừng khởi động, không
+      # chạy với quyền thiếu. Kết nối DB (pool 10) khai báo trong databases.yaml của metadata.
+      HASURA_GRAPHQL_METADATA_DIR: /hasura-metadata
+      HASURA_GRAPHQL_DISALLOW_INCONSISTENT_METADATA: "true"
+      HASURA_GRAPHQL_MIGRATIONS_SERVER_TIMEOUT: "60"
+    volumes:
+      - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - secrets-hasura:/run/secrets/dxos:ro
+      - ./apps/${DXOS_APP:-cuu-tro}/hasura/metadata:/hasura-metadata:ro
     ports:
       - "127.0.0.1:${HASURA_PORT:-8081}:8080"
     healthcheck:
       test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /healthz HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 12
+      start_period: 30s
     mem_limit: 512m
 
   seaweedfs:
     <<: *restart
     image: chrislusf/seaweedfs:4.48
-    profiles: [core-next]
-    # TODO tuần 2: cấu hình khóa S3 (-s3.config) lấy từ OpenBao
-    command: ["server", "-dir=/data", "-s3", "-master.volumeSizeLimitMB=1024", "-volume.max=0"]
+    profiles: [core]
+    # Master + volume + filer + S3 trong một tiến trình. Khóa S3 (-s3.config) render từ
+    # OpenBao secret/core/s3 qua bao-agent-seaweedfs; không ký bằng khóa đúng thì S3 trả 403.
+    command:
+      - server
+      - -dir=/data
+      - -s3
+      - -s3.config=/run/secrets/dxos/s3.json
+      - -master.volumeSizeLimitMB=${SEAWEEDFS_VOLUME_SIZE_MB:-256}
+      - -volume.max=0
+    depends_on:
+      bao-agent-seaweedfs:
+        condition: service_healthy
+    environment:
+      GOMEMLIMIT: 300MiB
     volumes:
       - seaweeddata:/data
+      - secrets-seaweedfs:/run/secrets/dxos:ro
     ports:
       - "127.0.0.1:${SEAWEEDFS_S3_PORT:-8333}:8333"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9333/cluster/status >/dev/null"]
-      interval: 15s
+      # Master sẵn sàng và cổng S3 trả lời (403 khi không ký là đúng: S3 đã bật xác thực)
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9333/cluster/status >/dev/null && wget -S -O /dev/null http://127.0.0.1:8333/ 2>&1 | grep -q ' 403 '"]
+      interval: 10s
       timeout: 5s
-      retries: 10
-    mem_limit: 512m
+      retries: 12
+      start_period: 15s
+    mem_limit: 384m
+
+  s3-buckets:
+    # Chạy một lần mỗi lần up (#27): tạo bucket mà ứng dụng khai báo trong apps/${DXOS_APP}/s3/buckets.conf
+    # (tên bắt buộc tiền tố "<DXOS_APP>-"), bucket đã có thì giữ nguyên. Dùng lại image SeaweedFS
+    # (weed shell tới master/filer nội bộ), không kéo thêm image. Script: core/seaweedfs/create-buckets.sh
+    image: chrislusf/seaweedfs:4.48
+    profiles: [core]
+    restart: "no"
+    entrypoint: ["sh", "/opt/dxos/create-buckets.sh"]
+    depends_on:
+      seaweedfs:
+        condition: service_healthy
+    environment:
+      DXOS_APP: ${DXOS_APP:-cuu-tro}
+    volumes:
+      - ./core/seaweedfs/create-buckets.sh:/opt/dxos/create-buckets.sh:ro
+      - ./apps/${DXOS_APP:-cuu-tro}/s3:/opt/dxos/app-s3:ro
+    mem_limit: 128m
 
   temporal:
     <<: *restart
-    # auto-setup tự tạo schema trên PostgreSQL; chỉ dùng cho dev. Tuần 2 cân nhắc temporalio/server + admin-tools.
+    # CSDL temporal, temporal_visibility do postgres-roles tạo sẵn (thuộc role temporal, không phải
+    # superuser); auto-setup chỉ tạo schema. Mật khẩu (POSTGRES_PWD) từ OpenBao qua bao-agent-temporal.
+    # Chỉ dùng cho dev/thi; triển khai thật chuyển sang temporalio/server + admin-tools.
     image: temporalio/auto-setup:1.29.7
-    profiles: [core-next]
+    profiles: [core]
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos", "/etc/temporal/entrypoint.sh"]
+    command: ["autosetup"]
     depends_on:
-      postgres:
+      postgres-roles:
+        condition: service_completed_successfully
+      bao-agent-temporal:
         condition: service_healthy
     environment:
+      SECRETS_REQUIRED: POSTGRES_PWD
       DB: postgres12
       DB_PORT: "5432"
       POSTGRES_SEEDS: postgres
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PWD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${TEMPORAL_DB_USER:-temporal}
+      SKIP_DB_CREATE: "true"
+      # Ít kết nối DB cho laptop (mặc định 20, visibility 10)
+      SQL_MAX_CONNS: "10"
+      SQL_MAX_IDLE_CONNS: "5"
+      SQL_VIS_MAX_CONNS: "5"
+      SQL_VIS_MAX_IDLE_CONNS: "2"
+      GOMEMLIMIT: 400MiB
+    volumes:
+      - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - secrets-temporal:/run/secrets/dxos:ro
     ports:
       - "127.0.0.1:${TEMPORAL_PORT:-7233}:7233"
     healthcheck:
@@ -180,66 +499,141 @@ services:
       timeout: 10s
       retries: 20
       start_period: 60s
-    mem_limit: 1g
+    mem_limit: 512m
 
   temporal-ui:
     <<: *restart
-    # Giao diện quản trị cho dev, chỉ mở trên 127.0.0.1 (không thuộc Tầng 2)
+    # Giao diện quản trị CHỈ cho admin: chỉ mở trên 127.0.0.1 của máy chủ (từ xa: SSH tunnel),
+    # không đi qua APISIX, không thuộc Tầng 2.
     image: temporalio/ui:2.56.0
-    profiles: [core-next]
+    profiles: [core]
     depends_on:
       temporal:
         condition: service_healthy
     environment:
       TEMPORAL_ADDRESS: temporal:7233
+      GOMEMLIMIT: 100MiB
     ports:
       - "127.0.0.1:${TEMPORAL_UI_PORT:-8088}:8080"
-    mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    mem_limit: 128m
+
+  bao-agent-nats:
+    <<: *bao-agent
+    command: ["agent", "-config=/openbao/config/agent.hcl"]
+    environment:
+      # Chọn secret/app/<DXOS_APP>/nats và đặt tên user/phạm vi subject trong auth.conf.ctmpl
+      DXOS_APP: ${DXOS_APP:-cuu-tro}
+    volumes:
+      - ./core/openbao/agent-nats.hcl:/openbao/config/agent.hcl:ro
+      - ./core/nats/auth.conf.ctmpl:/openbao/config/auth.conf.ctmpl:ro
+      - ${OPENBAO_LOCAL_DIR:-./.data/openbao}/approle/nats:/openbao/approle:ro
+      - secrets-nats:/out/nats
+    healthcheck:
+      test: ["CMD-SHELL", "grep -q 'thiet-bi' /out/nats/auth.conf"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
 
   nats:
     <<: *restart
     image: nats:2.15.1-alpine
-    profiles: [core-next]
+    profiles: [core]
+    # Xác thực bắt buộc (#30): include secrets/auth.conf do bao-agent-nats render, không cho nặc danh
     command: ["-c", "/etc/nats/nats.conf"]
+    depends_on:
+      bao-agent-nats:
+        condition: service_healthy
+    environment:
+      GOMEMLIMIT: 200MiB
+      NATS_JS_MAX_MEMORY: ${NATS_JS_MAX_MEMORY:-64MB}
+      NATS_JS_MAX_FILE: ${NATS_JS_MAX_FILE:-1GB}
     volumes:
       - ./core/nats/nats.conf:/etc/nats/nats.conf:ro
+      - secrets-nats:/etc/nats/secrets:ro
       - natsdata:/data
     ports:
       - "127.0.0.1:${NATS_PORT:-4222}:4222"
-      - "127.0.0.1:${NATS_MQTT_PORT:-1883}:1883"
+      # Cổng MQTT cho thiết bị/giả lập. Mặc định chỉ 127.0.0.1; thiết bị thật trong mạng LAN:
+      # NATS_MQTT_BIND=0.0.0.0 (chưa có TLS, xem core/nats/nats.conf)
+      - "${NATS_MQTT_BIND:-127.0.0.1}:${NATS_MQTT_PORT:-1883}:1883"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz?js-enabled-only=true >/dev/null"]
+      test: ["CMD-SHELL", "wget -qO- 'http://127.0.0.1:8222/healthz?js-enabled-only=true' >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 10
     mem_limit: 256m
 
-  openbao:
-    <<: *restart
-    # Chế độ dev (dữ liệu trong RAM). TODO tuần 2: chế độ server + lưu trữ raft, auto-unseal.
-    image: openbao/openbao:2.7.1
-    profiles: [core-next]
-    command: ["server", "-dev"]
+  bao-agent-ledger:
+    <<: *bao-agent
+    command: ["agent", "-config=/openbao/config/agent.hcl"]
     environment:
-      BAO_DEV_ROOT_TOKEN_ID: ${OPENBAO_DEV_ROOT_TOKEN:?Thiếu OPENBAO_DEV_ROOT_TOKEN trong .env}
-      BAO_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
-      BAO_ADDR: http://127.0.0.1:8200
-    ports:
-      - "127.0.0.1:${OPENBAO_PORT:-8200}:8200"
+      # Chọn secret/app/<DXOS_APP>/ledger (token ghi của backend ứng dụng) trong file writers
+      DXOS_APP: ${DXOS_APP:-cuu-tro}
+    volumes:
+      - ./core/openbao/agent-ledger.hcl:/openbao/config/agent.hcl:ro
+      - ${OPENBAO_LOCAL_DIR:-./.data/openbao}/approle/ledger:/openbao/approle:ro
+      - secrets-ledger:/out/ledger
     healthcheck:
-      test: ["CMD", "bao", "status"]
+      test: ["CMD-SHELL", "test -s /out/ledger/signing_key && grep -q \"^$${DXOS_APP}-api \" /out/ledger/writers"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
+  ledger:
+    <<: *restart
+    # Sổ cái minh bạch (#28, D-007): dịch vụ Go nhúng Tessera, driver POSIX trên volume ledgerdata
+    # (filesystem thật của Docker, không s3fs/NFS). Build từ mã nguồn core/ledger; image scratch.
+    # Đọc công khai qua APISIX /ledger/* (checkpoint, tile, proof, verifier); ghi POST /ledger/entries
+    # CHỈ trong mạng nội bộ kèm token dịch vụ (APISIX chặn mọi phương thức ghi). Không mở cổng ra host.
+    build:
+      context: ./core/ledger
+    image: disaster-dxos/ledger:0.1.0
+    profiles: [core]
+    depends_on:
+      bao-agent-ledger:
+        condition: service_healthy
+    environment:
+      # Chống trùng bền vững dùng BadgerDB: GOMEMLIMIT để GC giữ heap dưới mem_limit
+      GOMEMLIMIT: ${LEDGER_GOMEMLIMIT:-150MiB}
+      LEDGER_LISTEN: ":8090"
+      LEDGER_STORAGE_DIR: /data/log
+      LEDGER_ANTISPAM_DIR: /data/antispam
+      LEDGER_SECRETS_DIR: /run/secrets/dxos
+      LEDGER_CHECKPOINT_INTERVAL: ${LEDGER_CHECKPOINT_INTERVAL:-1s}
+    volumes:
+      - ledgerdata:/data
+      - secrets-ledger:/run/secrets/dxos:ro
+    healthcheck:
+      test: ["CMD", "/ledger", "healthcheck"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 12
+      start_period: 10s
     mem_limit: 256m
 
   # ===================== TODO các profile sau =====================
   # gis (tuần 4): Scorpio Broker (BSD-3-Clause) dùng chung postgis/postgis + mô phỏng cảm biến MQTT
-  # sec (tuần 2-4): ClamAV (GPL-2.0, dịch vụ riêng) + transparency log Tessera/Trillian (build từ nguồn)
+  # sec (tuần 2-4): ClamAV (GPL-2.0, dịch vụ riêng). Sổ cái Tessera đã vào core (#28, dịch vụ ledger)
   # ai  (tuần 5):   Ollama + Qwen2.5 7B/14B, Qdrant, agent FastAPI + LangGraph
   # bi  (tuần 4):   Grafana (AGPL-3.0, dịch vụ riêng)
 
 volumes:
   pgdata:
+  baodata:
   seaweeddata:
   natsdata:
+  ledgerdata:
+  secrets-keycloak: *secrets-tmpfs
+  secrets-postgres: *secrets-tmpfs
+  secrets-apisix: *secrets-tmpfs
+  secrets-hasura: *secrets-tmpfs
+  secrets-temporal: *secrets-tmpfs
+  secrets-seaweedfs: *secrets-tmpfs
+  secrets-nats: *secrets-tmpfs
+  secrets-ledger: *secrets-tmpfs

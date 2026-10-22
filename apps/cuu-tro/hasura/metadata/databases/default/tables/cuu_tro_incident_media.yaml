@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: Apache-2.0
+# Siêu dữ liệu ảnh hiện trường (#27). Chỉ cuu-tro-api (role DB cuu_tro_app) thêm dòng, sau khi kiểm
+# magic bytes + kích thước và ghi object lên S3; KHÔNG vai trò nào thêm/sửa/xóa qua GraphQL (nếu cho
+# insert, người dùng tự tạo được dòng trỏ tới object tùy ý). Nội dung ảnh xem bằng link presigned
+# ngắn hạn do API cấp (apps/cuu-tro/README.md mục "Ảnh hiện trường"); bảng không có URL.
+#   dieu-phoi   đọc mọi ảnh
+#   cuu-ho      chỉ đọc ảnh của tin phân công cho đội mình (cùng luật lọc với incidents)
+#   tinh-nguyen chỉ đọc ảnh chính mình tải lên (không xem ảnh người khác, kể cả của tin mình tạo)
+# API hỏi bảng này bằng JWT + vai trò của người dùng để quyết định có cấp link xem hay không.
+table:
+  name: incident_media
+  schema: cuu_tro
+configuration:
+  custom_name: incident_media
+  column_config: {}
+  custom_column_names: {}
+  custom_root_fields: {}
+object_relationships:
+  - name: incident
+    using:
+      foreign_key_constraint_on: incident_id
+select_permissions:
+  - role: dieu-phoi
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+  - role: cuu-ho
+    permission:
+      columns: "*"
+      filter:
+        incident:
+          assigned_team:
+            members:
+              user_id:
+                _eq: x-hasura-user-id
+  - role: tinh-nguyen
+    permission:
+      # Không có uploaded_by, uploader_role: không cần cho người dân, giảm dữ liệu định danh lộ ra
+      columns:
+        - id
+        - incident_id
+        - object_key
+        - content_type
+        - size_bytes
+        - sha256
+        - uploaded_at
+        - scan_status
+      filter:
+        uploaded_by:
+          _eq: x-hasura-user-id
