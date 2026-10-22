@@ -2,6 +2,7 @@
 # Yêu cầu PoF: license đầy đủ (#1), build được 100% từ mã nguồn (#3), lint/test từng thành phần (#31).
 # Tên job ổn định để bật bắt buộc trong bảo vệ nhánh: license, build-from-source, shellcheck, yamllint, pytest.
 # Sổ cái core/ledger (Go, #28): go-test (gofmt, go vet, go test) và go-licenses (chỉ giấy phép OSI).
+# Web điều phối (Nuxt, #59): job web (giấy phép npm, Vitest, typecheck, build), chưa bắt buộc.
 name: ci
 on:
   push:
@@ -113,3 +114,23 @@ jobs:
       - name: Báo cáo giấy phép
         if: always()
         run: go-licenses report ./... --ignore github.com/disaster-dxos/disaster-dxos | sort | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # Web điều phối apps/cuu-tro/web (Nuxt, #59). Chưa nằm trong danh sách job bắt buộc của bảo vệ nhánh.
+  web:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/cuu-tro/web
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version: "22.20.0"
+          cache: npm
+          cache-dependency-path: apps/cuu-tro/web/package-lock.json
+      - run: npm ci
+      # Mọi gói npm (kể cả gián tiếp) phải có giấy phép OSI tương thích Apache-2.0 (DEPENDENCIES.md)
+      - run: npm run licenses
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build

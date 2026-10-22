@@ -5,6 +5,10 @@
 ## [Unreleased]
 
 ### Added
+- Web điều phối `apps/cuu-tro/web` (#59): Nuxt 3.21 (SPA, TypeScript) + Tailwind CSS 4 + MapLibre GL JS 5.24, giao diện tiếng Việt theo bộ nhận diện (logo lấy thẳng từ `docs/images/logo/`). Bố cục cho người điều phối: bản đồ lớn + danh sách tin kêu cứu (dữ liệu giả, sắp theo trạng thái/mức khẩn/thời gian, che giữa SĐT), đếm theo trạng thái, chú giải mức khẩn, bấm tin ↔ bay tới điểm trên bản đồ.
+- Đăng nhập Keycloak OIDC Authorization Code + PKCE S256 viết thuần (không thư viện) với client công khai `dxos-web` có sẵn trong realm: kiểm `state`, `nonce`, chỉ quay về đường dẫn nội bộ, token trong `sessionStorage`, tự làm mới, đăng xuất qua `end_session`; vai `dieu-phoi` vẫn bắt OTP. Không có bí mật trong mã web; mọi lời gọi lõi đi qua API Gateway (#59).
+- Bản đồ nền OpenFreeMap (dữ liệu OpenStreetMap, ODbL), nhãn tiếng Việt (`name:vi`), nhãn Quần đảo Hoàng Sa/Trường Sa (Việt Nam), dự phòng ô ảnh OpenStreetMap; đổi bằng `NUXT_PUBLIC_MAP_STYLE_URL` (#59).
+- 41 test Vitest (vector PKCE của RFC 7636, URL OIDC, state/nonce/open redirect, đổi code và làm mới token với `fetch` giả, hạn token, GeoJSON và nhãn bản đồ); `npm run licenses` kiểm giấy phép mọi gói npm từ `package-lock.json` (chặn giấy phép ngoài danh sách OSI, 3 gói dữ liệu lúc build CC0/CC-BY ghi ngoại lệ có lý do trong `DEPENDENCIES.md`); job CI `web` (giấy phép, test, typecheck, build), chưa bắt buộc (#59).
 - Logo và bộ nhận diện dự án trong `docs/images/logo/` (biểu tượng 1024/512/180/64/32 px, `favicon.ico`, logo ngang nền trong suốt và nền trắng, ảnh xem trước 1280×640); logo ngang ở đầu `README.md`, chế độ tối dùng bản nền trắng qua `<picture>`; nguồn (tạo bằng công cụ AI theo prompt của đội, đội đã duyệt) ghi trong `docs/images/README.md` (#57).
 
 ## [0.1.0] - 2026-10-22
