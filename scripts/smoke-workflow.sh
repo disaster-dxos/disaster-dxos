@@ -161,7 +161,7 @@ WF2="phan-cong-$NEW"
 out=$(cho_wf "$WF2" 'd["chi_tiet"]["buoc"] == "cho_nhan"')
 check "workflow $WF2 TỰ khởi chạy, giao đội gần nhất, hạn nhận khan_cap" "cho_nhan $TEAM_GAN ${PHAN_CONG_HAN_NHAN_GIAY_KHAN_CAP:-300} True" \
   "$(jf 'd["chi_tiet"]["buoc"] + " " + str(d["chi_tiet"]["doi_id"]) + " " + str(d["chi_tiet"]["han_nhan_giay"]) + " " + str("tu-dong" in d["chi_tiet"]["lich_su"][0])' <<<"$out" 2>/dev/null || echo "$out")"
-check "DB: outbox đã khởi chạy (started_at), tin phan_cong" "t|phan_cong" \
+check "DB: outbox đã khởi chạy (started_at), tin phan_cong" "true|phan_cong" \
   "$(sql <<<"SELECT (q.started_at IS NOT NULL)::text || '|' || i.status FROM cuu_tro.assignment_queue q JOIN cuu_tro.incidents i ON i.id = q.incident_id WHERE q.incident_id = '$NEW'")"
 check "khởi chạy tay khi đã tự chạy" 409 "$(http_code "$(api "$D" POST "/phan-cong/$NEW")")"
 check "đội được giao từ chối" 202 "$(http_code "$(api "$C" POST "/$WF2/tu-choi" '{"ghi_chu":"ca no dang sua"}')")"

@@ -30,6 +30,9 @@
 - 41 test Vitest (vector PKCE của RFC 7636, URL OIDC, state/nonce/open redirect, đổi code và làm mới token với `fetch` giả, hạn token, GeoJSON và nhãn bản đồ); `npm run licenses` kiểm giấy phép mọi gói npm từ `package-lock.json` (chặn giấy phép ngoài danh sách OSI, 3 gói dữ liệu lúc build CC0/CC-BY ghi ngoại lệ có lý do trong `DEPENDENCIES.md`); job CI `web` (giấy phép, test, typecheck, build), chưa bắt buộc (#59).
 - Logo và bộ nhận diện dự án trong `docs/images/logo/` (biểu tượng 1024/512/180/64/32 px, `favicon.ico`, logo ngang nền trong suốt và nền trắng, ảnh xem trước 1280×640); logo ngang ở đầu `README.md`, chế độ tối dùng bản nền trắng qua `<picture>`; nguồn (tạo bằng công cụ AI theo prompt của đội, đội đã duyệt) ghi trong `docs/images/README.md` (#57).
 
+### Fixed
+- Smoke trên stack thật sau #70, #71: `smoke-workflow.sh` so `started_at IS NOT NULL` ép `::text` với `true` (PostgreSQL in `true`, không phải `t`); `smoke-cam-bien.sh` chờ thêm stream `CUU_TRO_DIEU_PHOI` do #67 khai báo. `make smoke` 422/422 trên volume trống.
+
 ## [0.1.0] - 2026-10-22
 Tuần 2: lõi Tầng 1 đủ 4 dịch vụ bắt buộc trong profile `core` (Keycloak SSO + OTP, APISIX + Coraza WAF, PostgreSQL/PostGIS + Hasura CE + SeaweedFS S3, Temporal), thêm OpenBao, NATS JetStream + MQTT và sổ cái minh bạch Tessera `core/ledger`; ứng dụng `apps/cuu-tro` có schema PostGIS, phân quyền GraphQL 3 vai trò, workflow phân công cứu hộ, luồng cảm biến mực nước, ảnh hiện trường, phiếu kho ghi sổ cái và trang minh bạch công khai (PR #33–#54).
 
