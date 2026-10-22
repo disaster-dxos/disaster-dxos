@@ -54,7 +54,7 @@ Miền Trung mỗi năm hứng nhiều cơn bão và lũ. Trong vài giờ nư�
 | Chức năng | Trạng thái |
 |---|---|
 | **Kêu cứu** có tọa độ, chặn tin trùng | ✅ Đã có ở v0.1 (API GraphQL, phân quyền theo vai trò) |
-| **Phân công cứu hộ** đội gần nhất, chờ xác nhận | ✅ Đã có ở v0.1 (workflow Temporal, API `/workflow`) |
+| **Phân công cứu hộ** đội gần nhất, chờ xác nhận | ✅ Đã có ở v0.1 (workflow Temporal, API `/workflow`); từ #67 (chưa phát hành): tự khởi chạy khi có tin mới, ưu tiên theo mức khẩn, đội không nhận trong hạn thì phân công lại |
 | **Cảnh báo mực nước** từ trạm đo | ✅ Đã có ở v0.1: trạm đo (giả lập) → MQTT → phát sự kiện vượt ngưỡng · 🔜 thông báo Telegram (tuần 4) |
 | **Sổ cái minh bạch** tiền và hàng cứu trợ | ✅ Đã có ở v0.1 (Tessera, trang công khai, CLI tự kiểm) |
 | **Bản đồ thời gian thực** cho người điều phối | 🔜 Tuần 3 (web Nuxt + MapLibre; dữ liệu và GraphQL đã sẵn) |
@@ -95,8 +95,8 @@ Phiên bản và giấy phép từng image, thư viện: [`DEPENDENCIES.md`](DEP
 
 1. **Báo tin:** người dân hoặc tình nguyện viên gửi tin kêu cứu kèm tọa độ.
 2. **Kiểm tra:** CSDL từ chối tin thiếu tọa độ và tin trùng số điện thoại trong 200 m / 6 giờ.
-3. **Điều phối:** người điều phối bấm phân công, hệ thống khởi chạy workflow Temporal.
-4. **Đội gần nhất:** workflow tìm đội sẵn sàng gần nhất bằng PostGIS, gán đội và chờ xác nhận có hạn.
+3. **Điều phối:** tin mới tự khởi chạy workflow Temporal (#67), tin khẩn được xếp trước; người điều phối chỉ can thiệp khi hệ thống báo (hết lần giao, không có đội).
+4. **Đội gần nhất:** workflow tìm đội sẵn sàng gần nhất bằng PostGIS và giao đội; đội không nhận hoặc từ chối trong hạn (theo mức khẩn) thì giao đội kế tiếp.
 5. **Đã cứu:** đội cứu hộ xác nhận, tin được đóng, đội trở lại trạng thái sẵn sàng.
 
 **Hàng cứu trợ → kiểm chứng công khai**

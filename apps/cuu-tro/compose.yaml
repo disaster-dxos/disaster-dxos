@@ -21,6 +21,16 @@ x-cuu-tro-env: &cuu-tro-env
   TEMPORAL_ADDRESS: temporal:7233
   TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
   TEMPORAL_TASK_QUEUE: ${CUU_TRO_TASK_QUEUE:-cuu-tro}
+  # Tham số PhanCongCuuHo: API (khởi chạy tay) và bộ khởi chạy tự động trong worker (#67) dùng chung
+  PHAN_CONG_BAN_KINH_M: ${PHAN_CONG_BAN_KINH_M:-20000}
+  PHAN_CONG_HAN_XAC_NHAN_GIAY: ${PHAN_CONG_HAN_XAC_NHAN_GIAY:-21600}
+  PHAN_CONG_SO_LAN_TIM_DOI: ${PHAN_CONG_SO_LAN_TIM_DOI:-10}
+  PHAN_CONG_CHO_TIM_LAI_GIAY: ${PHAN_CONG_CHO_TIM_LAI_GIAY:-60}
+  PHAN_CONG_HAN_NHAN_GIAY_KHAN_CAP: ${PHAN_CONG_HAN_NHAN_GIAY_KHAN_CAP:-300}
+  PHAN_CONG_HAN_NHAN_GIAY_CAO: ${PHAN_CONG_HAN_NHAN_GIAY_CAO:-600}
+  PHAN_CONG_HAN_NHAN_GIAY_TRUNG_BINH: ${PHAN_CONG_HAN_NHAN_GIAY_TRUNG_BINH:-900}
+  PHAN_CONG_HAN_NHAN_GIAY_THAP: ${PHAN_CONG_HAN_NHAN_GIAY_THAP:-1800}
+  PHAN_CONG_SO_LAN_GIAO_TOI_DA: ${PHAN_CONG_SO_LAN_GIAO_TOI_DA:-3}
 
 services:
   bao-agent-cuu-tro:
@@ -55,11 +65,15 @@ services:
     image: disaster-dxos/cuu-tro-workflow:0.1.0
     restart: unless-stopped
     profiles: [app]
-    # APP_DB_URL (role cuu_tro_app) do bao agent render, env-from-files.sh export rồi exec worker
+    # APP_DB_URL (role cuu_tro_app) do bao agent render, env-from-files.sh export rồi exec worker.
+    # Cùng tiến trình: bộ khởi chạy tự động (#67) LISTEN cuu_tro_tin_moi + quét outbox assignment_queue;
+    # NATS_URL để báo điều phối (stream CUU_TRO_DIEU_PHOI, worker tự khai báo stream khi khởi động).
     entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos"]
     command: ["python", "-m", "cuu_tro_workflow.worker"]
     depends_on:
       temporal:
+        condition: service_healthy
+      nats:
         condition: service_healthy
       # Quyền của cuu_tro_app trên bảng do migration 0003 cấp
       migrate:
@@ -68,9 +82,13 @@ services:
         condition: service_healthy
     environment:
       <<: *cuu-tro-env
-      SECRETS_REQUIRED: APP_DB_URL
+      SECRETS_REQUIRED: APP_DB_URL NATS_URL
+      NATS_STREAMS_FILE: /app/nats/streams.json
+      PHAN_CONG_TU_DONG: ${PHAN_CONG_TU_DONG:-1}
+      PHAN_CONG_QUET_GIAY: ${PHAN_CONG_QUET_GIAY:-30}
     volumes:
       - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - ./apps/cuu-tro/nats/streams.json:/app/nats/streams.json:ro
       - secrets-cuu-tro:/run/secrets/dxos:ro
     healthcheck:
       # Worker ghi lại /tmp/worker-alive mỗi 10 giây khi đang nhận việc từ Temporal
@@ -120,10 +138,6 @@ services:
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-disaster}
       # D-008: lõi chỉ được gọi qua API Gateway (Hasura qua APISIX /graphql)
       GATEWAY_INTERNAL_URL: http://apisix:9080
-      PHAN_CONG_BAN_KINH_M: ${PHAN_CONG_BAN_KINH_M:-20000}
-      PHAN_CONG_HAN_XAC_NHAN_GIAY: ${PHAN_CONG_HAN_XAC_NHAN_GIAY:-21600}
-      PHAN_CONG_SO_LAN_TIM_DOI: ${PHAN_CONG_SO_LAN_TIM_DOI:-10}
-      PHAN_CONG_CHO_TIM_LAI_GIAY: ${PHAN_CONG_CHO_TIM_LAI_GIAY:-60}
       # Ảnh hiện trường (#27). API ghi S3 thẳng trong mạng nội bộ (seaweedfs:8333, khóa của ứng dụng);
       # link xem ký cho host công khai của gateway, client mở qua APISIX /files/* (kèm JWT)
       S3_ENDPOINT: http://seaweedfs:8333

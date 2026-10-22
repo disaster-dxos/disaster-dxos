@@ -40,7 +40,7 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 
 ## Tuần 3 · 29/10–04/11 · Luồng nghiệp vụ chính
 - [ ] [V2] API kêu cứu + Poka-yoke (bắt buộc tọa độ, chặn trùng SĐT trong bán kính 200 m)
-- [ ] [V1] Temporal workflow: tiếp nhận → phân công đội gần nhất → xác nhận đã cứu → đóng (khung chạy được từ #29; còn: tự khởi chạy khi có tin mới, quá hạn → báo điều phối + phân công lại, ưu tiên theo `urgency`)
+- [x] [V1] Temporal workflow: tiếp nhận → phân công đội gần nhất → xác nhận đã cứu → đóng (khung #29; #67: tự khởi chạy khi có tin mới qua outbox PostgreSQL, quá hạn nhận / từ chối → phân công lại, hết lần → báo điều phối qua NATS, ưu tiên theo `urgency`)
 - [ ] [V3] Web Nuxt: đăng nhập Keycloak (PKCE), bản đồ MapLibre hiển thị sự cố realtime (subscription)
 - [ ] [V3] Màn hình phân công + cập nhật trạng thái
 - [ ] [V1] Centrifugo OSS: đẩy thông báo realtime

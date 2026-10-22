@@ -87,7 +87,7 @@ Hiện profile `core` có `openbao` (+ 8 bao agent), `postgres` (+ `postgres-rol
 | API Gateway | **Apache APISIX 3.19** + **Coraza WAF** (coraza-proxy-wasm 0.6.0, OWASP CRS 4.14) | Điểm vào duy nhất của Tầng 2: `/graphql` → Hasura, `/files/*` → SeaweedFS S3, `/workflow/*` → API workflow của ứng dụng (#29, mục 7.3). WAF chặn ở biên, kiểm chữ ký JWT bằng JWKS của Keycloak, rate limit theo IP, CORS, gắn request-id. Chế độ standalone: route nằm trong git (GitOps) | `core/apisix/config.yaml`, `core/apisix/apisix.yaml`, `core/apisix/Dockerfile` | Chạy trong `core` (#12, mục 3.3) |
 | Dữ liệu có cấu trúc | **PostgreSQL 17 + PostGIS 3.5**, **Hasura CE v2.51** | Sự cố, đội cứu hộ, điểm trú ẩn, kho hàng, cảm biến (có tọa độ). Hasura tự sinh GraphQL + subscription, phân quyền theo claim vai trò trong JWT | `docker-compose.yml` (`postgres`, `postgres-roles`, `hasura`), `core/postgres/sync-roles.sh` | Chạy trong `core` (#11); schema nghiệp vụ ở #25, #26 |
 | Dữ liệu phi cấu trúc | **SeaweedFS 4.48** (S3) + ClamAV | Ảnh hiện trường (#27: tải lên qua API ứng dụng, xem bằng link presigned ngắn hạn qua `/files/*`, mục 7.5), tệp đính kèm, file Parquet lịch sử. File tải lên sẽ được ClamAV quét trước khi công bố | `docker-compose.yml` (`seaweedfs`, `s3-buckets`), `core/openbao/agent-seaweedfs.hcl`, `core/seaweedfs/create-buckets.sh` | S3 chạy trong `core`, khóa từ OpenBao (#11); bucket + API ảnh (#27); ClamAV sau |
-| Workflow engine | **Temporal 1.29** + Python SDK | Quy trình kêu cứu: tiếp nhận → phân công đội gần nhất → xác nhận → đóng. Cảnh báo vượt ngưỡng → thông báo | `docker-compose.yml` (`temporal`, `temporal-ui`) | Chạy trong `core` (#11); worker ở #29 |
+| Workflow engine | **Temporal 1.29** + Python SDK | Quy trình kêu cứu: tin mới tự khởi chạy → phân công đội gần nhất (ưu tiên urgency) → đội nhận trong hạn, quá hạn thì phân công lại → xác nhận → đóng (#29, #67, mục 6.1). Cảnh báo vượt ngưỡng → thông báo | `docker-compose.yml` (`temporal`, `temporal-ui`) | Chạy trong `core` (#11); worker ở #29 |
 
 Thành phần hỗ trợ: OpenBao (bí mật, chạy chế độ server trong profile `core` – mục 8), NATS JetStream + MQTT (sự kiện, IoT), Scorpio (NGSI-LD, bản sao số trạm đo), sổ cái minh bạch `core/ledger` (transparency log Tessera, D-007) cho tiền/hàng cứu trợ.
 
@@ -392,6 +392,48 @@ flowchart LR
   F --> L["Ghi nhận hàng/tiền đã cấp → core/ledger (Tessera)"]
 ```
 
+### 6.1. Phân công tự động (#67)
+
+Từ #67 không ai phải bấm "phân công": tin kêu cứu mới tự khởi chạy workflow `PhanCongCuuHo`; đội không nhận trong hạn thì workflow tự giao đội kế tiếp; tin khẩn hơn được đội trước.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant SRC as Hasura / API kêu cứu / SQL
+  participant PG as PostgreSQL (cuu_tro)
+  participant KC as cuu-tro-worker<br/>bộ khởi chạy
+  participant TP as Temporal
+  participant WF as PhanCongCuuHo<br/>(worker)
+  participant DOI as Đội cứu hộ<br/>(API /workflow)
+  participant NATS as NATS JetStream
+  SRC->>PG: INSERT incidents (tiep_nhan)
+  Note over PG: trigger cùng transaction:<br/>assignment_queue + pg_notify
+  PG-->>KC: NOTIFY cuu_tro_tin_moi (hoặc quét mỗi 30 s)
+  KC->>PG: SELECT … ORDER BY urgency_rank FOR UPDATE SKIP LOCKED
+  KC->>TP: start phan-cong-{id} (USE_EXISTING / REJECT_DUPLICATE, priority_key)
+  KC->>PG: started_at = now()
+  TP->>WF: chạy
+  loop tối đa PHAN_CONG_SO_LAN_GIAO_TOI_DA lần
+    WF->>PG: tìm đội gần nhất (PostGIS KNN), luật nhường đội, gán + lịch sử cho_nhan
+    WF->>WF: timer hạn nhận theo urgency
+    alt đội nhận (signal nhan_nhiem_vu)
+      DOI->>WF: POST /workflow/{id}/nhan
+      WF->>PG: tin dang_cuu, lịch sử da_nhan
+    else từ chối / quá hạn
+      WF->>PG: gỡ đội, đội san_sang, lịch sử tu_choi / qua_han
+    end
+  end
+  WF->>NATS: hết lần giao / không có đội → cuu-tro.dieu-phoi.can-xu-ly.{id}
+```
+
+| Quyết định | Chọn | Vì sao |
+|---|---|---|
+| Nguồn sự kiện "có tin mới" | **Outbox trong PostgreSQL** (`assignment_queue`, trigger `AFTER INSERT` + `pg_notify`), bộ khởi chạy chạy trong worker | Ghi cùng transaction với tin: không mất tin khi Temporal/NATS/worker đang lỗi, không phát sự kiện cho tin bị rollback. Mọi đường tạo tin (GraphQL, API kêu cứu #66, SQL, nhập lô) đều qua, không phải sửa từng nơi. Hasura event trigger cần thêm webhook vào API và đặt trigger lên bảng bằng role `hasura` (role này cố ý không có DDL, mục 7.1); NATS thì PostgreSQL không tự phát được, vẫn cần outbox ở giữa |
+| Không chạy trùng | Workflow id tất định `phan-cong-<incident_id>`; `USE_EXISTING` khi đang chạy, `REJECT_DUPLICATE` khi đã xong; `FOR UPDATE SKIP LOCKED` | Bộ khởi chạy chết giữa "start" và "đánh dấu" thì lần sau gọi lại vô hại; nhiều worker không lấy trùng dòng |
+| Ưu tiên urgency | (1) thứ tự lấy hàng đợi; (2) `priority_key` Temporal; (3) luật SQL `team_reserved_for_more_urgent`: tin kém khẩn không lấy đội đang cần cho tin khẩn hơn đang chờ trong bán kính | (1)(2) chỉ giúp khi nhiều việc cùng lúc; (3) mới quyết định ai được đội khi đội khan hiếm. Không giành lại đội đã giao (không ngắt nhiệm vụ đang làm); `seeking_at` hết hạn tự động nên workflow chết không chặn tin khác |
+| Quá hạn → phân công lại | `workflow.wait_condition` có `timeout` (timer bền) + signal `nhan_nhiem_vu` / `tu_choi` / `huy` | Không vòng lặp sleep/poll; worker khởi động lại vẫn giữ hạn; test bằng máy chủ test tua thời gian |
+| Báo điều phối | Sự kiện JetStream `cuu-tro.dieu-phoi.can-xu-ly.<id>` (stream `CUU_TRO_DIEU_PHOI`, 30 ngày), `Nats-Msg-Id` chống trùng | Web/Telegram/Centrifugo (#68) đọc sau; sự kiện không có dữ liệu cá nhân |
+
 ## 7. Vì sao lõi độc lập với nghiệp vụ (`core/` và `apps/`)
 
 Đề yêu cầu dịch vụ Tầng 1 **độc lập hoàn toàn với nghiệp vụ cụ thể**, chỉ cung cấp dịch vụ cơ bản (xác thực, lưu trữ, workflow…) cho người phát triển ứng dụng Tầng 2. Vì vậy repo chia hai phần:
@@ -492,6 +534,8 @@ flowchart LR
 | API → Temporal | gRPC nội bộ `temporal:7233` (start, signal, query, describe) | Temporal không có giao thức HTTP cho client; gRPC không qua APISIX. Temporal UI vẫn chỉ cho admin |
 | Worker → PostgreSQL | Role `cuu_tro_app`: `SELECT` vài cột của `incidents`, `rescue_teams`; `UPDATE` chỉ `status`, `assigned_team_id`; không `INSERT/DELETE`, không đọc SĐT người báo, giới hạn 10 kết nối (migration `0003`, kiểm bằng `make test-db`) | Worker là dịch vụ nền tin cậy của ứng dụng, không có người dùng; không dùng token `dieu-phoi` của người dùng, không dùng admin secret Hasura |
 | Worker → bí mật | `bao-agent-cuu-tro` (AppRole `app-cuu-tro-workflow`, chỉ đọc `secret/app/cuu-tro/db`) render `APP_DB_URL` lên tmpfs, `env-from-files.sh` export | Cùng mẫu với dịch vụ lõi (mục 8.3) |
+| Worker → hàng đợi phân công (#67) | Cùng role `cuu_tro_app`: `SELECT` + `UPDATE` vài cột `assignment_queue`, `SELECT`/`INSERT` + `UPDATE` cột kết quả `incident_assignments`, không `DELETE` (migration `0007`); `LISTEN cuu_tro_tin_moi`. Trigger ghi outbox chạy `SECURITY DEFINER` nên role `hasura` không cần quyền trên hàng đợi | Mục 6.1 |
+| Worker → NATS (#67) | User `cuu-tro-app` (`NATS_URL` từ OpenBao), chỉ phát `cuu-tro.dieu-phoi.>`; worker khai báo stream theo `apps/cuu-tro/nats/streams.json` khi khởi động | Báo điều phối khi hết lần giao / không có đội / quá hạn xác nhận |
 
 Điểm lõi biết về ứng dụng chỉ là **quy ước tên** suy ra từ `DXOS_APP`: role `<schema>_app`, bí mật `secret/app/<DXOS_APP>/db`, policy `apps/<DXOS_APP>/openbao/policies/`, upstream `<DXOS_APP>-api:8000`. Lõi chạy một mình (không bật profile `app`) thì `/workflow/*` trả 502/503, các route khác không ảnh hưởng. Sơ đồ workflow `PhanCongCuuHo` và API: `apps/cuu-tro/README.md` mục "Workflow".
 

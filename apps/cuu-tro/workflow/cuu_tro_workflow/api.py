@@ -4,8 +4,12 @@
 Client gọi qua API Gateway: APISIX route /workflow/* kiểm JWT + WAF + rate limit rồi bỏ tiền tố
 /workflow (core/apisix/apisix.yaml). Đường dẫn bên dưới là đường dẫn SAU khi bỏ tiền tố:
   POST /hello                       chạy workflow Hello (mọi vai trò)
-  POST /phan-cong/{incident_id}     khởi chạy PhanCongCuuHo (chỉ dieu-phoi)
+  POST /phan-cong/{incident_id}     khởi chạy tay PhanCongCuuHo (chỉ dieu-phoi). Tin mới đã TỰ khởi
+                                    chạy (#67, khoi_chay.py); dùng khi luồng tự động đã dừng (báo điều phối)
   GET  /{workflow_id}               trạng thái (dieu-phoi; cuu-ho của đội được gán)
+  POST /{workflow_id}/nhan          đội nhận nhiệm vụ trong hạn (dieu-phoi; cuu-ho của đội được gán)
+  POST /{workflow_id}/tu-choi       đội từ chối → workflow giao đội kế tiếp (dieu-phoi; cuu-ho của đội)
+  POST /{workflow_id}/huy           dừng luồng khi đội chưa nhận, gỡ đội (chỉ dieu-phoi)
   POST /{workflow_id}/xac-nhan      signal "đã cứu" (dieu-phoi; cuu-ho của đội được gán)
   GET  /healthz                     sống + kết nối Temporal (healthcheck của container)
 Ảnh hiện trường (#27, luật quyền: cuu_tro_workflow/anh.py, apps/cuu-tro/README.md):
@@ -36,21 +40,32 @@ import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 from temporalio.client import Client, WorkflowExecutionStatus
-from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
+from temporalio.common import Priority, WorkflowIDConflictPolicy, WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError
 
 from . import anh, config, so_cai
 from .auth import VAI_TRO_CUU_HO, VAI_TRO_DIEU_PHOI, NguoiDung, XacThuc, can_vai_tro
 from .s3 import KhoAnh, LoiS3
-from .logic import ThamSoPhanCong, TrangThaiPhanCong, XacNhan
-from .workflows import QUERY_TRANG_THAI, SIGNAL_XAC_NHAN, Hello, PhanCongCuuHo
+from .logic import PhanHoi, TrangThaiPhanCong, XacNhan, YeuCauHuy, uu_tien
+from .workflows import (
+    BUOC_CHO_NHAN,
+    BUOC_CHO_XAC_NHAN,
+    BUOC_XONG,
+    QUERY_TRANG_THAI,
+    SIGNAL_HUY,
+    SIGNAL_NHAN,
+    SIGNAL_TU_CHOI,
+    SIGNAL_XAC_NHAN,
+    Hello,
+    PhanCongCuuHo,
+)
 
 TIEN_TO_PHAN_CONG = "phan-cong-"
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 _WF_ID = re.compile(rf"^{TIEN_TO_PHAN_CONG}({_UUID})$")
 
-Q_TIN = "query($id: uuid!) { incidents_by_pk(id: $id) { id status assigned_team_id } }"
+Q_TIN = "query($id: uuid!) { incidents_by_pk(id: $id) { id status assigned_team_id urgency } }"
 # Ảnh hiện trường: chỉ hỏi cột mà cả 3 vai trò được đọc (tinh-nguyen không có assigned_team_id;
 # hỏi cột không có quyền thì Hasura báo lỗi validation chứ không trả null)
 Q_TIN_ANH = "query($id: uuid!) { incidents_by_pk(id: $id) { id status } }"
@@ -195,18 +210,23 @@ async def hoi_tin(request: Request, nd: NguoiDung, vai_tro: str, incident_id: st
     return (await hoi_hasura(request, nd, vai_tro, Q_TIN, {"id": incident_id}))["incidents_by_pk"]
 
 
-async def kiem_quyen_workflow(request: Request, nd: NguoiDung, workflow_id: str) -> str:
-    """Trả incident_id nếu người dùng được xem/xác nhận workflow phân công này, nếu không 403/404."""
+async def kiem_quyen_workflow(request: Request, nd: NguoiDung, workflow_id: str) -> tuple[str, str | None]:
+    """Kiểm người dùng được xem/phản hồi workflow phân công này, nếu không 403/404.
+
+    Trả (incident_id, đội của người dùng): dieu-phoi → None; cuu-ho → đội đang được giao tin theo
+    Hasura (luật lọc theo thành viên đội, #26), dùng để workflow bỏ phản hồi của đội đã bị thay.
+    """
     m = _WF_ID.match(workflow_id)
     if not m:
         raise HTTPException(404, "Không có workflow này")
     incident_id = m.group(1)
     can_vai_tro(nd, VAI_TRO_DIEU_PHOI, VAI_TRO_CUU_HO)
     if nd.co(VAI_TRO_DIEU_PHOI):
-        return incident_id
-    if await hoi_tin(request, nd, VAI_TRO_CUU_HO, incident_id) is None:
+        return incident_id, None
+    tin = await hoi_tin(request, nd, VAI_TRO_CUU_HO, incident_id)
+    if tin is None:
         raise HTTPException(403, "Tin kêu cứu không được phân công cho đội của bạn")
-    return incident_id
+    return incident_id, tin["assigned_team_id"]
 
 
 async def trang_thai_wf(request: Request, workflow_id: str) -> tuple[str, TrangThaiPhanCong]:
@@ -225,6 +245,10 @@ class HelloVao(BaseModel):
 
 class XacNhanVao(BaseModel):
     ghi_chu: str = Field("", max_length=500)
+
+
+class HuyVao(BaseModel):
+    ly_do: str = Field("", max_length=500)
 
 
 @app.get("/healthz")
@@ -254,14 +278,7 @@ async def phan_cong(request: Request, incident_id: uuid.UUID, nd: NguoiDungDep) 
     if tin["status"] != "tiep_nhan":
         raise HTTPException(409, f"Tin kêu cứu đang ở trạng thái {tin['status']}, chỉ phân công tin tiep_nhan")
     cfg = st.cfg
-    ts = ThamSoPhanCong(
-        incident_id=str(incident_id),
-        nguoi_khoi_chay=nd.ten_dang_nhap or nd.sub,
-        ban_kinh_m=cfg.ban_kinh_m,
-        han_xac_nhan_giay=cfg.han_xac_nhan_giay,
-        so_lan_tim_doi=cfg.so_lan_tim_doi,
-        cho_tim_lai_giay=cfg.cho_tim_lai_giay,
-    )
+    ts = config.tham_so_phan_cong(cfg, str(incident_id), nd.ten_dang_nhap or nd.sub)
     wf_id = f"{TIEN_TO_PHAN_CONG}{incident_id}"
     try:
         handle = await st.temporal.start_workflow(
@@ -272,6 +289,7 @@ async def phan_cong(request: Request, incident_id: uuid.UUID, nd: NguoiDungDep) 
             # Một tin chỉ có một luồng phân công đang chạy; chạy xong được khởi chạy lại
             id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
             id_conflict_policy=WorkflowIDConflictPolicy.FAIL,
+            priority=Priority(priority_key=uu_tien(tin.get("urgency"))),
         )
     except WorkflowAlreadyStartedError as e:
         raise HTTPException(409, f"Workflow {wf_id} đang chạy") from e
@@ -490,16 +508,62 @@ async def xem(request: Request, workflow_id: str, nd: NguoiDungDep) -> dict[str,
     return {"workflow_id": workflow_id, "trang_thai": trang_thai, "chi_tiet": asdict(tt)}
 
 
+async def _chuan_bi_signal(
+    request: Request, workflow_id: str, nd: NguoiDung, buoc: tuple[str, ...]
+) -> tuple[str, str | None]:
+    """Kiểm quyền + workflow đang ở đúng bước. Trả (vai trò người gửi, đội người gửi thay mặt)."""
+    _, doi_cua_nd = await kiem_quyen_workflow(request, nd, workflow_id)
+    trang_thai, tt = await trang_thai_wf(request, workflow_id)
+    if trang_thai != WorkflowExecutionStatus.RUNNING.name or tt.buoc not in buoc:
+        raise HTTPException(409, f"Workflow không ở bước {'/'.join(buoc)} (trạng thái {trang_thai}, bước {tt.buoc})")
+    if doi_cua_nd is not None and doi_cua_nd != tt.doi_id:
+        raise HTTPException(409, "Nhiệm vụ đã được giao cho đội khác")
+    vai_tro = VAI_TRO_DIEU_PHOI if nd.co(VAI_TRO_DIEU_PHOI) else VAI_TRO_CUU_HO
+    return vai_tro, doi_cua_nd or tt.doi_id
+
+
+async def _gui(request: Request, workflow_id: str, signal: str, arg: Any) -> dict[str, str]:
+    await request.app.state.temporal.get_workflow_handle(workflow_id).signal(signal, arg)
+    return {"workflow_id": workflow_id, "da_gui": signal}
+
+
+@app.post("/{workflow_id}/nhan", status_code=202)
+async def nhan(
+    request: Request, workflow_id: str, nd: NguoiDungDep, vao: XacNhanVao | None = None
+) -> dict[str, str]:
+    vai_tro, doi_id = await _chuan_bi_signal(request, workflow_id, nd, (BUOC_CHO_NHAN,))
+    ph = PhanHoi(loai="", nguoi=nd.ten_dang_nhap or nd.sub, vai_tro=vai_tro, doi_id=doi_id,
+                 ghi_chu=(vao or XacNhanVao()).ghi_chu)
+    return await _gui(request, workflow_id, SIGNAL_NHAN, ph)
+
+
+@app.post("/{workflow_id}/tu-choi", status_code=202)
+async def tu_choi(
+    request: Request, workflow_id: str, nd: NguoiDungDep, vao: XacNhanVao | None = None
+) -> dict[str, str]:
+    vai_tro, doi_id = await _chuan_bi_signal(request, workflow_id, nd, (BUOC_CHO_NHAN,))
+    ph = PhanHoi(loai="", nguoi=nd.ten_dang_nhap or nd.sub, vai_tro=vai_tro, doi_id=doi_id,
+                 ghi_chu=(vao or XacNhanVao()).ghi_chu)
+    return await _gui(request, workflow_id, SIGNAL_TU_CHOI, ph)
+
+
+@app.post("/{workflow_id}/huy", status_code=202)
+async def huy(request: Request, workflow_id: str, nd: NguoiDungDep, vao: HuyVao | None = None) -> dict[str, str]:
+    can_vai_tro(nd, VAI_TRO_DIEU_PHOI)
+    await kiem_quyen_workflow(request, nd, workflow_id)
+    trang_thai, tt = await trang_thai_wf(request, workflow_id)
+    if trang_thai != WorkflowExecutionStatus.RUNNING.name or tt.buoc in (BUOC_CHO_XAC_NHAN, BUOC_XONG):
+        raise HTTPException(409, f"Không hủy được: đội đã nhận hoặc workflow đã xong (trạng thái {trang_thai}, bước {tt.buoc})")
+    yc = YeuCauHuy(nguoi=nd.ten_dang_nhap or nd.sub, ly_do=(vao or HuyVao()).ly_do)
+    return await _gui(request, workflow_id, SIGNAL_HUY, yc)
+
+
 @app.post("/{workflow_id}/xac-nhan", status_code=202)
 async def xac_nhan(
     request: Request, workflow_id: str, nd: NguoiDungDep, vao: XacNhanVao | None = None
 ) -> dict[str, str]:
-    await kiem_quyen_workflow(request, nd, workflow_id)
-    trang_thai, tt = await trang_thai_wf(request, workflow_id)
-    if trang_thai != WorkflowExecutionStatus.RUNNING.name or tt.buoc != "cho_xac_nhan":
-        raise HTTPException(409, f"Workflow không chờ xác nhận (trạng thái {trang_thai}, bước {tt.buoc})")
-    vai_tro = VAI_TRO_DIEU_PHOI if nd.co(VAI_TRO_DIEU_PHOI) else VAI_TRO_CUU_HO
-    xn = XacNhan(nguoi=nd.ten_dang_nhap or nd.sub, vai_tro=vai_tro, ghi_chu=(vao or XacNhanVao()).ghi_chu)
-    await request.app.state.temporal.get_workflow_handle(workflow_id).signal(SIGNAL_XAC_NHAN, xn)
-    return {"workflow_id": workflow_id, "da_gui": SIGNAL_XAC_NHAN}
-
+    # Đội xác nhận "đã cứu" ngay khi còn chờ nhận cũng được: workflow coi như đã nhận rồi đóng tin
+    vai_tro, doi_id = await _chuan_bi_signal(request, workflow_id, nd, (BUOC_CHO_NHAN, BUOC_CHO_XAC_NHAN))
+    xn = XacNhan(nguoi=nd.ten_dang_nhap or nd.sub, vai_tro=vai_tro, ghi_chu=(vao or XacNhanVao()).ghi_chu,
+                 doi_id=doi_id)
+    return await _gui(request, workflow_id, SIGNAL_XAC_NHAN, xn)
