@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: Apache-2.0
+# Lịch sử giao nhiệm vụ (#67, migration 0007): mỗi lần workflow PhanCongCuuHo giao tin cho một đội,
+# kết quả nhận / từ chối / quá hạn / hủy. Chỉ worker (role DB cuu_tro_app) ghi; KHÔNG vai trò nào
+# thêm/sửa/xóa qua GraphQL. Hàng đợi khởi chạy assignment_queue cố ý không track (nội bộ).
+#   dieu-phoi   đọc mọi dòng
+#   cuu-ho      chỉ đọc lịch sử giao cho đội mình (cùng luật thành viên đội với incidents)
+#   tinh-nguyen không đọc
+table:
+  name: incident_assignments
+  schema: cuu_tro
+configuration:
+  custom_name: incident_assignments
+  column_config: {}
+  custom_column_names: {}
+  custom_root_fields: {}
+object_relationships:
+  - name: incident
+    using:
+      foreign_key_constraint_on: incident_id
+  - name: team
+    using:
+      foreign_key_constraint_on: team_id
+select_permissions:
+  - role: dieu-phoi
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+  - role: cuu-ho
+    permission:
+      columns: "*"
+      filter:
+        team:
+          members:
+            user_id:
+              _eq: x-hasura-user-id

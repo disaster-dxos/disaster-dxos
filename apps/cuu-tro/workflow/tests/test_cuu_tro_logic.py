@@ -48,14 +48,14 @@ def test_bo_qua_doi_vua_bi_gianh():
 
 @pytest.mark.parametrize("tu,den", [
     ("tiep_nhan", "phan_cong"), ("phan_cong", "dang_cuu"), ("phan_cong", "da_cuu"),
-    ("dang_cuu", "da_cuu"), ("da_cuu", "dong"), ("tiep_nhan", "dong"),
+    ("dang_cuu", "da_cuu"), ("da_cuu", "dong"), ("tiep_nhan", "dong"), ("phan_cong", "tiep_nhan"),
 ])
 def test_chuyen_hop_le(tu, den):
     kiem_tra_chuyen_trang_thai(tu, den)
 
 
 @pytest.mark.parametrize("tu,den", [
-    ("tiep_nhan", "da_cuu"), ("phan_cong", "tiep_nhan"), ("dang_cuu", "dong"),
+    ("tiep_nhan", "da_cuu"), ("dang_cuu", "tiep_nhan"), ("dang_cuu", "dong"),
     ("dong", "tiep_nhan"), ("da_cuu", "phan_cong"), ("khong_ro", "dong"), ("tiep_nhan", "khong_ro"),
 ])
 def test_chuyen_khong_hop_le(tu, den):

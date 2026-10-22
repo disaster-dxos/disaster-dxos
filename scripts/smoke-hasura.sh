@@ -67,6 +67,9 @@ trap cleanup EXIT
 D=$(get_token dieuphoi01); C=$(get_token cuuho01); T=$(get_token tinhnguyen01)
 C_SUB=$(sub_of "$C")
 PT='{"type":"Point","coordinates":[108.1035,15.8502]}'
+# Tin tiep_nhan mới tự khởi chạy phân công (#67): đặt ngoài bán kính mọi đội seed (~55 km) để kiểm
+# quyền GraphQL mà không làm đội seed bị giao nhiệm vụ
+PT_XA='{"type":"Point","coordinates":[107.6035,15.6502]}'
 
 # ---------- (1) Không token, anonymous ----------
 code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{"query":"{ incidents { id } }"}' "$GW/graphql")
@@ -126,7 +129,7 @@ check "cuu-ho: không đọc kho hàng supplies" ERR:validation-failed "$(gql "$
 # ---------- (4) tinh-nguyen ----------
 PHONE="097$(date +%S%M%H | cut -c1-6)0"
 out=$(gql "$T" "mutation(\$o: incidents_insert_input!) { insert_incidents_one(object: \$o) { id status } }" \
-  "{\"o\":{\"description\":\"[smoke] tình nguyện viên báo\",\"location\":$PT,\"reporter_phone\":\"$PHONE\",\"people_count\":2,\"source\":\"app\"}}")
+  "{\"o\":{\"description\":\"[smoke] tình nguyện viên báo\",\"location\":$PT_XA,\"reporter_phone\":\"$PHONE\",\"people_count\":2,\"source\":\"app\"}}")
 INC_T=$(jq_py 'd["data"]["insert_incidents_one"]["id"]' <<<"$out")
 check "tinh-nguyen: tạo tin kêu cứu (trạng thái tiep_nhan)" tiep_nhan "$(jq_py 'd["data"]["insert_incidents_one"]["status"]' <<<"$out")"
 check "tinh-nguyen: không tự đặt status/đội khi tạo tin" ERR:validation-failed \
@@ -139,13 +142,19 @@ check "tinh-nguyen: không sửa tin" ERR:validation-failed \
 check "tinh-nguyen: không xóa tin" ERR:validation-failed \
   "$(gql "$T" 'mutation($id: uuid!) { delete_incidents_by_pk(id: $id) { id } }' "{\"id\":\"$INC_T\"}" | jq_py '')"
 check "tinh-nguyen: báo trùng (cùng SĐT, cùng chỗ) bị chặn" "constraint-violation True" \
-  "$(gql "$T" "$NEW_INC_ID" "{\"o\":{\"description\":\"[smoke] báo lại\",\"location\":$PT,\"reporter_phone\":\"$PHONE\"}}" \
+  "$(gql "$T" "$NEW_INC_ID" "{\"o\":{\"description\":\"[smoke] báo lại\",\"location\":$PT_XA,\"reporter_phone\":\"$PHONE\"}}" \
      | jq_py '"%s %s" % (d["errors"][0]["extensions"]["code"], "trùng" in d["errors"][0]["message"])' raw)"
 check "tinh-nguyen: đọc điểm trú ẩn và kho hàng" True \
   "$(gql "$T" '{ shelters { name } supplies { item_name quantity } }' | jq_py 'len(d["data"]["shelters"]) >= 3 and len(d["data"]["supplies"]) >= 4')"
 check "tinh-nguyen: không thấy đội cứu hộ, thành viên đội" ERR:validation-failed "$(gql "$T" '{ rescue_teams { id } }' | jq_py '')"
 check "tinh-nguyen: xin vai trò dieu-phoi (ngoài allowed-roles) bị chặn" ERR:access-denied \
   "$(gql "$T" '{ incidents { id } }' '{}' 'X-Hasura-Role: dieu-phoi' | jq_py '')"
+check "tinh-nguyen: không thấy lịch sử giao nhiệm vụ (#67)" ERR:validation-failed \
+  "$(gql "$T" '{ incident_assignments { id } }' | jq_py '')"
+check "dieu-phoi: đọc lịch sử giao nhiệm vụ, không có mutation thêm (#67)" "True ERR:validation-failed" \
+  "$(gql "$D" '{ incident_assignments_aggregate { aggregate { count } } }' | jq_py '"data" in d') $(gql "$D" 'mutation { insert_incident_assignments_one(object: {}) { id } }' | jq_py '')"
+check "dieu-phoi: không thấy hàng đợi nội bộ assignment_queue" ERR:validation-failed \
+  "$(gql "$D" '{ assignment_queue { incident_id } }' | jq_py '')"
 
 # ---------- (5) Truy vấn vị trí PostGIS ----------
 NEAR='query($p: geography!, $r: Float!) { incidents(where: {location: {_st_d_within: {from: $p, distance: $r}}}) { id } }'

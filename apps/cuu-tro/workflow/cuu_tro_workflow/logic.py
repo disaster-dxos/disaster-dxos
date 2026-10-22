@@ -10,9 +10,10 @@ from dataclasses import dataclass, field
 # Luồng trạng thái tin kêu cứu: tiep_nhan → phan_cong → dang_cuu → da_cuu → dong.
 # Đội cứu hộ có thể xác nhận "đã cứu" khi chưa kịp chuyển dang_cuu (phan_cong → da_cuu).
 # Điều phối được đóng thẳng tin không cần cứu (trùng, báo nhầm): tiep_nhan → dong.
+# Đội từ chối / quá hạn nhận / điều phối hủy khi chưa nhận: phan_cong → tiep_nhan (gỡ đội, #67).
 CHUYEN_TRANG_THAI: dict[str, frozenset[str]] = {
     "tiep_nhan": frozenset({"phan_cong", "dong"}),
-    "phan_cong": frozenset({"dang_cuu", "da_cuu"}),
+    "phan_cong": frozenset({"dang_cuu", "da_cuu", "tiep_nhan"}),
     "dang_cuu": frozenset({"da_cuu"}),
     "da_cuu": frozenset({"dong"}),
     "dong": frozenset(),
@@ -20,6 +21,21 @@ CHUYEN_TRANG_THAI: dict[str, frozenset[str]] = {
 
 DOI_SAN_SANG = "san_sang"
 DOI_DANG_LAM_NHIEM_VU = "dang_lam_nhiem_vu"
+
+# Mức khẩn cấp, khớp CHECK incidents.urgency (0001) và hàm SQL urgency_rank (0007): 1 = khẩn nhất.
+# Dùng làm thứ tự khởi chạy và priority_key của Temporal (số nhỏ được ưu tiên).
+URGENCY_RANK: dict[str, int] = {"khan_cap": 1, "cao": 2, "trung_binh": 3, "thap": 4}
+URGENCY_MAC_DINH = "trung_binh"
+
+
+def uu_tien(urgency: str | None) -> int:
+    """priority_key Temporal của một mức urgency (lạ/thiếu → như trung_binh)."""
+    return URGENCY_RANK.get(urgency or "", URGENCY_RANK[URGENCY_MAC_DINH])
+
+
+def han_nhan(han_theo_muc: dict[str, int], urgency: str | None) -> int:
+    """Hạn (giây) để đội nhận nhiệm vụ theo urgency; mức không có trong bảng → hạn của trung_binh."""
+    return han_theo_muc.get(urgency or "") or han_theo_muc.get(URGENCY_MAC_DINH) or HAN_NHAN_MAC_DINH[URGENCY_MAC_DINH]
 
 
 class ChuyenTrangThaiKhongHopLe(ValueError):
@@ -69,15 +85,22 @@ def chon_doi_gan_nhat(
 # ---------- Dữ liệu vào/ra của workflow và activity (Temporal tuần tự hóa dataclass thành JSON) ----------
 
 
+HAN_NHAN_MAC_DINH: dict[str, int] = {"khan_cap": 300, "cao": 600, "trung_binh": 900, "thap": 1800}
+
+
 @dataclass
 class ThamSoPhanCong:
     incident_id: str
-    # sub Keycloak của người điều phối khởi chạy (ghi vào lịch sử workflow)
+    # Người khởi chạy (tên đăng nhập Keycloak), hoặc "tu-dong" khi bộ khởi chạy outbox chạy (#67)
     nguoi_khoi_chay: str = ""
     ban_kinh_m: int = 20000
     han_xac_nhan_giay: int = 6 * 3600
     so_lan_tim_doi: int = 10
     cho_tim_lai_giay: int = 60
+    # Hạn nhận nhiệm vụ theo urgency (giây); quá hạn thì gỡ đội, giao đội kế tiếp (#67)
+    han_nhan_giay: dict[str, int] = field(default_factory=lambda: dict(HAN_NHAN_MAC_DINH))
+    # Số lần giao tối đa (mỗi lần một đội); hết lần thì báo điều phối
+    so_lan_giao_toi_da: int = 3
 
 
 @dataclass
@@ -85,6 +108,7 @@ class TinKeuCuu:
     id: str
     trang_thai: str
     doi_id: str | None = None
+    urgency: str = URGENCY_MAC_DINH
 
 
 @dataclass
@@ -92,6 +116,93 @@ class XacNhan:
     nguoi: str
     vai_tro: str
     ghi_chu: str = ""
+    # Đội mà người gửi đang thay mặt (API điền từ trạng thái workflow). Khác đội đang được giao →
+    # workflow bỏ qua (phản hồi muộn của đội cũ sau khi đã phân công lại). None = không kiểm.
+    doi_id: str | None = None
+
+
+# Phản hồi cho một lần giao (signal nhan_nhiem_vu / tu_choi, #67)
+PH_NHAN = "nhan"
+PH_TU_CHOI = "tu_choi"
+
+
+@dataclass
+class PhanHoi:
+    loai: str
+    nguoi: str
+    vai_tro: str
+    doi_id: str | None = None
+    ghi_chu: str = ""
+
+
+@dataclass
+class YeuCauHuy:
+    nguoi: str
+    ly_do: str = ""
+
+
+# Kết quả của một lần giao trong lịch sử (CHECK incident_assignments.result, 0007)
+GIAO_CHO_NHAN = "cho_nhan"
+GIAO_DA_NHAN = "da_nhan"
+GIAO_TU_CHOI = "tu_choi"
+GIAO_QUA_HAN = "qua_han"
+GIAO_HUY = "huy"
+
+# Kết quả activity gan_doi
+GAN_DA_GAN = "da_gan"
+GAN_BI_GIANH = "bi_gianh"  # đội vừa bị gán cho tin khác
+GAN_NHUONG = "nhuong"  # đội đang được giữ cho tin khẩn hơn đang chờ (luật ưu tiên, 0007)
+GAN_TIN_DA_DOI = "tin_da_doi"  # tin không còn tiep_nhan (điều phối đã xử lý tay)
+
+
+@dataclass
+class YeuCauGan:
+    incident_id: str
+    doi_id: str
+    ban_kinh_m: int
+    # Cửa sổ (giây) để coi một tin khác "đang tìm đội" khi xét nhường đội
+    cua_so_tim_giay: int
+    workflow_run_id: str
+    lan: int
+    urgency: str
+    khoang_cach_m: float | None
+    han_nhan_giay: int
+
+
+@dataclass
+class KetQuaGiao:
+    incident_id: str
+    doi_id: str
+    workflow_run_id: str
+    lan: int
+    ket_qua: str
+    nguoi: str | None = None
+    ghi_chu: str = ""
+
+
+@dataclass
+class LanGiao:
+    """Một lần giao trong trạng thái workflow (bản gọn của dòng incident_assignments)."""
+
+    lan: int
+    doi_id: str
+    doi_ten: str
+    khoang_cach_m: float | None
+    han_nhan_giay: int
+    ket_qua: str = GIAO_CHO_NHAN
+    nguoi: str | None = None
+
+
+@dataclass
+class BaoDieuPhoi:
+    """Sự kiện báo điều phối viên (NATS cuu-tro.dieu-phoi.can-xu-ly.<incident_id>)."""
+
+    incident_id: str
+    ly_do: str
+    urgency: str
+    so_lan_giao: int
+    workflow_id: str
+    mo_ta: str = ""
 
 
 @dataclass
@@ -107,6 +218,10 @@ class TrangThaiPhanCong:
     xac_nhan: XacNhan | None = None
     ket_qua: str | None = None
     lich_su: list[str] = field(default_factory=list)
+    urgency: str | None = None
+    han_nhan_giay: int | None = None
+    giao: list[LanGiao] = field(default_factory=list)
+    da_bao_dieu_phoi: bool = False
 
 
 # Kết quả cuối của workflow PhanCongCuuHo
@@ -114,3 +229,10 @@ KQ_DA_DONG = "da_dong"
 KQ_KHONG_CO_DOI = "khong_co_doi"
 KQ_QUA_HAN = "qua_han_xac_nhan"
 KQ_BO_QUA = "bo_qua"
+KQ_HET_LAN_GIAO = "het_lan_giao"
+KQ_DA_HUY = "da_huy"
+
+# Lý do báo điều phối
+BAO_HET_LAN_GIAO = "het_lan_giao"
+BAO_KHONG_CO_DOI = "khong_co_doi"
+BAO_QUA_HAN_XAC_NHAN = "qua_han_xac_nhan"

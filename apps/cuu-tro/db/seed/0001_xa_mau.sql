@@ -4,6 +4,9 @@
 -- Chạy lại được: id cố định + ON CONFLICT DO NOTHING (phiếu nhập không cộng tồn kho lần hai).
 -- Chạy: make seed
 
+-- Tin mẫu giữ nguyên trạng thái seed: không tự khởi chạy workflow phân công (trigger 0007, #67)
+SET LOCAL cuu_tro.tu_phan_cong = off;
+
 INSERT INTO rescue_teams (id, name, member_count, location, location_updated_at, status, contact_name, contact_phone) VALUES
   ('a0000000-0000-4000-8000-000000000001', 'Đội xung kích thôn 1', 8,
    ST_MakePoint(108.1012, 15.8521)::geography, now(), 'san_sang', 'Trần Văn Mẫu', '0900000010'),

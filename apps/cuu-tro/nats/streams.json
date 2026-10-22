@@ -1,5 +1,5 @@
 {
-  "_mo_ta": "Stream + consumer NATS JetStream của apps/cuu-tro (#30). cuu-tro-cam-bien tạo/cập nhật khi khởi động (cuu_tro_workflow/cam_bien_consumer.py). Thời gian tính bằng giây, dung lượng bằng byte. Tổng max_bytes phải nhỏ hơn NATS_JS_MAX_FILE của lõi.",
+  "_mo_ta": "Stream + consumer NATS JetStream của apps/cuu-tro (#30). cuu-tro-cam-bien tạo/cập nhật stream + consumer khi khởi động (cuu_tro_workflow/cam_bien_consumer.py); cuu-tro-worker tạo/cập nhật stream (báo điều phối, #67). Thời gian tính bằng giây, dung lượng bằng byte. Tổng max_bytes phải nhỏ hơn NATS_JS_MAX_FILE của lõi.",
   "streams": [
     {
       "name": "CUU_TRO_CAM_BIEN",
@@ -8,6 +8,16 @@
       "storage": "file",
       "max_age": 604800,
       "max_bytes": 268435456,
+      "max_msg_size": 4096,
+      "duplicate_window": 120
+    },
+    {
+      "name": "CUU_TRO_DIEU_PHOI",
+      "description": "Sự kiện cần điều phối viên xử lý (#67): hết lần giao, không có đội, quá hạn xác nhận. Web/bot đọc sau",
+      "subjects": ["cuu-tro.dieu-phoi.>"],
+      "storage": "file",
+      "max_age": 2592000,
+      "max_bytes": 33554432,
       "max_msg_size": 4096,
       "duplicate_window": 120
     },
