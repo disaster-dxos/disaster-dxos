@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+### Added
+- Logo và bộ nhận diện dự án trong `docs/images/logo/` (biểu tượng 1024/512/180/64/32 px, `favicon.ico`, logo ngang nền trong suốt và nền trắng, ảnh xem trước 1280×640); logo ngang ở đầu `README.md`, chế độ tối dùng bản nền trắng qua `<picture>`; nguồn (tạo bằng công cụ AI theo prompt của đội, đội đã duyệt) ghi trong `docs/images/README.md` (#57).
+
 ## [0.1.0] - 2026-10-22
 Tuần 2: lõi Tầng 1 đủ 4 dịch vụ bắt buộc trong profile `core` (Keycloak SSO + OTP, APISIX + Coraza WAF, PostgreSQL/PostGIS + Hasura CE + SeaweedFS S3, Temporal), thêm OpenBao, NATS JetStream + MQTT và sổ cái minh bạch Tessera `core/ledger`; ứng dụng `apps/cuu-tro` có schema PostGIS, phân quyền GraphQL 3 vai trò, workflow phân công cứu hộ, luồng cảm biến mực nước, ảnh hiện trường, phiếu kho ghi sổ cái và trang minh bạch công khai (PR #33–#54).
 
