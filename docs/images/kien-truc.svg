@@ -1,0 +1,261 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- Sơ đồ kiến trúc Disaster DX-OS, vẽ tay theo docker-compose.yml, core/, apps/cuu-tro/ và docs/architecture.md -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1060" width="1200" height="1060" role="img" aria-labelledby="title desc">
+  <title id="title">Kiến trúc Disaster DX-OS</title>
+  <desc id="desc">Tầng 2 apps/cuu-tro gọi lõi Tầng 1 core/ qua API Gateway APISIX. Lõi gồm Keycloak, APISIX + Coraza WAF, Hasura CE + PostgreSQL/PostGIS, SeaweedFS, Temporal, NATS JetStream/MQTT, sổ cái Tessera và OpenBao.</desc>
+  <defs>
+    <style>
+      text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; fill: #1d3346; }
+      .h1 { font-size: 22px; font-weight: 700; fill: #12324a; }
+      .sub { font-size: 13px; fill: #4a5b6c; }
+      .band { font-size: 11px; font-weight: 700; letter-spacing: 1.2px; }
+      .bt { font-size: 14px; font-weight: 700; }
+      .b { font-size: 11.5px; fill: #33475b; }
+      .m { font-size: 11px; fill: #5b6b7a; font-style: italic; }
+      .lbl { font-size: 11px; font-weight: 600; paint-order: stroke; stroke: #ffffff; stroke-width: 4px; stroke-linejoin: round; }
+      .num { font-size: 13px; font-weight: 700; fill: #ffffff; }
+      .t1 { fill: #e7f2fb; stroke: #1f6fa8; stroke-width: 1.5; }
+      .t2 { fill: #fff1e3; stroke: #e2701a; stroke-width: 1.5; }
+      .soon { fill: #f5f7f9; stroke: #8a99a6; stroke-width: 1.3; stroke-dasharray: 6 4; }
+      .f-req { stroke: #e2701a; stroke-width: 2; fill: none; }
+      .f-pub { stroke: #2e8b57; stroke-width: 2; fill: none; }
+      .f-iot { stroke: #0f8b8d; stroke-width: 2; fill: none; }
+      .f-int { stroke: #4a5b6c; stroke-width: 1.8; fill: none; }
+      .f-sec { stroke: #6a4fb3; stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; }
+      .f-auth { stroke: #1f6fa8; stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; }
+    </style>
+    <marker id="m-req" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e2701a"/></marker>
+    <marker id="m-pub" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2e8b57"/></marker>
+    <marker id="m-iot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0f8b8d"/></marker>
+    <marker id="m-int" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4a5b6c"/></marker>
+    <marker id="m-sec" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#6a4fb3"/></marker>
+    <marker id="m-auth" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1f6fa8"/></marker>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="1060" fill="#fbfdff"/>
+
+  <!-- Tiêu đề -->
+  <text class="h1" x="20" y="38">Kiến trúc Disaster DX-OS</text>
+  <text class="sub" x="20" y="60">Open-Core hai tầng · mọi khối liền nét đang chạy trong <tspan font-family="ui-monospace, SFMono-Regular, Menlo, monospace">make up</tspan> (profile core + app) · ①–④ là 4 dịch vụ bắt buộc của đề</text>
+
+  <!-- ===== Nền các tầng (vẽ trước mũi tên) ===== -->
+  <rect x="20" y="78" width="1160" height="104" rx="12" fill="#fff8f0" stroke="#f3c79a"/>
+  <text class="band" fill="#b4560f" transform="translate(37,130) rotate(-90)" text-anchor="middle">TẦNG 2</text>
+
+  <rect x="20" y="198" width="1160" height="478" rx="12" fill="#f2f8fd" stroke="#b8d4ea"/>
+  <text class="band" fill="#1f5f8b" transform="translate(37,437) rotate(-90)" text-anchor="middle">TẦNG 1 · LÕI HEADLESS core/ · CHỈ API</text>
+
+  <rect x="20" y="700" width="1160" height="200" rx="12" fill="#fff8f0" stroke="#f3c79a"/>
+  <text class="band" fill="#b4560f" transform="translate(37,800) rotate(-90)" text-anchor="middle">TẦNG 2 · apps/cuu-tro</text>
+
+  <!-- ===== Hàng người dùng và thiết bị ===== -->
+  <rect class="t2" x="50" y="104" width="190" height="64" rx="8"/>
+  <text class="bt" x="62" y="125">Trạm đo mực nước</text>
+  <text class="b" x="62" y="143">bộ giả lập cuu-tro-gia-lap</text>
+  <text class="b" x="62" y="159">(make gia-lap), MQTT QoS 1</text>
+
+  <rect class="t2" x="260" y="104" width="190" height="64" rx="8"/>
+  <text class="bt" x="272" y="125">Người dân, nhà tài trợ</text>
+  <text class="b" x="272" y="143">tra phiếu kho, tự kiểm sổ cái</text>
+  <text class="b" x="272" y="159">không cần đăng nhập</text>
+
+  <rect class="soon" x="470" y="104" width="190" height="64" rx="8"/>
+  <text class="bt" x="482" y="125">Web điều phối + bản đồ</text>
+  <text class="b" x="482" y="143">Nuxt 3 + MapLibre GL JS</text>
+  <text class="m" x="482" y="159">sắp có (tuần 3)</text>
+
+  <rect class="soon" x="680" y="104" width="170" height="64" rx="8"/>
+  <text class="bt" x="692" y="125">App hiện trường</text>
+  <text class="b" x="692" y="143">Flutter, offline-first</text>
+  <text class="m" x="692" y="159">sắp có</text>
+
+  <rect class="t2" x="870" y="104" width="280" height="64" rx="8"/>
+  <text class="bt" x="882" y="125">Hiện nay: curl, make smoke</text>
+  <text class="b" x="882" y="143">vai trò dieu-phoi · cuu-ho · tinh-nguyen</text>
+  <text class="b" x="882" y="159">token Keycloak → Bearer JWT</text>
+
+  <!-- ===== Tầng 1 · hàng 1: biên ===== -->
+  <rect class="t1" x="260" y="230" width="590" height="92" rx="8"/>
+  <circle cx="281" cy="250" r="11" fill="#e2701a"/><text class="num" x="281" y="255" text-anchor="middle">2</text>
+  <text class="bt" x="300" y="255">API Gateway · Apache APISIX 3.19 + Coraza WAF</text>
+  <text class="b" x="272" y="277">OWASP CRS 4.14 chế độ chặn · kiểm JWT bằng JWKS của Keycloak · rate limit · CORS · cổng :9080</text>
+  <text class="b" x="272" y="295">Điểm vào duy nhất của Tầng 2: /graphql · /files/* (GET) · /workflow/* · /ledger/* (GET)</text>
+  <text class="b" x="272" y="313">Công khai, không JWT: /workflow/minh-bach/* · GET /ledger/* · ghi /ledger/* từ ngoài → 403</text>
+
+  <rect class="t1" x="870" y="230" width="280" height="92" rx="8"/>
+  <circle cx="891" cy="250" r="11" fill="#e2701a"/><text class="num" x="891" y="255" text-anchor="middle">1</text>
+  <text class="bt" x="910" y="255">SSO / MFA · Keycloak 26.8</text>
+  <text class="b" x="882" y="277">realm disaster, OIDC, cổng :8080</text>
+  <text class="b" x="882" y="295">claim vai trò cho Hasura trong JWT</text>
+  <text class="b" x="882" y="313">OTP bắt buộc với vai trò dieu-phoi</text>
+
+  <!-- ===== Tầng 1 · hàng 2: dịch vụ ===== -->
+  <rect class="t1" x="50" y="395" width="190" height="92" rx="8"/>
+  <text class="bt" x="62" y="417">NATS JetStream</text>
+  <text class="b" x="62" y="437">+ MQTT :1883 có xác thực</text>
+  <text class="b" x="62" y="455">thiết bị chỉ gửi vào cuu-tro.&gt;</text>
+  <text class="b" x="62" y="473">JetStream 64 MB RAM / 1 GB</text>
+
+  <rect class="t1" x="260" y="395" width="190" height="92" rx="8"/>
+  <circle cx="281" cy="415" r="11" fill="#e2701a"/><text class="num" x="281" y="420" text-anchor="middle">3</text>
+  <text class="bt" x="300" y="420">Hasura CE v2.51</text>
+  <text class="b" x="272" y="440">GraphQL tự sinh, subscription</text>
+  <text class="b" x="272" y="458">quyền theo vai trò trong JWT,</text>
+  <text class="b" x="272" y="476">lọc theo hàng, theo cột</text>
+
+  <rect class="t1" x="470" y="395" width="190" height="92" rx="8"/>
+  <circle cx="491" cy="415" r="11" fill="#e2701a"/><text class="num" x="491" y="420" text-anchor="middle">3</text>
+  <text class="bt" x="510" y="420">SeaweedFS (S3)</text>
+  <text class="b" x="482" y="440">dữ liệu phi cấu trúc: ảnh</text>
+  <text class="b" x="482" y="458">bucket riêng tư cuu-tro-media</text>
+  <text class="b" x="482" y="476">link xem presigned ≤ 5 phút</text>
+
+  <rect class="t1" x="680" y="395" width="170" height="92" rx="8"/>
+  <text class="bt" x="692" y="417">Sổ cái core/ledger</text>
+  <text class="b" x="692" y="437">Tessera v1.0.4 (Go), POSIX</text>
+  <text class="b" x="692" y="455">checkpoint ký Ed25519</text>
+  <text class="b" x="692" y="473">tile công khai (tlog-tiles)</text>
+
+  <!-- ===== Tầng 1 · hàng 3 ===== -->
+  <rect class="t1" x="260" y="560" width="400" height="92" rx="8"/>
+  <circle cx="281" cy="580" r="11" fill="#e2701a"/><text class="num" x="281" y="585" text-anchor="middle">3</text>
+  <text class="bt" x="300" y="585">PostgreSQL 17 + PostGIS 3.5</text>
+  <text class="b" x="272" y="605">dữ liệu có cấu trúc + GIS · schema cuu_tro (migration của ứng dụng)</text>
+  <text class="b" x="272" y="623">mỗi dịch vụ một role riêng, không ai dùng superuser</text>
+  <text class="b" x="272" y="641">Poka-yoke: bắt buộc tọa độ, chặn tin trùng SĐT 200 m / 6 giờ</text>
+
+  <rect class="t1" x="680" y="560" width="170" height="92" rx="8"/>
+  <circle cx="701" cy="580" r="11" fill="#e2701a"/><text class="num" x="701" y="585" text-anchor="middle">4</text>
+  <text class="bt" x="720" y="585">Temporal 1.29</text>
+  <text class="b" x="692" y="605">workflow engine</text>
+  <text class="b" x="692" y="623">gRPC :7233 (nội bộ)</text>
+  <text class="b" x="692" y="641">trạng thái trong PostgreSQL</text>
+
+  <rect class="t1" x="960" y="556" width="190" height="104" rx="8" fill="#efeafb" stroke="#6a4fb3"/>
+  <text class="bt" x="972" y="580">OpenBao 2.7 · bí mật</text>
+  <text class="b" x="972" y="602">KV v2, AppRole, lưu trữ raft</text>
+  <text class="b" x="972" y="620">mỗi dịch vụ một bao agent</text>
+  <text class="b" x="972" y="638">→ file trên tmpfs (RAM)</text>
+  <text class="b" x="972" y="654">cho lõi và apps/cuu-tro</text>
+
+  <!-- ===== Tầng 2 · backend ứng dụng ===== -->
+  <rect class="t2" x="50" y="740" width="190" height="92" rx="8"/>
+  <text class="bt" x="62" y="762">cuu-tro-cam-bien</text>
+  <text class="b" x="62" y="782">consumer JetStream bền</text>
+  <text class="b" x="62" y="800">kiểm payload, so ngưỡng</text>
+  <text class="b" x="62" y="818">ghi sensor_readings</text>
+
+  <rect class="t2" x="260" y="740" width="400" height="92" rx="8"/>
+  <text class="bt" x="272" y="762">cuu-tro-worker · Temporal SDK (Python)</text>
+  <text class="b" x="272" y="782">workflow PhanCongCuuHo: tìm đội sẵn sàng gần nhất (PostGIS KNN)</text>
+  <text class="b" x="272" y="800">→ gán đội → chờ cứu hộ xác nhận (có hạn) → đóng tin</text>
+  <text class="b" x="272" y="818">role DB cuu_tro_app, quyền theo cột; bí mật từ OpenBao</text>
+
+  <rect class="t2" x="680" y="740" width="470" height="92" rx="8"/>
+  <text class="bt" x="692" y="762">cuu-tro-api · FastAPI</text>
+  <text class="b" x="692" y="782">kiểm lại JWT + vai trò; quyền theo hàng hỏi Hasura bằng JWT người dùng</text>
+  <text class="b" x="692" y="800">phân công · ảnh hiện trường (ghi S3, magic bytes, SHA-256) · phiếu kho</text>
+  <text class="b" x="692" y="818">trang minh bạch công khai /workflow/minh-bach/phieu/{mã}</text>
+
+  <text class="b" x="50" y="864" fill="#7a4a1f">Điểm cắm vào lõi (DXOS_APP=cuu-tro): keycloak/realm.json · db/migrations · hasura/metadata · nats/streams.json · s3/buckets.conf · openbao/policies · compose.yaml</text>
+  <text class="b" x="50" y="884" fill="#7a4a1f">Lõi không chứa nghiệp vụ: thêm ứng dụng mới là thêm thư mục apps/&lt;tên&gt;/, không sửa core/.</text>
+
+  <!-- ===== Mũi tên ===== -->
+  <!-- Người dùng → gateway -->
+  <line class="f-pub" x1="355" y1="168" x2="355" y2="228" marker-end="url(#m-pub)"/>
+  <text class="lbl" x="362" y="198" fill="#2e8b57">không JWT</text>
+  <line class="f-req" x1="565" y1="168" x2="565" y2="228" marker-end="url(#m-req)"/>
+  <text class="lbl" x="572" y="198" fill="#b4560f">Bearer JWT</text>
+  <line class="f-req" x1="765" y1="168" x2="765" y2="228" marker-end="url(#m-req)"/>
+  <text class="lbl" x="772" y="198" fill="#b4560f">Bearer JWT</text>
+  <line class="f-req" x1="895" y1="168" x2="842" y2="228" marker-end="url(#m-req)"/>
+  <!-- Đăng nhập -->
+  <line class="f-auth" x1="1030" y1="168" x2="1030" y2="228" marker-end="url(#m-auth)"/>
+  <text class="lbl" x="1038" y="194" fill="#1f6fa8">đăng nhập OIDC</text>
+  <text class="lbl" x="1038" y="210" fill="#1f6fa8">(web, app: PKCE)</text>
+  <!-- APISIX kiểm chữ ký bằng JWKS -->
+  <line class="f-auth" x1="850" y1="268" x2="868" y2="268" marker-end="url(#m-auth)"/>
+
+  <!-- Gateway → dịch vụ lõi -->
+  <line class="f-req" x1="355" y1="322" x2="355" y2="393" marker-end="url(#m-req)"/>
+  <text class="lbl" x="347" y="362" text-anchor="end" fill="#b4560f">/graphql</text>
+  <line class="f-req" x1="565" y1="322" x2="565" y2="393" marker-end="url(#m-req)"/>
+  <text class="lbl" x="557" y="362" text-anchor="end" fill="#b4560f">/files/* (GET)</text>
+  <line class="f-pub" x1="765" y1="322" x2="765" y2="393" marker-end="url(#m-pub)"/>
+  <text class="lbl" x="757" y="362" text-anchor="end" fill="#2e8b57">/ledger/* (GET công khai)</text>
+  <!-- Gateway → API ứng dụng -->
+  <path class="f-req" d="M845,322 L845,356 L930,356 L930,738" marker-end="url(#m-req)"/>
+  <text class="lbl" fill="#b4560f" transform="translate(946,575) rotate(-90)" text-anchor="middle">/workflow/*  (minh-bach/* công khai)</text>
+
+  <!-- Hasura, Temporal → PostgreSQL -->
+  <line class="f-int" x1="355" y1="487" x2="355" y2="558" marker-end="url(#m-int)"/>
+  <text class="lbl" x="363" y="527" fill="#4a5b6c">role hasura</text>
+  <line class="f-int" x1="680" y1="606" x2="662" y2="606" marker-end="url(#m-int)"/>
+
+  <!-- Cảm biến: MQTT → JetStream → consumer → CSDL, cảnh báo -->
+  <line class="f-iot" x1="145" y1="168" x2="145" y2="393" marker-end="url(#m-iot)"/>
+  <text class="lbl" x="153" y="252" fill="#0f8b8d">MQTT :1883</text>
+  <text class="lbl" x="153" y="268" fill="#0f8b8d">chỉ user thiết bị</text>
+  <text class="lbl" x="153" y="284" fill="#0f8b8d">cuu-tro/cam-bien/</text>
+  <text class="lbl" x="153" y="300" fill="#0f8b8d">&lt;trạm&gt;/muc-nuoc</text>
+  <line class="f-iot" x1="105" y1="487" x2="105" y2="738" marker-end="url(#m-iot)"/>
+  <text class="lbl" fill="#0f8b8d" transform="translate(98,612) rotate(-90)" text-anchor="middle">stream CUU_TRO_CAM_BIEN</text>
+  <line class="f-iot" x1="190" y1="740" x2="190" y2="489" marker-end="url(#m-iot)"/>
+  <text class="lbl" fill="#0f8b8d" transform="translate(206,612) rotate(-90)" text-anchor="middle">vượt ngưỡng → CUU_TRO_CANH_BAO</text>
+  <line class="f-iot" x1="232" y1="740" x2="272" y2="654" marker-end="url(#m-iot)"/>
+
+  <!-- Worker ↔ Temporal, worker → PostgreSQL, API → Temporal -->
+  <line class="f-int" x1="460" y1="740" x2="460" y2="654" marker-end="url(#m-int)"/>
+  <text class="lbl" x="452" y="690" text-anchor="end" fill="#4a5b6c">role cuu_tro_app</text>
+  <line class="f-int" x1="652" y1="738" x2="690" y2="656" marker-start="url(#m-int)" marker-end="url(#m-int)"/>
+  <text class="lbl" x="640" y="714" text-anchor="end" fill="#4a5b6c">task queue cuu-tro</text>
+  <line class="f-int" x1="765" y1="740" x2="765" y2="654" marker-end="url(#m-int)"/>
+  <text class="lbl" x="773" y="700" fill="#4a5b6c">gRPC start / signal</text>
+
+  <!-- API → sổ cái: ghi lá -->
+  <path class="f-pub" d="M880,740 L880,441 L852,441" marker-end="url(#m-pub)"/>
+  <text class="lbl" fill="#2e8b57" transform="translate(896,560) rotate(-90)" text-anchor="middle">ghi lá phiếu kho · token ghi (nội bộ)</text>
+
+  <!-- OpenBao → Keycloak, → backend -->
+  <line class="f-sec" x1="1050" y1="556" x2="1050" y2="324" marker-end="url(#m-sec)"/>
+  <text class="lbl" x="1058" y="450" fill="#6a4fb3">bí mật lõi</text>
+  <text class="lbl" x="1058" y="466" fill="#6a4fb3">(tương tự cho mọi</text>
+  <text class="lbl" x="1058" y="482" fill="#6a4fb3">khối của lõi)</text>
+  <line class="f-sec" x1="1050" y1="660" x2="1050" y2="738" marker-end="url(#m-sec)"/>
+  <text class="lbl" x="1058" y="700" fill="#6a4fb3">bao-agent-cuu-tro</text>
+
+  <!-- ===== Sắp có ===== -->
+  <text class="band" x="20" y="925" fill="#5b6b7a">SẮP CÓ (KHAI BÁO TRONG KẾ HOẠCH, CHƯA CHẠY)</text>
+  <rect class="soon" x="20" y="934" width="182" height="52" rx="8"/>
+  <text class="bt" x="32" y="955">Scorpio NGSI-LD</text>
+  <text class="b" x="32" y="974">bản sao số trạm đo (gis)</text>
+  <rect class="soon" x="216" y="934" width="182" height="52" rx="8"/>
+  <text class="bt" x="228" y="955">ClamAV</text>
+  <text class="b" x="228" y="974">quét ảnh tải lên (sec)</text>
+  <rect class="soon" x="412" y="934" width="182" height="52" rx="8"/>
+  <text class="bt" x="424" y="955">Centrifugo + Telegram</text>
+  <text class="b" x="424" y="974">thông báo, realtime</text>
+  <rect class="soon" x="608" y="934" width="182" height="52" rx="8"/>
+  <text class="bt" x="620" y="955">AI: Ollama + Qdrant</text>
+  <text class="b" x="620" y="974">Qwen2.5 7B/14B, người duyệt</text>
+  <rect class="soon" x="804" y="934" width="182" height="52" rx="8"/>
+  <text class="bt" x="816" y="955">Grafana</text>
+  <text class="b" x="816" y="974">dashboard (bi)</text>
+  <rect class="soon" x="1000" y="934" width="180" height="52" rx="8"/>
+  <text class="bt" x="1012" y="955">Parquet + DuckDB</text>
+  <text class="b" x="1012" y="974">dữ liệu lịch sử</text>
+
+  <!-- ===== Chú giải ===== -->
+  <g transform="translate(20,1018)">
+    <line class="f-req" x1="0" y1="10" x2="34" y2="10" marker-end="url(#m-req)"/><text class="b" x="42" y="14">yêu cầu có JWT</text>
+    <line class="f-pub" x1="150" y1="10" x2="184" y2="10" marker-end="url(#m-pub)"/><text class="b" x="192" y="14">minh bạch, đọc công khai</text>
+    <line class="f-iot" x1="350" y1="10" x2="384" y2="10" marker-end="url(#m-iot)"/><text class="b" x="392" y="14">cảm biến (IT/OT)</text>
+    <line class="f-int" x1="510" y1="10" x2="544" y2="10" marker-end="url(#m-int)"/><text class="b" x="552" y="14">gọi nội bộ</text>
+    <line class="f-auth" x1="630" y1="10" x2="664" y2="10" marker-end="url(#m-auth)"/><text class="b" x="672" y="14">xác thực</text>
+    <line class="f-sec" x1="740" y1="10" x2="774" y2="10" marker-end="url(#m-sec)"/><text class="b" x="782" y="14">bí mật</text>
+    <rect x="850" y="2" width="16" height="14" rx="3" class="t1"/><text class="b" x="872" y="14">Tầng 1</text>
+    <rect x="930" y="2" width="16" height="14" rx="3" class="t2"/><text class="b" x="952" y="14">Tầng 2</text>
+    <rect x="1010" y="2" width="16" height="14" rx="3" class="soon"/><text class="b" x="1032" y="14">sắp có</text>
+  </g>
+</svg>

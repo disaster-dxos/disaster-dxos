@@ -4,6 +4,7 @@
 
 ## [Unreleased]
 ### Added
+- `docs/images/`: banner và ảnh minh họa minh bạch cứu trợ (đội tạo bằng công cụ AI, không có chữ), sơ đồ kiến trúc `kien-truc.svg` và sơ đồ luồng `luong-cuu-tro.svg` vẽ tay bằng SVG thuần theo hệ thống đang chạy; nguồn ảnh ghi trong `docs/images/README.md` (#32).
 - Sổ cái minh bạch của lõi `core/ledger` (#28, D-007): dịch vụ Go nhúng Tessera v1.0.4 (driver POSIX trên volume `ledgerdata`, chống trùng in-memory + BadgerDB), image `scratch` build từ nguồn (~27 MB, `GOMEMLIMIT`, `mem_limit` 256 MB). API `POST /ledger/entries` (chỉ mạng nội bộ + token ghi của ứng dụng; lá chuẩn tắc chỉ có loại, mã giao dịch, SHA-256 bản ghi và thuộc tính ngắn, từ chối dãy số dạng SĐT/CCCD; chờ checkpoint đã ký rồi trả `index`), `GET /ledger/proof/{index}` (inclusion proof dựng bằng gói `client` của Tessera), `GET /ledger/checkpoint` + `/ledger/tile/...` (tlog-tiles, đọc công khai), `GET /ledger/verifier` (khóa công khai) (#28).
 - Khóa ký checkpoint Ed25519 dạng note: `scripts/openbao-init.sh` sinh một lần bằng openssl khi `secret/core/ledger` còn trống (không lên dòng lệnh/màn hình), `bao-agent-ledger` render cho riêng ledger; token ghi `secret/app/<DXOS_APP>/ledger` cho backend ứng dụng; policy `core-ledger` đọc thêm `app/+/ledger` (#28).
 - APISIX: `/ledger/*` chỉ GET/HEAD công khai (WAF, rate limit), mọi phương thức ghi `/ledger/*` → 403; `/workflow/minh-bach/*` là đường công khai chỉ đọc của API ứng dụng (không JWT, bỏ `Authorization`) (#28).
@@ -43,6 +44,8 @@
 - CI thêm job `shellcheck`, `yamllint` (cấu hình `.yamllint.yml`) và `pytest` (tự bỏ qua khi chưa có mã Python); `scripts/lint.sh`, `make lint`; ghim phiên bản action (#31).
 
 ### Changed
+- `README.md` viết lại thuần tiếng Việt: banner, huy hiệu giấy phép/phiên bản/CI, bài toán, sơ đồ kiến trúc và luồng, yêu cầu máy, các bước chạy từ máy sạch kèm thời gian và dung lượng đo thật, tài khoản mẫu, cấu hình, cách thêm ứng dụng mới vào `apps/`, kiểm thử, xử lý lỗi thường gặp; thêm `README.en.md` ngắn (#32).
+- `.env.example`: cách xử lý lỗi "HTTPS required" nay chỉ tạo lại volume `pgdata` (giữ OpenBao) thay vì `docker compose down -v`, lệnh cũ xóa cả dữ liệu OpenBao trong khi key mở khóa vẫn ở `.data/openbao/` (#32).
 - Kiểm thử DB `0001` dùng `ledger_index` rất lớn để không trùng lá thật trên volume đã có sổ cái (#28).
 - Route APISIX `/files/*` chỉ còn `GET`/`HEAD`/`OPTIONS` (PUT/DELETE → 404): tải tệp lên đi qua API của ứng dụng, nơi kiểm nội dung; kiểm quyền theo object nằm ở chữ ký presigned do API cấp sau khi kiểm quyền. `scripts/smoke-gateway.sh` ghi object thẳng vào S3 rồi đọc qua gateway, kiểm PUT/DELETE → 404, HEAD presigned → 200 (#27).
 - `LICENSE`: điền `Copyright 2026 DTU_DZ_1` vào dòng mẫu của phần APPENDIX, khớp với `NOTICE`; điều khoản Apache-2.0 giữ nguyên (#46).

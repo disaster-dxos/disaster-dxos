@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- Hai luồng nghiệp vụ chính của apps/cuu-tro, vẽ tay theo apps/cuu-tro/README.md và docs/architecture.md (mục 5.1, 7.3) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 980" width="1200" height="980" role="img" aria-labelledby="title desc">
+  <title id="title">Luồng kêu cứu và luồng minh bạch cứu trợ</title>
+  <desc id="desc">Luồng 1: nhập tin kêu cứu, Poka-yoke trong CSDL, workflow Temporal phân công đội gần nhất, cứu hộ xác nhận, đóng tin. Luồng 2: lập phiếu kho, ghi CSDL, băm bản ghi, ghi lá lên sổ cái Tessera, người dân kiểm chứng công khai.</desc>
+  <defs>
+    <style>
+      text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; fill: #1d3346; }
+      .h1 { font-size: 22px; font-weight: 700; fill: #12324a; }
+      .h2 { font-size: 16px; font-weight: 700; }
+      .sub { font-size: 13px; fill: #4a5b6c; }
+      .bt { font-size: 14px; font-weight: 700; }
+      .b { font-size: 11.5px; fill: #33475b; }
+      .c { font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #33475b; }
+      .lbl { font-size: 11px; font-weight: 600; paint-order: stroke; stroke: #ffffff; stroke-width: 4px; stroke-linejoin: round; }
+      .num { font-size: 13px; font-weight: 700; fill: #ffffff; }
+      .chip { font-size: 11.5px; font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .s-a { fill: #fff1e3; stroke: #e2701a; stroke-width: 1.5; }
+      .s-b { fill: #eaf6ef; stroke: #2e8b57; stroke-width: 1.5; }
+      .s-x { fill: #fdf0ef; stroke: #c0392b; stroke-width: 1.3; stroke-dasharray: 6 4; }
+      .s-v { fill: #e7f2fb; stroke: #1f6fa8; stroke-width: 1.5; }
+      .a-a { stroke: #e2701a; stroke-width: 2; fill: none; }
+      .a-b { stroke: #2e8b57; stroke-width: 2; fill: none; }
+      .a-x { stroke: #c0392b; stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; }
+      .a-v { stroke: #1f6fa8; stroke-width: 1.8; fill: none; }
+      .a-v2 { stroke: #1f6fa8; stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; }
+    </style>
+    <marker id="m-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e2701a"/></marker>
+    <marker id="m-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2e8b57"/></marker>
+    <marker id="m-x" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#c0392b"/></marker>
+    <marker id="m-v" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1f6fa8"/></marker>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="980" fill="#fbfdff"/>
+
+  <text class="h1" x="20" y="38">Hai luồng nghiệp vụ chính của apps/cuu-tro</text>
+  <text class="sub" x="20" y="60">Mọi yêu cầu của người dùng đi qua APISIX (WAF + kiểm JWT); backend gọi Temporal, PostgreSQL, sổ cái trong mạng nội bộ</text>
+
+  <!-- ================= Luồng 1 ================= -->
+  <rect x="10" y="78" width="1180" height="372" rx="12" fill="#fff8f0" stroke="#f3c79a"/>
+  <text class="h2" x="26" y="104" fill="#b4560f">Luồng 1 · Kêu cứu → phân công đội gần nhất → xác nhận (Temporal workflow PhanCongCuuHo)</text>
+
+  <!-- Các bước -->
+  <rect class="s-a" x="26" y="122" width="200" height="112" rx="8"/>
+  <circle cx="46" cy="142" r="11" fill="#e2701a"/><text class="num" x="46" y="147" text-anchor="middle">1</text>
+  <text class="bt" x="64" y="147">Nhập tin kêu cứu</text>
+  <text class="b" x="38" y="170">tinh-nguyen hoặc dieu-phoi</text>
+  <text class="c" x="38" y="188">POST /graphql (JWT)</text>
+  <text class="c" x="38" y="205">insert_incidents_one</text>
+  <text class="b" x="38" y="224">kèm tọa độ, SĐT người báo</text>
+
+  <rect class="s-a" x="262" y="122" width="200" height="112" rx="8"/>
+  <circle cx="282" cy="142" r="11" fill="#e2701a"/><text class="num" x="282" y="147" text-anchor="middle">2</text>
+  <text class="bt" x="300" y="147">Poka-yoke trong CSDL</text>
+  <text class="b" x="274" y="170">bắt buộc tọa độ (NOT NULL)</text>
+  <text class="b" x="274" y="188">cùng SĐT, cách tin còn mở</text>
+  <text class="b" x="274" y="206">≤ 200 m trong 6 giờ → chặn</text>
+  <text class="b" x="274" y="224">hợp lệ: tin ở tiep_nhan</text>
+
+  <rect class="s-a" x="498" y="122" width="200" height="112" rx="8"/>
+  <circle cx="518" cy="142" r="11" fill="#e2701a"/><text class="num" x="518" y="147" text-anchor="middle">3</text>
+  <text class="bt" x="536" y="147">Khởi chạy phân công</text>
+  <text class="b" x="510" y="170">chỉ vai trò dieu-phoi</text>
+  <text class="c" x="510" y="188">POST /workflow/</text>
+  <text class="c" x="510" y="205">  phan-cong/{id}</text>
+  <text class="b" x="510" y="224">cuu-tro-api → Temporal</text>
+
+  <rect class="s-a" x="734" y="122" width="200" height="112" rx="8"/>
+  <circle cx="754" cy="142" r="11" fill="#e2701a"/><text class="num" x="754" y="147" text-anchor="middle">4</text>
+  <text class="bt" x="772" y="147">Tìm và gán đội</text>
+  <text class="b" x="746" y="170">worker: đội san_sang gần nhất</text>
+  <text class="b" x="746" y="188">PostGIS KNN, bán kính 20 km</text>
+  <text class="b" x="746" y="206">gán trong một transaction</text>
+  <text class="b" x="746" y="224">(khóa tin, kiểm trạng thái)</text>
+
+  <rect class="s-a" x="970" y="122" width="204" height="112" rx="8"/>
+  <circle cx="990" cy="142" r="11" fill="#e2701a"/><text class="num" x="990" y="147" text-anchor="middle">5</text>
+  <text class="bt" x="1008" y="147">Xác nhận → đóng tin</text>
+  <text class="b" x="982" y="170">cuu-ho của đội được gán</text>
+  <text class="c" x="982" y="188">POST /workflow/{id}/</text>
+  <text class="c" x="982" y="205">  xac-nhan</text>
+  <text class="b" x="982" y="224">signal → tin dong, đội rảnh</text>
+
+  <line class="a-a" x1="226" y1="178" x2="260" y2="178" marker-end="url(#m-a)"/>
+  <line class="a-a" x1="462" y1="178" x2="496" y2="178" marker-end="url(#m-a)"/>
+  <line class="a-a" x1="698" y1="178" x2="732" y2="178" marker-end="url(#m-a)"/>
+  <line class="a-a" x1="934" y1="178" x2="968" y2="178" marker-end="url(#m-a)"/>
+
+  <!-- Nhánh ngoại lệ -->
+  <rect class="s-x" x="262" y="272" width="200" height="66" rx="8"/>
+  <text class="bt" x="274" y="293" fill="#a83226">Bị từ chối</text>
+  <text class="b" x="274" y="312">thiếu tọa độ → lỗi 23502</text>
+  <text class="b" x="274" y="329">trùng → 23505, gợi ý sửa tin cũ</text>
+  <line class="a-x" x1="362" y1="234" x2="362" y2="270" marker-end="url(#m-x)"/>
+
+  <rect class="s-x" x="734" y="272" width="200" height="66" rx="8"/>
+  <text class="bt" x="746" y="293" fill="#a83226">Chưa có đội rảnh</text>
+  <text class="b" x="746" y="312">chờ 60 s rồi tìm lại; quá 10 lần</text>
+  <text class="b" x="746" y="329">→ kết thúc không có đội</text>
+  <line class="a-x" x1="834" y1="234" x2="834" y2="270" marker-end="url(#m-x)"/>
+
+  <rect class="s-x" x="970" y="272" width="204" height="66" rx="8"/>
+  <text class="bt" x="982" y="293" fill="#a83226">Quá hạn xác nhận</text>
+  <text class="b" x="982" y="312">quá 6 giờ không có signal</text>
+  <text class="b" x="982" y="329">→ kết thúc qua_han_xac_nhan</text>
+  <line class="a-x" x1="1072" y1="234" x2="1072" y2="270" marker-end="url(#m-x)"/>
+
+  <text class="b" x="498" y="292">Theo dõi: dieu-phoi, cuu-ho của đội</text>
+  <text class="c" x="498" y="310">GET /workflow/phan-cong-{id}</text>
+  <text class="b" x="498" y="328">kèm ảnh: POST /workflow/tai-len/…</text>
+
+  <!-- Trạng thái -->
+  <text class="b" x="26" y="378" font-weight="700">Trạng thái tin (incidents.status):</text>
+  <rect x="236" y="362" width="88" height="24" rx="12" fill="#ffffff" stroke="#e2701a"/><text class="chip" x="280" y="378" text-anchor="middle">tiep_nhan</text>
+  <rect x="356" y="362" width="88" height="24" rx="12" fill="#ffffff" stroke="#e2701a"/><text class="chip" x="400" y="378" text-anchor="middle">phan_cong</text>
+  <rect x="476" y="362" width="88" height="24" rx="12" fill="#ffffff" stroke="#e2701a" stroke-dasharray="4 3"/><text class="chip" x="520" y="378" text-anchor="middle">dang_cuu</text>
+  <rect x="596" y="362" width="88" height="24" rx="12" fill="#ffffff" stroke="#e2701a"/><text class="chip" x="640" y="378" text-anchor="middle">da_cuu</text>
+  <rect x="716" y="362" width="88" height="24" rx="12" fill="#ffffff" stroke="#e2701a"/><text class="chip" x="760" y="378" text-anchor="middle">dong</text>
+  <line class="a-a" x1="324" y1="374" x2="354" y2="374" marker-end="url(#m-a)"/>
+  <line class="a-a" x1="444" y1="374" x2="474" y2="374" marker-end="url(#m-a)"/>
+  <line class="a-a" x1="564" y1="374" x2="594" y2="374" marker-end="url(#m-a)"/>
+  <line class="a-a" x1="684" y1="374" x2="714" y2="374" marker-end="url(#m-a)"/>
+  <text class="b" x="830" y="378">dang_cuu: cuu-ho tự chuyển qua GraphQL (tùy chọn)</text>
+  <text class="b" x="26" y="414" font-weight="700">Trạng thái đội:</text>
+  <text class="chip" x="236" y="414">san_sang → dang_lam_nhiem_vu (bước 4) → san_sang (bước 5)</text>
+  <text class="b" x="26" y="438">Worker ghi CSDL bằng role cuu_tro_app (chỉ cột status, assigned_team_id; không đọc SĐT). API kiểm quyền theo hàng bằng cách hỏi Hasura với JWT của người dùng.</text>
+
+  <!-- ================= Luồng 2 ================= -->
+  <rect x="10" y="470" width="1180" height="494" rx="12" fill="#f1f9f4" stroke="#a9d8bc"/>
+  <text class="h2" x="26" y="496" fill="#226b43">Luồng 2 · Phiếu kho → sổ cái minh bạch → kiểm chứng công khai</text>
+
+  <rect class="s-b" x="26" y="514" width="200" height="112" rx="8"/>
+  <circle cx="46" cy="534" r="11" fill="#2e8b57"/><text class="num" x="46" y="539" text-anchor="middle">1</text>
+  <text class="bt" x="64" y="539">Lập phiếu nhập/xuất</text>
+  <text class="b" x="38" y="562">chỉ dieu-phoi, có JWT</text>
+  <text class="c" x="38" y="580">POST /workflow/kho/phieu</text>
+  <text class="b" x="38" y="598">ghi chú có SĐT/CCCD → 422</text>
+  <text class="b" x="38" y="616">xuất quá tồn → 409</text>
+
+  <rect class="s-b" x="262" y="514" width="200" height="112" rx="8"/>
+  <circle cx="282" cy="534" r="11" fill="#2e8b57"/><text class="num" x="282" y="539" text-anchor="middle">2</text>
+  <text class="bt" x="300" y="539">Ghi CSDL</text>
+  <text class="c" x="274" y="562">INSERT supply_movements</text>
+  <text class="b" x="274" y="580">trigger cộng/trừ tồn kho</text>
+  <text class="b" x="274" y="598">phiếu bất biến: không sửa,</text>
+  <text class="b" x="274" y="616">không xóa</text>
+
+  <rect class="s-b" x="498" y="514" width="200" height="112" rx="8"/>
+  <circle cx="518" cy="534" r="11" fill="#2e8b57"/><text class="num" x="518" y="539" text-anchor="middle">3</text>
+  <text class="bt" x="536" y="539">Băm bản ghi</text>
+  <text class="b" x="510" y="562">bản ghi chuẩn hóa, không có</text>
+  <text class="b" x="510" y="580">người lập phiếu</text>
+  <text class="b" x="510" y="598">→ JSON chuẩn tắc</text>
+  <text class="b" x="510" y="616">→ SHA-256</text>
+
+  <rect class="s-b" x="734" y="514" width="200" height="112" rx="8"/>
+  <circle cx="754" cy="534" r="11" fill="#2e8b57"/><text class="num" x="754" y="539" text-anchor="middle">4</text>
+  <text class="bt" x="772" y="539">Ghi lá lên sổ cái</text>
+  <text class="b" x="746" y="562">core/ledger, mạng nội bộ,</text>
+  <text class="b" x="746" y="580">token ghi của ứng dụng</text>
+  <text class="c" x="746" y="598">{type, ref, sha256, attrs}</text>
+  <text class="b" x="746" y="616">checkpoint ký Ed25519</text>
+
+  <rect class="s-b" x="970" y="514" width="204" height="112" rx="8"/>
+  <circle cx="990" cy="534" r="11" fill="#2e8b57"/><text class="num" x="990" y="539" text-anchor="middle">5</text>
+  <text class="bt" x="1008" y="539">Lưu chứng cứ</text>
+  <text class="c" x="982" y="562">ledger_index,</text>
+  <text class="c" x="982" y="580">ledger_leaf_hash</text>
+  <text class="b" x="982" y="598">điền một lần, trigger chặn sửa</text>
+  <text class="b" x="982" y="616">sổ cái lỗi → 202, ghi lại sau</text>
+
+  <line class="a-b" x1="226" y1="570" x2="260" y2="570" marker-end="url(#m-b)"/>
+  <line class="a-b" x1="462" y1="570" x2="496" y2="570" marker-end="url(#m-b)"/>
+  <line class="a-b" x1="698" y1="570" x2="732" y2="570" marker-end="url(#m-b)"/>
+  <line class="a-b" x1="934" y1="570" x2="968" y2="570" marker-end="url(#m-b)"/>
+
+  <!-- Kiểm chứng -->
+  <rect class="s-v" x="160" y="690" width="430" height="128" rx="8"/>
+  <text class="bt" x="174" y="713">Cách 1 · Trang công khai (không đăng nhập)</text>
+  <text class="c" x="174" y="735">GET /workflow/minh-bach/phieu/{mã}</text>
+  <text class="b" x="174" y="755">API đọc phiếu trong CSDL, băm lại, lấy lá + inclusion proof,</text>
+  <text class="b" x="174" y="773">kiểm chữ ký checkpoint, lá, leaf hash, proof (RFC 9162)</text>
+  <rect x="174" y="786" width="96" height="22" rx="11" fill="#eaf6ef" stroke="#2e8b57"/><text class="chip" x="222" y="801" text-anchor="middle" fill="#226b43">da_xac_minh</text>
+  <rect x="280" y="786" width="96" height="22" rx="11" fill="#fdf0ef" stroke="#c0392b"/><text class="chip" x="328" y="801" text-anchor="middle" fill="#a83226">khong_khop</text>
+  <text class="b" x="386" y="801">sửa tay CSDL → không khớp</text>
+
+  <rect class="s-v" x="640" y="690" width="534" height="128" rx="8"/>
+  <text class="bt" x="654" y="713">Cách 2 · Tự kiểm, không cần tin API</text>
+  <text class="c" x="654" y="735">GET /ledger/checkpoint · /ledger/tile/… · /ledger/verifier</text>
+  <text class="b" x="654" y="755">CLI ledger-verify (có trong image ledger) tự dựng proof từ tile công khai</text>
+  <text class="b" x="654" y="773">(chuẩn tlog-tiles C2SP), kiểm chữ ký bằng khóa công khai, băm lại bản ghi</text>
+  <text class="b" x="654" y="791">đã lưu từ trang công khai → ĐÃ XÁC MINH (mã 0) / KHÔNG KHỚP (mã 1)</text>
+  <text class="b" x="654" y="809">Định dạng mở: thư viện tương thích nào cũng kiểm được.</text>
+
+  <!-- Dữ liệu cho kiểm chứng -->
+  <line class="a-v2" x1="362" y1="626" x2="362" y2="688" marker-end="url(#m-v)"/>
+  <text class="lbl" x="370" y="662" fill="#1f6fa8">đọc phiếu</text>
+  <line class="a-v2" x1="790" y1="626" x2="560" y2="688" marker-end="url(#m-v)"/>
+  <text class="lbl" x="600" y="655" fill="#1f6fa8">lá + proof</text>
+  <line class="a-v2" x1="880" y1="626" x2="880" y2="688" marker-end="url(#m-v)"/>
+  <text class="lbl" x="888" y="662" fill="#1f6fa8">checkpoint + tile công khai</text>
+
+  <!-- Người kiểm -->
+  <rect x="440" y="872" width="320" height="56" rx="28" fill="#ffffff" stroke="#1f6fa8" stroke-width="1.5"/>
+  <text class="bt" x="600" y="896" text-anchor="middle">Người dân, nhà tài trợ, báo chí</text>
+  <text class="b" x="600" y="914" text-anchor="middle">tra mã phiếu, không cần tài khoản</text>
+  <path class="a-v" d="M500,872 L375,820" marker-end="url(#m-v)"/>
+  <path class="a-v" d="M700,872 L830,820" marker-end="url(#m-v)"/>
+
+  <text class="b" x="26" y="950">Sổ cái không chứa dữ liệu cá nhân (D-007): lá chỉ có loại, mã phiếu, SHA-256 và thuộc tính ngắn; tên, SĐT, CCCD bị từ chối.</text>
+</svg>
