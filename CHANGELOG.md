@@ -3,6 +3,12 @@
 Định dạng theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), phiên bản theo [SemVer](https://semver.org/lang/vi/).
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-10-22
+Tuần 2: lõi Tầng 1 đủ 4 dịch vụ bắt buộc trong profile `core` (Keycloak SSO + OTP, APISIX + Coraza WAF, PostgreSQL/PostGIS + Hasura CE + SeaweedFS S3, Temporal), thêm OpenBao, NATS JetStream + MQTT và sổ cái minh bạch Tessera `core/ledger`; ứng dụng `apps/cuu-tro` có schema PostGIS, phân quyền GraphQL 3 vai trò, workflow phân công cứu hộ, luồng cảm biến mực nước, ảnh hiện trường, phiếu kho ghi sổ cái và trang minh bạch công khai (PR #33–#54).
+
+Kiểm chứng: `make smoke` 339/339 trên máy sạch ngày 22/10/2026 (clone từ GitHub, volume trống, commit `3d9b0e8`; sau đó chỉ đổi tài liệu và ảnh). CI có 7 job bắt buộc trên `main` và `develop`: `license`, `build-from-source`, `shellcheck`, `yamllint`, `pytest`, `go-test`, `go-licenses`.
+
 ### Added
 - `docs/images/`: banner và ảnh minh họa minh bạch cứu trợ (đội tạo bằng công cụ AI, không có chữ), sơ đồ kiến trúc `kien-truc.svg` và sơ đồ luồng `luong-cuu-tro.svg` vẽ tay bằng SVG thuần theo hệ thống đang chạy; nguồn ảnh ghi trong `docs/images/README.md` (#32).
 - Sổ cái minh bạch của lõi `core/ledger` (#28, D-007): dịch vụ Go nhúng Tessera v1.0.4 (driver POSIX trên volume `ledgerdata`, chống trùng in-memory + BadgerDB), image `scratch` build từ nguồn (~27 MB, `GOMEMLIMIT`, `mem_limit` 256 MB). API `POST /ledger/entries` (chỉ mạng nội bộ + token ghi của ứng dụng; lá chuẩn tắc chỉ có loại, mã giao dịch, SHA-256 bản ghi và thuộc tính ngắn, từ chối dãy số dạng SĐT/CCCD; chờ checkpoint đã ký rồi trả `index`), `GET /ledger/proof/{index}` (inclusion proof dựng bằng gói `client` của Tessera), `GET /ledger/checkpoint` + `/ledger/tile/...` (tlog-tiles, đọc công khai), `GET /ledger/verifier` (khóa công khai) (#28).
@@ -34,12 +40,10 @@
 - OpenBao chạy chế độ server (raft trên volume `baodata`, tắt UI) trong profile `core`; `scripts/openbao-init.sh` (`make bao-init`, gọi tự động trong `make up`) khởi tạo Shamir, lưu key/token ra `.data/openbao/` ngoài git, mở khóa, bật KV v2 `secret/`, nạp bí mật lõi, tạo policy chỉ đọc + AppRole cho từng dịch vụ; chạy lại không ghi đè (#14).
 - `bao agent` cho Keycloak và APISIX render bí mật lên volume tmpfs, `core/openbao/env-from-files.sh` export trước entrypoint gốc; container `openbao-unseal` tự mở khóa khi dev (`OPENBAO_DEV_AUTO_UNSEAL`), `make bao-unseal`, `make bao-status`; `scripts/smoke-openbao.sh` chạy trong `make smoke` (#14).
 - Keycloak: claim `https://hasura.io/jwt/claims` (`x-hasura-allowed-roles`, `x-hasura-default-role` từ thuộc tính user `hasura_default_role`, `x-hasura-user-id`) bằng mapper có sẵn trên client `dxos-web`, `dxos-dev-cli`; thuộc tính khai báo trong user profile của realm (#13).
-- Keycloak: flow trình duyệt `browser-otp-dieu-phoi` bắt cài/nhập OTP với vai trò `dieu-phoi`; `scripts/smoke-jwt.sh` kiểm claim Hasura của 3 user mẫu và luồng OTP qua đăng nhập web (#13).
 - Profile `core` gồm thêm Hasura CE, SeaweedFS (S3), Temporal + Temporal UI (chỉ admin, 127.0.0.1), NATS JetStream + MQTT, có healthcheck và giới hạn RAM (`mem_limit`, `GOMEMLIMIT`); bỏ profile `core-next` và `make up-next`. RAM đo trên laptop: ~1,4 GB sau khởi động, ~1,9 GB sau smoke (#11).
 - `bao agent` cho PostgreSQL, Hasura, Temporal, SeaweedFS (policy + AppRole riêng); container một lần `postgres-roles` (`core/postgres/sync-roles.sh`) tạo/đồng bộ role `keycloak`, `hasura`, `temporal` và CSDL Temporal, không dịch vụ nào dùng superuser (#11).
 - `scripts/smoke-core.sh` (chạy trong `make smoke`): Hasura nhận JWT Keycloak, từ chối token giả và tự nâng vai trò, admin secret từ OpenBao, role DB riêng; S3 ký SigV4 bằng khóa từ OpenBao; Temporal SERVING; NATS JetStream và MQTT CONNACK; compose không lộ bí mật (#11).
 - API Gateway: route `/graphql` → Hasura `/v1/graphql` (WebSocket bật), `/files/*` → SeaweedFS S3 (bỏ JWT trước khi chuyển, S3 kiểm URL presigned, giới hạn `GW_FILES_MAX_BODY_BYTES`), `/workflow/*` giữ chỗ trả 503 đến khi có API của #29; mọi route kiểm JWT Keycloak; `/v1/*`, `/v2/*`, `/console` trả 403 từ ngoài; limit-count theo IP (`GW_RATE_LIMIT_COUNT`, `GW_RATE_LIMIT_WINDOW`), CORS theo `GW_CORS_ALLOW_ORIGINS` (#12).
-- Coraza WAF (coraza-proxy-wasm 0.6.0, OWASP CRS 4.14) chế độ chặn trên mọi route API, chạy trước bước kiểm JWT, có kiểm body JSON/GraphQL; image APISIX riêng `core/apisix/Dockerfile` tải bản phát hành chính thức và kiểm SHA-256 lúc build (#12).
 - `scripts/smoke-gateway.sh` (chạy trong `make smoke`): 401/200 từng route, 503 `/workflow`, 403 endpoint quản trị Hasura, ghi/đọc `/files` bằng URL presigned + JWT, 413, 403 SQLi/XSS, CORS, 429 (#12).
 - CI thêm job `shellcheck`, `yamllint` (cấu hình `.yamllint.yml`) và `pytest` (tự bỏ qua khi chưa có mã Python); `scripts/lint.sh`, `make lint`; ghim phiên bản action (#31).
 
@@ -47,27 +51,27 @@
 - Ảnh luồng kêu cứu và luồng minh bạch trong README dùng nhãn tiếng Việt (#53).
 - `README.md` sắp xếp lại theo trình tự kể chuyện sản phẩm: giới thiệu → thách thức → giải pháp → đối tượng → chức năng (đã có / sắp có) → kiến trúc → công nghệ → luồng nghiệp vụ → hướng phát triển → cài đặt từ máy sạch → đóng góp, báo lỗi, giấy phép. Ảnh mới trong `docs/images/`: banner có tiêu đề, vòng tròn 6 chức năng nhãn tiếng Việt, kiến trúc tổng quan dạng biểu tượng, luồng kêu cứu 5 bước, luồng minh bạch 4 bước (đội tạo bằng công cụ AI; biểu tượng là hình minh họa, không phải logo chính thức). Cấu hình, lệnh OpenBao, thêm ứng dụng vào `apps/`, kiểm thử chuyển sang `docs/cai-dat.md`; hướng dẫn chạy từ máy sạch, tài khoản mẫu, xử lý lỗi giữ nguyên trong README (#51).
 - Sơ đồ chi tiết `kien-truc.svg`, `luong-cuu-tro.svg` chỉ dùng trong `docs/architecture.md` (mục 1 và 6) (#51).
-
-- `README.md` viết lại thuần tiếng Việt: banner, huy hiệu giấy phép/phiên bản/CI, bài toán, sơ đồ kiến trúc và luồng, yêu cầu máy, các bước chạy từ máy sạch kèm thời gian và dung lượng đo thật, tài khoản mẫu, cấu hình, cách thêm ứng dụng mới vào `apps/`, kiểm thử, xử lý lỗi thường gặp; thêm `README.en.md` ngắn (#32).
+- `README.md` viết lại thuần tiếng Việt: banner, huy hiệu giấy phép/phiên bản/CI, bài toán, sơ đồ kiến trúc và luồng, yêu cầu máy, các bước chạy từ máy sạch kèm thời gian và dung lượng đo thật, tài khoản mẫu, cấu hình, cách thêm ứng dụng mới vào `apps/`, kiểm thử, xử lý lỗi thường gặp; `README.en.md` ngắn thêm ở #32 đã bỏ ở #51, README chỉ còn tiếng Việt (#32, #51).
 - `.env.example`: cách xử lý lỗi "HTTPS required" nay chỉ tạo lại volume `pgdata` (giữ OpenBao) thay vì `docker compose down -v`, lệnh cũ xóa cả dữ liệu OpenBao trong khi key mở khóa vẫn ở `.data/openbao/` (#32).
 - Kiểm thử DB `0001` dùng `ledger_index` rất lớn để không trùng lá thật trên volume đã có sổ cái (#28).
-- Route APISIX `/files/*` chỉ còn `GET`/`HEAD`/`OPTIONS` (PUT/DELETE → 404): tải tệp lên đi qua API của ứng dụng, nơi kiểm nội dung; kiểm quyền theo object nằm ở chữ ký presigned do API cấp sau khi kiểm quyền. `scripts/smoke-gateway.sh` ghi object thẳng vào S3 rồi đọc qua gateway, kiểm PUT/DELETE → 404, HEAD presigned → 200 (#27).
 - `LICENSE`: điền `Copyright 2026 DTU_DZ_1` vào dòng mẫu của phần APPENDIX, khớp với `NOTICE`; điều khoản Apache-2.0 giữ nguyên (#46).
 - `NOTICE`: điền năm và tên đội vào dòng bản quyền (`Copyright 2026 DTU_DZ_1`); `LICENSE` giữ nguyên văn bản Apache-2.0 gốc (#44).
-- NATS bắt buộc xác thực (#30): `bao-agent-nats` (AppRole `nats`, policy `core-nats`) render `auth.conf` từ `secret/app/<DXOS_APP>/nats` (`scripts/openbao-init.sh` sinh lần đầu) với user `<DXOS_APP>-app` (chỉ cổng NATS, pub/sub `<DXOS_APP>.>` + JetStream API) và `<DXOS_APP>-thiet-bi` (chỉ MQTT, chỉ gửi vào `<DXOS_APP>.>`); không cho kết nối nặc danh. JetStream giới hạn qua `NATS_JS_MAX_MEMORY`/`NATS_JS_MAX_FILE` (64MB/1GB), MQTT từ chối QoS 2; địa chỉ công bố cổng MQTT chọn bằng `NATS_MQTT_BIND` (mặc định 127.0.0.1, chưa TLS). `scripts/smoke-core.sh` kiểm từ chối nặc danh/sai mật khẩu, tách loại kết nối của 2 user, giới hạn JetStream (#30).
 - Route APISIX `/workflow/*` trỏ vào API workflow của ứng dụng (upstream `GW_WORKFLOW_UPSTREAM_HOST/PORT`, mặc định `<DXOS_APP>-api:8000`, bỏ tiền tố `/workflow`, vẫn WAF + JWT + rate limit) thay cho chỗ giữ 503; `scripts/smoke-gateway.sh` kiểm `/workflow/hello` → 200 (#29).
 - Hasura dùng image `hasura/graphql-engine:v2.51.0-ce.cli-migrations-v3` (cùng phiên bản, vẫn CE): mỗi lần khởi động áp metadata từ `apps/${DXOS_APP}/hasura/metadata` (`HASURA_GRAPHQL_DISALLOW_INCONSISTENT_METADATA=true`); pool kết nối khai báo trong metadata thay cho `HASURA_GRAPHQL_PG_CONNECTIONS` (#26).
 - APISIX: tên realm, CORS, rate limit đọc từ biến môi trường (`${{...}}` trong `apisix.yaml`), không ghi cứng realm; `worker_processes: 2`, `mem_limit` 768 MB (Coraza + CRS, đo ~240–375 MB); job CI `build-from-source` dựng mọi profile (`docker compose --profile '*' build`) (#12).
-- Mật khẩu DB và admin của Keycloak, secret client `dxos-gateway` chuyển từ `.env` sang OpenBao (`secret/core/*`); `.env.example` bỏ `KEYCLOAK_DB_PASSWORD`, `KC_BOOTSTRAP_ADMIN_PASSWORD`, `KC_GATEWAY_CLIENT_SECRET`, `OPENBAO_DEV_ROOT_TOKEN`, thêm biến khởi động OpenBao. Bản cũ nâng cấp: giữ 3 biến cũ cho lần init đầu để nạp đúng giá trị. `POSTGRES_PASSWORD`, secret Hasura, khóa S3 cho SeaweedFS làm ở #11. Script SPDX quét thêm `*.hcl` (#14).
-- Mật khẩu superuser PostgreSQL (`secret/core/postgres`) và admin secret Hasura (`secret/core/hasura`) chuyển từ `.env` sang OpenBao; thêm `secret/core/hasura-db`, `secret/core/temporal-db`; `secret/core/s3` nối vào SeaweedFS (`-s3.config` do agent render). `.env.example` bỏ `POSTGRES_PASSWORD`, `HASURA_GRAPHQL_ADMIN_SECRET`, thêm `HASURA_DB_USER`, `TEMPORAL_DB_USER`, `SEAWEEDFS_VOLUME_SIZE_MB`. Bản cũ nâng cấp: giữ 2 biến cũ cho lần `make up` đầu (#11).
 - Hasura bỏ `claims_map` trong `HASURA_GRAPHQL_JWT_SECRET`, đọc namespace mặc định `https://hasura.io/jwt/claims` (#13); tắt telemetry; kết nối DB bằng role `hasura` (#11).
 - Áp D-007: chốt Tessera (driver POSIX) cho sổ cái minh bạch, Trillian là dự phòng; `docs/architecture.md` thêm mục `core/ledger` (API, không đưa dữ liệu cá nhân lên sổ cái, khóa ký trong OpenBao, trang "Minh bạch cứu trợ"); cập nhật `NOTICE`, `DEPENDENCIES.md`; script SPDX quét thêm `*.go` và `go.mod` (#34).
 
-### Removed
-- `README.en.md`: README chỉ còn bản tiếng Việt (#51).
-
 ### Fixed
 - Sửa cảnh báo lint trong mã cũ: chú thích bỏ qua SC2094 (dương tính giả) ở `scripts/spdx-files.sh`, cho phép dòng `#END` bắt buộc của APISIX trong `core/apisix/apisix.yaml` (#31).
+
+### Security
+- Keycloak: flow trình duyệt `browser-otp-dieu-phoi` bắt cài/nhập OTP với vai trò `dieu-phoi`; `scripts/smoke-jwt.sh` kiểm claim Hasura của 3 user mẫu và luồng OTP qua đăng nhập web (#13).
+- Coraza WAF (coraza-proxy-wasm 0.6.0, OWASP CRS 4.14) chế độ chặn trên mọi route API, chạy trước bước kiểm JWT, có kiểm body JSON/GraphQL; image APISIX riêng `core/apisix/Dockerfile` tải bản phát hành chính thức và kiểm SHA-256 lúc build (#12).
+- NATS bắt buộc xác thực (#30): `bao-agent-nats` (AppRole `nats`, policy `core-nats`) render `auth.conf` từ `secret/app/<DXOS_APP>/nats` (`scripts/openbao-init.sh` sinh lần đầu) với user `<DXOS_APP>-app` (chỉ cổng NATS, pub/sub `<DXOS_APP>.>` + JetStream API) và `<DXOS_APP>-thiet-bi` (chỉ MQTT, chỉ gửi vào `<DXOS_APP>.>`); không cho kết nối nặc danh. JetStream giới hạn qua `NATS_JS_MAX_MEMORY`/`NATS_JS_MAX_FILE` (64MB/1GB), MQTT từ chối QoS 2; địa chỉ công bố cổng MQTT chọn bằng `NATS_MQTT_BIND` (mặc định 127.0.0.1, chưa TLS). `scripts/smoke-core.sh` kiểm từ chối nặc danh/sai mật khẩu, tách loại kết nối của 2 user, giới hạn JetStream (#30).
+- Mật khẩu DB và admin của Keycloak, secret client `dxos-gateway` chuyển từ `.env` sang OpenBao (`secret/core/*`); `.env.example` bỏ `KEYCLOAK_DB_PASSWORD`, `KC_BOOTSTRAP_ADMIN_PASSWORD`, `KC_GATEWAY_CLIENT_SECRET`, `OPENBAO_DEV_ROOT_TOKEN`, thêm biến khởi động OpenBao. Bản cũ nâng cấp: giữ 3 biến cũ cho lần init đầu để nạp đúng giá trị. `POSTGRES_PASSWORD`, secret Hasura, khóa S3 cho SeaweedFS làm ở #11. Script SPDX quét thêm `*.hcl` (#14).
+- Mật khẩu superuser PostgreSQL (`secret/core/postgres`) và admin secret Hasura (`secret/core/hasura`) chuyển từ `.env` sang OpenBao; thêm `secret/core/hasura-db`, `secret/core/temporal-db`; `secret/core/s3` nối vào SeaweedFS (`-s3.config` do agent render). `.env.example` bỏ `POSTGRES_PASSWORD`, `HASURA_GRAPHQL_ADMIN_SECRET`, thêm `HASURA_DB_USER`, `TEMPORAL_DB_USER`, `SEAWEEDFS_VOLUME_SIZE_MB`. Bản cũ nâng cấp: giữ 2 biến cũ cho lần `make up` đầu (#11).
+- Route APISIX `/files/*` chỉ còn `GET`/`HEAD`/`OPTIONS` (PUT/DELETE → 404): tải tệp lên đi qua API của ứng dụng, nơi kiểm nội dung; kiểm quyền theo object nằm ở chữ ký presigned do API cấp sau khi kiểm quyền. `scripts/smoke-gateway.sh` ghi object thẳng vào S3 rồi đọc qua gateway, kiểm PUT/DELETE → 404, HEAD presigned → 200 (#27).
 
 ## [0.0.1] - 2026-10-19
 ### Added
@@ -86,5 +90,6 @@
 - Tách `core/` (Tầng 1, không chứa nghiệp vụ) và `apps/cuu-tro/` (Tầng 2): `deploy/apisix`, `deploy/nats`, `deploy/postgres` → `core/`; realm Keycloak → `apps/cuu-tro/keycloak/realm.json`; chọn ứng dụng bằng biến `DXOS_APP`; `docs/architecture.md` thêm mục 7 giải thích vì sao lõi độc lập với nghiệp vụ (#3).
 - `docs/PLAN.md` theo lộ trình mới: VPS + tên miền tuần 4, tuần UX tuần 6, 2 lần tập trình bày, công bố bộ mô phỏng cảm biến và mô hình NGSI-LD; gán vai V1/V2/V3 cho từng việc (#5).
 
-[Unreleased]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.0.1...HEAD
+[Unreleased]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.0.1
