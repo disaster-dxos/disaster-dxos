@@ -5,7 +5,7 @@
 
 ![Web điều phối: bản đồ và danh sách tin kêu cứu (dữ liệu giả)](../../../docs/images/web-dieu-phoi.png)
 
-> Trạng thái (#59): khung web, đăng nhập Keycloak, bố cục, logo. Danh sách và bản đồ đang dùng **dữ liệu giả** (`utils/tin-gia.ts`). Việc tiếp theo: #60 (subscription GraphQL), #61 (phân công), #62 (trạm đo), #63 (trang minh bạch), #64 (đưa web vào compose + smoke: đã có, xem mục Chạy).
+> Trạng thái (#59): khung web, đăng nhập Keycloak, bố cục, logo. Danh sách và bản đồ đang dùng **dữ liệu giả** (`utils/tin-gia.ts`). Việc tiếp theo: #60 (subscription GraphQL), #61 (phân công), #62 (trạm đo), #63 (trang minh bạch), #64 (đưa web vào compose + smoke: đã có, xem mục Chạy). Thông báo realtime (#68) đã có: dữ liệu **thật** từ NATS qua Centrifugo, xem mục dưới.
 
 ## Đăng nhập: OIDC Authorization Code + PKCE
 
@@ -39,10 +39,14 @@ npm run build && node .output/server/index.mjs   # bản build, cổng PORT (m�
 
 Biến môi trường `NUXT_PUBLIC_*`: xem `.env.example` ở gốc repo (mục "Web điều phối").
 
+## Thông báo realtime (#68)
+
+Người dùng vai `dieu-phoi` được kết nối Centrifugo khi mở trang (`composables/useThongBao.ts`, client centrifuge-js): xin token qua `GET <gateway>/workflow/realtime/token` kèm JWT, mở WebSocket `ws(s)://<gateway>/realtime/websocket`, nhận publication của kênh server-side `dieu-phoi` (không tự subscribe). Nút **Thông báo** (`components/ThongBaoRealtime.vue`) hiện trạng thái kết nối, số tin chưa đọc và 30 tin gần nhất. SDK tự kết nối lại và xin token mới; API trả 401/403 thì dừng hẳn. `utils/thong-bao.ts` dựng URL và chuyển dữ liệu sự kiện thành thông báo (hàm thuần, có test). CSP `connect-src` có thêm origin `ws(s)://` của gateway.
+
 ## Kiểm thử
 
 ```bash
-npm test              # Vitest: PKCE (vector RFC 7636), URL OIDC, state/nonce, hạn token, dữ liệu bản đồ, CSP
+npm test              # Vitest: PKCE (vector RFC 7636), URL OIDC, state/nonce, hạn token, dữ liệu bản đồ, CSP, thông báo realtime
 npm run typecheck     # vue-tsc
 npm run licenses      # giấy phép mọi gói npm trong package-lock.json
 ```
@@ -55,9 +59,9 @@ CI chạy cả bốn lệnh, `npm run build`, rồi build image Docker và chạ
 |---|---|
 | `pages/` | `index.vue` (trang điều phối), `auth/callback.vue` |
 | `server/` | Nitro: `plugins/bao-mat.ts` (header bảo mật), `utils/csp.ts` (dựng CSP, hàm thuần có test) |
-| `components/` | `AppHeader.vue` (logo, người dùng, đăng xuất), `BanDo.vue` (MapLibre), `DanhSachTin.vue` |
-| `composables/` | `useAuth.ts` (phiên đăng nhập), `useNow.ts` |
-| `utils/` | Hàm thuần, có test: `pkce.ts`, `oidc.ts`, `session.ts`, `ban-do.ts`, `tin-gia.ts` |
+| `components/` | `AppHeader.vue` (logo, người dùng, đăng xuất), `BanDo.vue` (MapLibre), `DanhSachTin.vue`, `ThongBaoRealtime.vue` (#68) |
+| `composables/` | `useAuth.ts` (phiên đăng nhập), `useThongBao.ts` (kết nối Centrifugo, #68), `useNow.ts` |
+| `utils/` | Hàm thuần, có test: `pkce.ts`, `oidc.ts`, `session.ts`, `ban-do.ts`, `tin-gia.ts`, `thong-bao.ts` |
 | `tests/` | Vitest |
 | `scripts/check-licenses.mjs` | Kiểm giấy phép npm |
 

@@ -64,6 +64,10 @@ class Config:
     so_lan_giao_toi_da: int = 3
     tu_dong: bool = True
     quet_giay: int = 30
+    # Thông báo realtime (#68): khóa HS256 ký token kết nối Centrifugo (secret/app/cuu-tro/realtime,
+    # chỉ cuu-tro-api có) và hạn token; Centrifugo đòi làm mới trước khi hết hạn
+    realtime_token_secret: str = ""
+    realtime_token_han_giay: int = 300
 
 
 def load() -> Config:
@@ -99,6 +103,8 @@ def load() -> Config:
         ledger_url=os.environ.get("LEDGER_URL", "http://ledger:8090"),
         ledger_write_token=os.environ.get("LEDGER_WRITE_TOKEN", ""),
         ledger_verifier_key=os.environ.get("LEDGER_VERIFIER_KEY", ""),
+        realtime_token_secret=os.environ.get("REALTIME_TOKEN_SECRET", ""),
+        realtime_token_han_giay=min(3600, max(30, _int("REALTIME_TOKEN_HAN_GIAY", 300))),
     )
 
 

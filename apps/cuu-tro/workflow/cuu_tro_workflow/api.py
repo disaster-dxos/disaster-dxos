@@ -21,6 +21,9 @@ Sổ cái minh bạch (#28, luồng: cuu_tro_workflow/so_cai.py, apps/cuu-tro/RE
   POST /kho/phieu/{id}/ghi-so       ghi lại sổ cái cho phiếu chưa ghi (chỉ dieu-phoi; gửi lại an toàn)
   GET  /minh-bach/phieu/{ma}        CÔNG KHAI, không cần đăng nhập (route /workflow/minh-bach/*):
                                     bản ghi không định danh + trạng thái xác minh trên sổ cái
+Thông báo realtime (#68, cuu_tro_workflow/thong_bao.py):
+  GET  /realtime/token              token kết nối Centrifugo ngắn hạn (dieu-phoi; quan-tri khi realm có),
+                                    kênh server-side "dieu-phoi"; web mở WebSocket /realtime/websocket
 "Cuu-ho của đội được gán" không viết lại luật ở đây: API hỏi Hasura qua gateway bằng chính JWT
 người dùng; luật lọc theo đội của Hasura metadata (#26) trả null thì người dùng không có quyền.
 """
@@ -44,7 +47,7 @@ from temporalio.common import Priority, WorkflowIDConflictPolicy, WorkflowIDReus
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError
 
-from . import anh, config, so_cai
+from . import anh, config, so_cai, thong_bao
 from .auth import VAI_TRO_CUU_HO, VAI_TRO_DIEU_PHOI, NguoiDung, XacThuc, can_vai_tro
 from .s3 import KhoAnh, LoiS3
 from .logic import PhanHoi, TrangThaiPhanCong, XacNhan, YeuCauHuy, uu_tien
@@ -255,6 +258,21 @@ class HuyVao(BaseModel):
 async def healthz(request: Request) -> dict[str, str]:
     await request.app.state.temporal.service_client.check_health()
     return {"status": "ok"}
+
+
+@app.get("/realtime/token")
+async def realtime_token(request: Request, response: Response, nd: NguoiDungDep) -> dict[str, Any]:
+    """Token kết nối Centrifugo cho web điều phối. Không cache: token chỉ dùng một phiên kết nối."""
+    kenh = thong_bao.kenh_cua(nd.vai_tro)
+    if not kenh:
+        raise HTTPException(403, f"Cần vai trò: {', '.join(thong_bao.VAI_TRO_NHAN)}")
+    cfg = request.app.state.cfg
+    if not cfg.realtime_token_secret:
+        raise HTTPException(503, "Chưa cấu hình thông báo realtime (REALTIME_TOKEN_SECRET)")
+    response.headers["Cache-Control"] = "no-store"
+    han = cfg.realtime_token_han_giay
+    return {"token": thong_bao.ky_token(nd.sub, kenh, cfg.realtime_token_secret, han), "han_giay": han,
+            "kenh": kenh}
 
 
 @app.post("/hello")

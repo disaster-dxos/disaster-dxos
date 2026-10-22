@@ -23,3 +23,9 @@ path "secret/data/app/cuu-tro/s3" {
 path "secret/data/app/cuu-tro/ledger" {
   capabilities = ["read"]
 }
+
+# Thông báo realtime (#68): bao-agent-cuu-tro render khóa ký token kết nối Centrifugo cho cuu-tro-api
+# và API key Centrifugo + NATS_URL cho cầu nối cuu-tro-thong-bao (mỗi dịch vụ một volume tmpfs riêng).
+path "secret/data/app/cuu-tro/realtime" {
+  capabilities = ["read"]
+}

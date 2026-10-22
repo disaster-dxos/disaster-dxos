@@ -51,6 +51,18 @@ upstreams:
       send: 15
       read: 15
 
+  - id: centrifugo
+    type: roundrobin
+    # Centrifugo OSS của lõi (#68): chỉ đường WebSocket của client đi qua gateway; HTTP API (/api/*)
+    # của Centrifugo chỉ dùng trong mạng nội bộ, không có route ra ngoài.
+    nodes:
+      "centrifugo:8000": 1
+    timeout:
+      connect: 5
+      # Kết nối WebSocket sống lâu: Centrifugo ping mỗi 25 giây, đọc/gửi im lặng quá 60 giây thì đóng
+      send: 60
+      read: 60
+
   - id: web
     type: roundrobin
     # Web Tầng 2 của ứng dụng (#64), không thuộc lõi: mặc định quy ước <DXOS_APP>-web:3000
@@ -300,6 +312,45 @@ routes:
         regex_uri: ["^/workflow/(.*)", "/$1"]
       limit-count: *rate-limit
 
+  # ---------------- /realtime/websocket → Centrifugo (#68), WebSocket ----------------
+  # Đúng một đường: /realtime/websocket → centrifugo:8000/connection/websocket. Không kiểm JWT ở gateway:
+  # trình duyệt không gửi được header Authorization khi mở WebSocket. Xác thực nằm trong lệnh connect
+  # đầu tiên (token ngắn hạn do API ứng dụng cấp qua /workflow/realtime/token, đã kiểm JWT + vai trò);
+  # Centrifugo kiểm chữ ký, iss, aud, hạn và Origin (CENTRIFUGO_CLIENT_ALLOWED_ORIGINS). Chỉ GET (bắt
+  # tay). WAF kiểm bắt tay (URI, tham số, header) như route web; khung WebSocket sau bắt tay không đi
+  # qua WAF (Coraza không phân tích được), nội dung client gửi chỉ là lệnh giao thức Centrifugo.
+  # Giới hạn tần suất riêng: mỗi lần kết nối/kết nối lại là một request.
+  - id: realtime
+    uri: /realtime/websocket
+    methods: [GET]
+    upstream_id: centrifugo
+    enable_websocket: true
+    plugins:
+      request-id: {}
+      client-control: *api-body-limit
+      coraza-filter:
+        conf:
+          directives_map:
+            realtime:
+              - Include @recommended-conf
+              - SecRuleEngine On
+              - SecRequestBodyAccess Off
+              - SecResponseBodyAccess Off
+              - Include @crs-setup-conf
+              - Include @owasp_crs/*.conf
+          default_directives: realtime
+      proxy-rewrite:
+        uri: /connection/websocket
+        headers:
+          remove:
+            - Authorization
+      limit-count:
+        count: ${{GW_REALTIME_RATE_LIMIT_COUNT:=60}}
+        time_window: ${{GW_RATE_LIMIT_WINDOW:=60}}
+        key_type: var
+        key: remote_addr
+        rejected_code: 429
+
   # ---------------- /api/v1/me (route mẫu v0.0.1) ----------------
   # Trả thông tin người dùng từ token (Keycloak userinfo). Không token / token sai → 401.
   - id: api-me
@@ -320,7 +371,7 @@ routes:
 
   # ---------------- /* → web Tầng 2 của ứng dụng (#64), CHỈ GET/HEAD ----------------
   # Trang web (SPA) và tệp tĩnh: /, /auth/callback, /_nuxt/*, /logo/*... Mọi route khác có đường dẫn
-  # cụ thể hơn nên luôn thắng (/graphql, /files/*, /workflow/*, /ledger/*, /api/v1/me, /healthz, chặn
+  # cụ thể hơn nên luôn thắng (/graphql, /files/*, /workflow/*, /ledger/*, /realtime/websocket, /api/v1/me, /healthz, chặn
   # /v1/*, /v2/*, /console); route này chỉ nhận GET/HEAD nên PUT/DELETE /files/* vẫn 404.
   # Không kiểm JWT ở gateway: web tự đăng nhập Keycloak (OIDC + PKCE) rồi gọi API qua các route trên
   # kèm Bearer token. WAF vẫn bật (URI, tham số, header); bỏ header Authorization (web không cần token).

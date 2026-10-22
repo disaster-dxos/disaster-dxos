@@ -1,8 +1,9 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script setup lang="ts">
-import { VAI_TRO } from '~/utils/session'
+import { VAI_TRO, laDieuPhoi } from '~/utils/session'
 
 const { user, dangXuat } = useAuth()
+const nhanThongBao = computed(() => laDieuPhoi(user.value))
 const vaiTro = computed(() => (user.value?.roles ?? []).map((r: string) => VAI_TRO[r as keyof typeof VAI_TRO] ?? r).join(', '))
 </script>
 
@@ -14,6 +15,7 @@ const vaiTro = computed(() => (user.value?.roles ?? []).map((r: string) => VAI_T
       <p class="truncate text-xs text-slate-500">Disaster DX-OS · Ứng phó Thiên tai &amp; Cứu trợ Cộng đồng</p>
     </div>
     <div class="ml-auto flex items-center gap-3">
+      <ThongBaoRealtime v-if="nhanThongBao" />
       <div v-if="user" class="hidden text-right leading-tight sm:block">
         <p class="text-sm font-bold text-navy">{{ user.displayName }}</p>
         <p class="text-xs text-slate-500">{{ vaiTro || 'Chưa có vai trò' }}</p>

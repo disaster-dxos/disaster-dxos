@@ -10,17 +10,22 @@ FOR UPDATE SKIP LOCKED (nhiều worker không lấy trùng), khởi chạy workf
 Không chạy trùng: workflow id tất định phan-cong-<incident_id>. Đang chạy → dùng lại (USE_EXISTING);
 đã chạy xong → Temporal từ chối (REJECT_DUPLICATE), coi như đã khởi chạy. Nên đánh dấu lỗi sau khi
 đã khởi chạy (worker chết giữa chừng) chỉ dẫn tới một lần gọi lại vô hại.
+
+Thông báo tin mới (#68): khởi chạy xong thì phát cuu-tro.dieu-phoi.tin-moi.<incident_id> lên JetStream
+(stream CUU_TRO_DIEU_PHOI, Nats-Msg-Id tin-moi:<id> chống trùng; chỉ id + urgency, không SĐT/tên),
+cầu nối thong_bao_cau_noi.py đẩy lên web điều phối. Lỗi NATS không chặn việc phân công.
 """
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 
 import asyncpg
 from temporalio.client import Client
 from temporalio.common import Priority, WorkflowIDConflictPolicy, WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
-from . import config
+from . import config, thong_bao
 from .logic import uu_tien
 from .workflows import PhanCongCuuHo
 
@@ -68,10 +73,24 @@ async def khoi_chay_mot(client: Client, cfg: config.Config, incident_id: str, ur
 
 
 class BoKhoiChay:
-    def __init__(self, pool: asyncpg.Pool, client: Client, cfg: config.Config) -> None:
+    def __init__(self, pool: asyncpg.Pool, client: Client, cfg: config.Config, js=None) -> None:
         self._pool = pool
         self._client = client
         self._cfg = cfg
+        # JetStream để phát thông báo tin mới (#68); None = không phát (kiểm thử, NATS_URL trống)
+        self._js = js
+
+    async def bao_tin_moi(self, incident_id: str, urgency: str) -> bool:
+        """Phát sự kiện tin mới cho web điều phối. Trả False nếu không phát được (đã ghi log)."""
+        if self._js is None:
+            return False
+        subject, du_lieu, msg_id = thong_bao.tin_moi(incident_id, urgency, datetime.now(timezone.utc).isoformat())
+        try:
+            await self._js.publish(subject, du_lieu, headers={"Nats-Msg-Id": msg_id})
+        except Exception as e:
+            log.warning("không phát được thông báo tin mới %s: %s", incident_id, e)
+            return False
+        return True
 
     async def quet(self) -> int:
         """Một lượt: khởi chạy tối đa LO tin đang chờ. Trả số dòng đã lấy."""
@@ -94,6 +113,7 @@ class BoKhoiChay:
                     r["id"],
                 )
                 log.info("tự khởi chạy phân công tin %s (urgency %s): %s", r["id"], r["urgency"], kq)
+                await self.bao_tin_moi(r["id"], r["urgency"])
         return len(rows)
 
     async def chay(self, dung: asyncio.Event) -> None:
