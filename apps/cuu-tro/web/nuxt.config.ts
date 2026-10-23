@@ -16,8 +16,8 @@ export default defineNuxtConfig({
     // Không dùng @nuxt/fonts (tải font từ Google lúc build): Be Vietnam Pro tự host trong public/fonts
     fonts: false,
   },
-  // Mặc định giao diện sáng; người dùng đổi Sáng/Tối/Theo máy ở menu tài khoản (các màn hỗ trợ tối dần ở #78)
-  colorMode: { preference: 'light', fallback: 'light' },
+  // Giao diện theo máy (sáng/tối); người dùng đổi Sáng/Tối/Theo máy ở menu tài khoản
+  colorMode: { preference: 'system', fallback: 'light' },
   icon: {
     // Biểu tượng Lucide đóng gói sẵn trong bundle: không gọi API Iconify (CSP chặn, mất mạng vẫn chạy)
     provider: 'none',

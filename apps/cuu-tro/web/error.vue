@@ -19,6 +19,7 @@ const khongThay = computed(() => props.error.statusCode === 404)
       </div>
       <div class="flex flex-wrap justify-center gap-3">
         <UButton size="lg" color="secondary" label="Về trang chính" @click="clearError({ redirect: '/' })" />
+        <UButton size="lg" color="neutral" variant="outline" label="Tra phiếu cứu trợ" to="/minh-bach" />
       </div>
     </main>
   </UApp>

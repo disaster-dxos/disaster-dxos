@@ -97,12 +97,6 @@
 
   /* Mức Thấp: chữ trắng trên #475569 (7,58:1) */
   --color-thap: #475569;
-
-  /* Tạm cho các màn chưa chuyển sang Nuxt UI (bg-navy, text-cam, text-nuoc, text-chu…); xóa khi xong #78 */
-  --color-navy: #12355B;
-  --color-cam: #F07B1D;
-  --color-nuoc: #1FA2C9;
-  --color-chu: #334155;
 }
 
 /* Chữ đậm hơn mặc định Nuxt UI để đọc được ngoài nắng; chữ phụ không nhạt hơn slate-600 */

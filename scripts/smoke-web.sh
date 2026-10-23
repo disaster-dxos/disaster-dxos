@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 # Kiểm thử web điều phối (#64) mở qua API Gateway như người dùng:
-# (1) trang chủ và đường SPA (/auth/callback, kể cả tham số iss của Keycloak) qua APISIX trả 200 HTML;
+# (1) trang chủ và đường SPA (/auth/callback, kể cả tham số iss của Keycloak; /minh-bach/<mã>) qua APISIX trả 200 HTML;
 # (2) tệp tĩnh (/_nuxt/*.js, *.css, /logo/favicon.ico) tải được, đúng content-type, có cache;
 # (3) cấu hình đăng nhập Nitro chèn vào trang: Keycloak URL/realm, client dxos-web, gateway URL;
 #     Keycloak chấp nhận authorize của dxos-web với redirect_uri <gateway>/auth/callback + PKCE S256,
@@ -36,6 +36,8 @@ check "GET / qua gateway" 200 "$c"
 check "GET / là HTML" yes "$(hdr "$tmp/h" content-type | grep -qi '^text/html' && echo yes || echo no)"
 check "trang có gốc ứng dụng Nuxt (#__nuxt)" yes "$(grep -q 'id="__nuxt"' "$tmp/index.html" && echo yes || echo no)"
 check "GET /auth/callback (đường SPA) qua gateway" 200 "$(code "$GW/auth/callback")"
+# Trang minh bạch công khai (#78): đường chia sẻ /minh-bach/<mã phiếu> qua gateway, không cần đăng nhập
+check "GET /minh-bach/<mã phiếu> (trang công khai) qua gateway" 200 "$(code "$GW/minh-bach/3f6c2a10-8b4d-4e2f-9a1c-5d7e8f901234")"
 # Keycloak gọi lại kèm iss=<URL realm> (RFC 9207): luật SSRF/RFI của CRS không được chặn nhầm
 enc() { python3 -c 'import sys,urllib.parse as u; print(u.quote(sys.argv[1], safe=""))' "$1"; }
 for iss in "$KC/realms/$REALM" "http://192.0.2.10:8080/realms/$REALM"; do

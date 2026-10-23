@@ -56,6 +56,10 @@ Biến môi trường `NUXT_PUBLIC_*`: xem `.env.example` ở gốc repo (mục 
 
 CSP `connect-src` đã có origin `ws(s)://` của gateway (#68), dùng chung cho `/graphql`. Kiểm trên stack thật: `bash scripts/smoke-ban-do.sh` (trong `make smoke`).
 
+## Trang Minh bạch cứu trợ (#78, #63)
+
+Trang công khai, không cần đăng nhập, không dùng khung điều phối: `/minh-bach/<mã phiếu>` (đường dẫn in trong mã QR trên phiếu; `/minh-bach?ma=<mã>` cũng tra sẵn). Người dân nhập mã → web kiểm dạng mã (UUID) → `GET /workflow/minh-bach/phieu/{mã}` qua gateway → hiện kết quả xác minh trên sổ cái Tessera: **Đã xác minh**, **Không khớp**, **Chưa ghi lên sổ cái**, **Tạm thời không kiểm được** (màu + biểu tượng khiên khác nhau), hàng gì, bao nhiêu, từ kho nào tới điểm nhận nào, giờ lập phiếu và giờ ghi sổ. Phần "Tự kiểm chứng" (SHA-256, checkpoint, lệnh `ledger-verify`) thu gọn cho người kỹ thuật. Lỗi 404, 429, 5xx, phản hồi sai dạng, mất mạng có câu riêng. Ánh xạ phản hồi → hiển thị: `utils/minh-bach.ts` (test `tests/minh-bach.test.ts`).
+
 ## Thông báo realtime (#68)
 
 Người dùng vai `dieu-phoi` được kết nối Centrifugo khi mở trang (`composables/useThongBao.ts`, client centrifuge-js): xin token qua `GET <gateway>/workflow/realtime/token` kèm JWT, mở WebSocket `ws(s)://<gateway>/realtime/websocket`, nhận publication của kênh server-side `dieu-phoi` (không tự subscribe). Nút **Thông báo** (`components/ThongBaoRealtime.vue`) hiện trạng thái kết nối, số tin chưa đọc và 30 tin gần nhất. SDK tự kết nối lại và xin token mới; API trả 401/403 thì dừng hẳn. `utils/thong-bao.ts` dựng URL và chuyển dữ liệu sự kiện thành thông báo (hàm thuần, có test). CSP `connect-src` có thêm origin `ws(s)://` của gateway.
@@ -98,14 +102,14 @@ CI chạy cả bốn lệnh, `npm run build`, rồi build image Docker và chạ
 | `app.vue`, `app.config.ts`, `layouts/default.vue`, `error.vue` | Khung Nuxt UI (#77): `UApp` (nhãn tiếng Việt), màu theme, thanh bên thu gọn được (trên điện thoại thành ngăn kéo), trang lỗi tiếng Việt |
 | `assets/css/main.css` | Theme: bảng màu nhận diện (navy, cam, xanh nước, mức khẩn), chữ, chế độ tối, vòng focus, MapLibre theo theme (#77) |
 | `public/fonts/be-vietnam-pro/` | Font Be Vietnam Pro (OFL-1.1) tự host, kèm SHA-256 (#77) |
-| `pages/` | `index.vue` (trang điều phối), `phan-cong/index.vue`, `phan-cong/[id].vue` (màn phân công, #61), `auth/callback.vue` (không dùng khung) |
+| `pages/` | `index.vue` (trang điều phối), `phan-cong/index.vue`, `phan-cong/[id].vue` (màn phân công, #61), `minh-bach/[[ma]].vue` (trang minh bạch công khai, #78), `auth/callback.vue` (hai trang sau không dùng khung) |
 | `server/` | Nitro: `plugins/bao-mat.ts` (header bảo mật), `utils/csp.ts` (dựng CSP, hàm thuần có test) |
 | `components/` | `MenuNguoiDung.vue` (người dùng, vai, sáng/tối, đăng xuất), `NhanMucKhan.vue`, `NhanTrangThai.vue`, `DongHoHanNhan.vue` (thành phần dùng chung, #77), `BanDo.vue` (MapLibre, #60), `DanhSachTin.vue`, `BoLocTin.vue`, `ChiTietTin.vue` (#60), `ThongBaoRealtime.vue` (#68), `TheTinPhanCong.vue` (#61) |
 | `composables/` | `useAuth.ts` (phiên đăng nhập), `useTinKeuCuu.ts` (subscription tin kêu cứu, #60), `useThongBao.ts` (kết nối Centrifugo, #68), `usePhanCong.ts` (hàng đợi, workflow, thao tác, #61), `useNow.ts`, `useToi.ts` (đang ở chế độ tối) |
-| `utils/` | Hàm thuần, có test: `pkce.ts`, `oidc.ts`, `session.ts`, `tin.ts`, `tin-graphql.ts`, `ban-do.ts`, `thong-bao.ts`, `phan-cong.ts`, `workflow-api.ts` |
+| `utils/` | Hàm thuần, có test: `pkce.ts`, `oidc.ts`, `session.ts`, `tin.ts`, `tin-graphql.ts`, `ban-do.ts`, `thong-bao.ts`, `phan-cong.ts`, `workflow-api.ts`, `minh-bach.ts` |
 | `tests/` | Vitest |
 | `scripts/check-licenses.mjs` | Kiểm giấy phép npm |
 
-**Quy ước giao diện (#77):** dùng thành phần Nuxt UI (`UButton`, `UBadge`, `UAlert`, `UCard`, `UDashboardPanel`…) và token màu của Nuxt UI (`text-muted`, `bg-elevated`, `primary`, `secondary` = nút hành động cam, `error`/`warning`/`info` = mức khẩn cấp/cao/trung bình), không dùng palette Tailwind trực tiếp (`red-600`, `slate-500`…); chữ nhỏ nhất `text-xs` = 13 px; biểu tượng Lucide `i-lucide-*` (đóng gói sẵn, không gọi mạng), không dùng emoji. Biến `--color-navy/cam/nuoc/chu` trong `main.css` chỉ để các màn chưa chuyển chạy tạm, bỏ khi xong #78.
+**Quy ước giao diện (#77):** dùng thành phần Nuxt UI (`UButton`, `UBadge`, `UAlert`, `UCard`, `UDashboardPanel`…) và token màu của Nuxt UI (`text-muted`, `bg-elevated`, `primary`, `secondary` = nút hành động cam, `error`/`warning`/`info` = mức khẩn cấp/cao/trung bình), không dùng palette Tailwind trực tiếp (`red-600`, `slate-500`…); chữ nhỏ nhất `text-xs` = 13 px; biểu tượng Lucide `i-lucide-*` (đóng gói sẵn, không gọi mạng), không dùng emoji.
 
 Logo lấy thẳng từ `docs/images/logo/` của repo (phục vụ ở `/logo/…`, cấu hình trong `nuxt.config.ts`), không chép bản sao.

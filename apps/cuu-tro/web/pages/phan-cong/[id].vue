@@ -5,11 +5,12 @@
 // thật (403/409 hiện thành câu tiếng Việt). Sau thao tác: chờ workflow sang bước mới rồi tải lại.
 // SĐT người báo chỉ có với vai được Hasura cho đọc (dieu-phoi, cuu-ho), che giữa tới khi bấm "Hiện số".
 import {
-  BUOC, GHI_CHU_TOI_DA, HANH_DONG, KET_QUA_GIAO, KET_QUA_WF, TRANG_THAI_WF, dangChay, demNguoc, giaoDangCho,
-  hanhDongDuoc, khoangCach, tiLeDaQua, type HanhDong, type LienHe, type TinPhanCong, type TrangThaiWf,
+  BUOC, GHI_CHU_TOI_DA, HANH_DONG, KET_QUA_GIAO, KET_QUA_WF, TRANG_THAI_WF, dangChay, giaoDangCho,
+  hanhDongDuoc, khoangCach, type HanhDong, type LienHe, type TinPhanCong, type TrangThaiWf,
 } from '~/utils/phan-cong'
 import { thongBaoLoi } from '~/utils/workflow-api'
-import { MUC_KHAN, TRANG_THAI, cheSdt, maNgan, thoiGianTruoc, type TrangThai } from '~/utils/tin'
+import { cheSdt, maNgan, thoiGianTruoc, type TrangThai } from '~/utils/tin'
+import type { ButtonProps } from '@nuxt/ui'
 import type { ComputedRef, Ref } from 'vue'
 
 // vue-tsc của dự án suy ra ref/computed là any: ghi kiểu rõ cho mọi giá trị dùng làm khóa trong template
@@ -34,7 +35,6 @@ const ketQua = ref<{ ok: boolean; thongBao: string } | null>(null)
 
 const nut: ComputedRef<HanhDong[]> = computed(() => (tin.value ? hanhDongDuoc(vai.value, tin.value, wf.value) : []))
 const cho = computed(() => (tin.value ? giaoDangCho(tin.value) : null))
-const dem = computed(() => (cho.value ? demNguoc(cho.value.hanLuc, now.value) : null))
 
 async function tai() {
   loiTai.value = ''
@@ -103,175 +103,185 @@ onBeforeUnmount(() => {
 watch(id, () => { tin.value = null; wf.value = null; hienSo.value = false; void tai() })
 useHead({ title: () => `Phân công tin ${maNgan(id.value)} · Disaster DX-OS` })
 
-const MAU_KQ: Record<string, string> = {
-  cho_nhan: 'bg-orange-100 text-cam-600',
-  da_nhan: 'bg-emerald-100 text-emerald-800',
-  tu_choi: 'bg-red-100 text-red-800',
-  qua_han: 'bg-slate-200 text-slate-700',
-  huy: 'bg-slate-200 text-slate-700',
-}
+const MAU_KQ = {
+  cho_nhan: 'warning',
+  da_nhan: 'success',
+  tu_choi: 'error',
+  qua_han: 'neutral',
+  huy: 'neutral',
+} as const
+// Nút hành động: nút chính màu cam, xác nhận đã cứu màu xanh, từ chối/hủy viền đỏ, còn lại viền navy
+const kieuNut = (hd: HanhDong): Pick<ButtonProps, 'color' | 'variant'> => (HANH_DONG[hd].chinh
+  ? { color: hd === 'xac_nhan' ? 'success' : 'secondary', variant: 'solid' }
+  : { color: hd === 'tu_choi' || hd === 'huy' ? 'error' : 'primary', variant: 'outline' })
 const gio = (iso: string | null) => (iso
   ? new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
   : '')
 </script>
 
 <template>
-  <UDashboardPanel id="chi-tiet-phan-cong">
+  <UDashboardPanel id="chi-tiet-phan-cong" :ui="{ body: 'gap-3 sm:gap-4 pb-40 sm:pb-6' }">
     <template #header>
-      <UDashboardNavbar>
+      <UDashboardNavbar :ui="{ right: 'gap-2' }">
+        <template #leading>
+          <UButton
+            to="/phan-cong" icon="i-lucide-arrow-left" color="neutral" variant="ghost" size="lg" square class="-ms-1.5"
+            :aria-label="vai === 'cuu-ho' ? 'Về nhiệm vụ của đội' : 'Về hàng đợi phân công'"
+          />
+        </template>
         <template #title>
           <span class="truncate">Tin <span class="font-mono">{{ maNgan(id) }}</span></span>
         </template>
         <template #right>
+          <UButton :to="`/?tin=${id}`" color="neutral" variant="outline" icon="i-lucide-map" class="min-h-10">
+            <span class="max-sm:sr-only">Xem trên bản đồ</span>
+          </UButton>
           <ThongBaoRealtime v-if="vai === 'dieu-phoi'" />
         </template>
       </UDashboardNavbar>
     </template>
-    <template #body>
-      <main class="mx-auto w-full max-w-3xl flex-1 space-y-3 pb-28 sm:pb-0">
-        <div class="flex flex-wrap items-center gap-2 text-sm">
-          <NuxtLink to="/phan-cong" class="min-h-11 rounded-lg px-2 py-2.5 font-bold text-nuoc hover:underline">← {{ vai === 'cuu-ho' ? 'Nhiệm vụ của đội' : 'Hàng đợi phân công' }}</NuxtLink>
-          <NuxtLink :to="`/?tin=${id}`" class="ml-auto min-h-11 rounded-lg px-2 py-2.5 font-bold text-nuoc hover:underline">Xem trên bản đồ</NuxtLink>
-        </div>
 
-        <p v-if="!vai" class="rounded-lg bg-amber-100 px-4 py-3 text-sm text-amber-900" role="alert">
-          Màn phân công dành cho vai Điều phối và Cứu hộ. Tài khoản này không có vai đó.
-        </p>
-        <p v-else-if="!daTai" class="text-sm text-slate-500" role="status">Đang tải…</p>
+    <template #body>
+      <div class="mx-auto w-full max-w-2xl space-y-3 sm:space-y-4">
+        <UAlert
+          v-if="!vai" role="alert" color="warning" variant="subtle" icon="i-lucide-shield-alert"
+          title="Màn phân công dành cho vai Điều phối và Cứu hộ. Tài khoản này không có vai đó."
+        />
+        <div v-else-if="!daTai" class="space-y-3" role="status" aria-label="Đang tải">
+          <USkeleton class="h-28 w-full" /><USkeleton class="h-48 w-full" />
+        </div>
         <!-- Thao tác vừa bị từ chối (vd đội cũ nhận muộn) đã có thông báo riêng: không lặp lại lỗi tải -->
-        <p v-if="loiTai && ketQua?.ok !== false" class="rounded-lg border-l-4 border-red-600 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">{{ loiTai }}</p>
+        <UAlert v-if="loiTai && ketQua?.ok !== false" role="alert" color="error" variant="subtle" icon="i-lucide-circle-alert" :title="loiTai" />
 
         <!-- Kết quả thao tác: luôn ở vùng aria-live để trình đọc màn hình đọc lên -->
-        <div aria-live="assertive" class="sticky top-2 z-10">
-          <p
+        <div aria-live="assertive" class="sticky top-2 z-10 empty:hidden">
+          <UAlert
             v-if="ketQua"
-            class="flex items-start gap-2 rounded-lg border-l-4 px-4 py-3 text-sm font-bold shadow"
-            :class="ketQua.ok ? 'border-emerald-600 bg-emerald-50 text-emerald-900' : 'border-red-600 bg-red-50 text-red-800'"
-          >
-            <span aria-hidden="true">{{ ketQua.ok ? '✓' : '!' }}</span>
-            <span class="flex-1">{{ ketQua.thongBao }}</span>
-            <button type="button" class="px-1 text-lg leading-none opacity-60 hover:opacity-100" aria-label="Ẩn thông báo" @click="ketQua = null">×</button>
-          </p>
+            :color="ketQua.ok ? 'success' : 'error'" variant="solid" class="shadow-lg"
+            :icon="ketQua.ok ? 'i-lucide-circle-check' : 'i-lucide-circle-alert'"
+            :title="ketQua.thongBao" close
+            @update:open="ketQua = null"
+          />
         </div>
 
         <template v-if="tin">
-          <section class="rounded-xl border-t-4 border-cam bg-white p-4 shadow-sm" aria-labelledby="tieu-de-tin">
-            <div class="flex flex-wrap items-center gap-1.5 text-xs">
-              <span class="rounded px-1.5 py-0.5 font-bold text-white" :style="{ background: MUC_KHAN[tin.urgency].mau }">{{ MUC_KHAN[tin.urgency].nhan }}</span>
-              <span class="rounded bg-slate-200 px-1.5 py-0.5 font-bold text-slate-700">{{ TRANG_THAI[tin.status] }}</span>
-              <time class="ml-auto text-slate-500" :datetime="tin.created_at">Tiếp nhận {{ thoiGianTruoc(tin.created_at, now) }}</time>
+          <!-- Hạn nhận: thứ đội cần thấy đầu tiên -->
+          <section v-if="cho" aria-labelledby="tieu-de-doi" class="space-y-2">
+            <h2 id="tieu-de-doi" class="sr-only">Đội và hạn nhận</h2>
+            <DongHoHanNhan :giao="cho" :now="now" lon />
+            <p class="flex flex-wrap items-baseline gap-x-2 px-1 text-base">
+              <strong class="text-highlighted">{{ cho.doiTen ?? tin.doiTen ?? 'Đội khác' }}</strong>
+              <span class="text-muted">cách hiện trường {{ khoangCach(cho.khoangCachM) }} · lần giao {{ cho.lan }}</span>
+            </p>
+          </section>
+
+          <UCard :ui="{ body: 'p-4 sm:p-5' }" aria-labelledby="tieu-de-tin" as="section">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <NhanMucKhan :muc="tin.urgency" size="lg" />
+              <NhanTrangThai :tt="tin.status" size="lg" />
             </div>
-            <h1 id="tieu-de-tin" class="mt-2 text-base font-bold text-navy">Tin <span class="font-mono">{{ maNgan(tin.id) }}</span></h1>
-            <p class="mt-1 text-sm font-bold text-chu">{{ tin.description || 'Không có mô tả' }}</p>
-            <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
-              <dt class="text-slate-500">Địa chỉ</dt><dd>{{ tin.address_text || 'Chưa có' }}</dd>
-              <dt class="text-slate-500">Tọa độ</dt><dd class="font-mono text-xs leading-5">{{ tin.location[1].toFixed(5) }}, {{ tin.location[0].toFixed(5) }}</dd>
-              <dt class="text-slate-500">Số người</dt><dd>{{ tin.people_count }}</dd>
+            <h1 id="tieu-de-tin" class="mt-3 text-xl font-bold leading-snug text-highlighted">{{ tin.description || 'Không có mô tả' }}</h1>
+            <p class="mt-1 text-sm text-muted">
+              Tin <span class="font-mono">{{ maNgan(tin.id) }}</span> · tiếp nhận <time :datetime="tin.created_at">{{ thoiGianTruoc(tin.created_at, now) }}</time>
+            </p>
+            <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 border-t border-default pt-4 text-base">
+              <dt class="flex items-center gap-1.5 text-muted"><UIcon name="i-lucide-map-pin" class="size-4" />Địa chỉ</dt><dd class="font-medium">{{ tin.address_text || 'Chưa có' }}</dd>
+              <dt class="flex items-center gap-1.5 text-muted"><UIcon name="i-lucide-users" class="size-4" />Số người</dt><dd class="so font-semibold">{{ tin.people_count }}</dd>
+              <dt class="flex items-center gap-1.5 text-muted"><UIcon name="i-lucide-locate" class="size-4" />Tọa độ</dt><dd class="so font-mono text-sm leading-6">{{ tin.location[1].toFixed(5) }}, {{ tin.location[0].toFixed(5) }}</dd>
               <template v-if="tin.reporter_phone !== undefined">
-                <dt class="text-slate-500">Người báo</dt>
-                <dd>
-                  {{ tin.reporter_name || 'Không rõ tên' }} ·
-                  <a v-if="hienSo" :href="`tel:${tin.reporter_phone}`" class="font-mono font-bold text-nuoc underline">{{ tin.reporter_phone }}</a>
-                  <span v-else class="font-mono">{{ cheSdt(tin.reporter_phone) }}</span>
-                  <button v-if="!hienSo" type="button" class="ml-1 font-bold text-nuoc hover:underline" @click="hienSo = true">Hiện số</button>
-                </dd>
+                <dt class="flex items-center gap-1.5 text-muted"><UIcon name="i-lucide-user" class="size-4" />Người báo</dt><dd class="font-medium">{{ tin.reporter_name || 'Không rõ tên' }}</dd>
               </template>
             </dl>
-          </section>
-
-          <section class="rounded-xl bg-white p-4 shadow-sm" aria-labelledby="tieu-de-doi">
-            <h2 id="tieu-de-doi" class="text-sm font-bold text-navy">Đội và hạn nhận</h2>
-            <template v-if="cho">
-              <p class="mt-2 text-base font-bold text-chu">{{ cho.doiTen ?? tin.doiTen ?? 'Đội khác' }}</p>
-              <p class="text-sm text-slate-600">Cách hiện trường {{ khoangCach(cho.khoangCachM) }} · lần giao {{ cho.lan }}</p>
-              <div class="mt-3 flex items-center gap-3">
-                <span class="text-sm text-slate-600">Hạn nhận còn</span>
-                <span class="rounded-lg px-2.5 py-1 font-mono text-xl font-bold" :class="dem?.gap ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-cam-600'" role="timer" :aria-label="`Hạn nhận còn ${dem?.nhan}`">{{ dem?.nhan }}</span>
-              </div>
-              <div class="mt-2 h-2 overflow-hidden rounded bg-slate-100" aria-hidden="true">
-                <div class="h-full bg-cam" :style="{ width: `${Math.round(tiLeDaQua(cho, now) * 100)}%` }" />
-              </div>
-            </template>
-            <p v-else-if="tin.status === 'dang_cuu'" class="mt-2 text-sm">
-              <strong class="text-chu">{{ tin.doiTen ?? wf?.doiTen ?? 'Đội được giao' }}</strong> đã nhận, đang đến / đang cứu.
-            </p>
-            <p v-else class="mt-2 text-sm text-slate-600">Chưa có đội nào đang được giao.</p>
-
-            <div class="mt-3 border-t border-slate-100 pt-3 text-sm">
-              <p v-if="loiWf" class="text-red-700" role="alert">{{ loiWf }}</p>
-              <p v-else-if="!wf" class="text-slate-600">Chưa có luồng phân công cho tin này.</p>
-              <template v-else>
-                <p>
-                  <span class="text-slate-500">Luồng phân công: </span>
-                  <strong class="text-chu">{{ BUOC[wf.buoc] ?? wf.buoc }}</strong>
-                  <span class="ml-1 rounded px-1.5 py-0.5 text-xs font-bold" :class="dangChay(wf) ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'">{{ TRANG_THAI_WF[wf.trangThai] ?? wf.trangThai }}</span>
-                </p>
-                <p v-if="wf.ketQua" class="mt-1"><span class="text-slate-500">Kết quả:</span> {{ KET_QUA_WF[wf.ketQua] ?? wf.ketQua }}<template v-if="wf.nguoiXacNhan"> ({{ wf.nguoiXacNhan }})</template></p>
-                <p v-if="wf.daBaoDieuPhoi" class="mt-1 font-bold text-red-700">Đã báo điều phối: cần xử lý tay.</p>
-              </template>
+            <div v-if="tin.reporter_phone !== undefined" class="mt-4">
+              <UButton
+                v-if="hienSo" :to="`tel:${tin.reporter_phone}`" color="info" variant="soft" size="xl" block
+                icon="i-lucide-phone" class="so min-h-12 font-mono text-lg font-semibold"
+              >
+                Gọi {{ tin.reporter_phone }}
+              </UButton>
+              <UButton v-else color="info" variant="outline" size="xl" block icon="i-lucide-eye" class="min-h-12" @click="hienSo = true">
+                Hiện số <span class="so font-mono">{{ cheSdt(tin.reporter_phone) }}</span>
+              </UButton>
             </div>
-          </section>
+          </UCard>
+
+          <UCard :ui="{ body: 'p-4 sm:p-5' }" as="section" aria-labelledby="tieu-de-luong">
+            <h2 id="tieu-de-luong" class="text-sm font-semibold text-muted">Luồng phân công</h2>
+            <p v-if="!cho && tin.status === 'dang_cuu'" class="mt-2 text-base">
+              <strong class="text-highlighted">{{ tin.doiTen ?? wf?.doiTen ?? 'Đội được giao' }}</strong> đã nhận, đang đến / đang cứu.
+            </p>
+            <p v-else-if="!cho" class="mt-2 text-base text-muted">Chưa có đội nào đang được giao.</p>
+            <UAlert v-if="loiWf" role="alert" class="mt-3" color="error" variant="subtle" icon="i-lucide-circle-alert" :title="loiWf" />
+            <p v-else-if="!wf" class="mt-2 text-base text-muted">Chưa có luồng phân công cho tin này.</p>
+            <template v-else>
+              <p class="mt-2 flex flex-wrap items-center gap-2 text-base">
+                <strong class="text-highlighted">{{ BUOC[wf.buoc] ?? wf.buoc }}</strong>
+                <UBadge :color="dangChay(wf) ? 'success' : 'neutral'" variant="subtle">{{ TRANG_THAI_WF[wf.trangThai] ?? wf.trangThai }}</UBadge>
+              </p>
+              <p v-if="wf.ketQua" class="mt-1 text-sm"><span class="text-muted">Kết quả:</span> {{ KET_QUA_WF[wf.ketQua] ?? wf.ketQua }}<template v-if="wf.nguoiXacNhan"> ({{ wf.nguoiXacNhan }})</template></p>
+              <UAlert v-if="wf.daBaoDieuPhoi" class="mt-3" color="error" variant="subtle" icon="i-lucide-siren" title="Đã báo điều phối: cần xử lý tay." />
+            </template>
+          </UCard>
+
+          <UCard :ui="{ body: 'p-4 sm:p-5' }" as="section" aria-labelledby="tieu-de-ls">
+            <h2 id="tieu-de-ls" class="text-sm font-semibold text-muted">Lịch sử giao ({{ tin.giao.length }})</h2>
+            <p v-if="tin.giao.length === 0" class="mt-2 text-base text-muted">Chưa giao đội nào.</p>
+            <ol v-else class="mt-3 space-y-3">
+              <li v-for="g in [...tin.giao].reverse()" :key="`${g.lan}-${g.giaoLuc}`" class="rounded-md bg-elevated/50 px-3 py-2.5 ring ring-inset ring-default">
+                <p class="flex flex-wrap items-center gap-2">
+                  <span class="font-semibold text-highlighted">Lần {{ g.lan }} · {{ g.doiTen ?? 'Đội khác' }}</span>
+                  <UBadge :color="MAU_KQ[g.ketQua]" variant="subtle">{{ KET_QUA_GIAO[g.ketQua] }}</UBadge>
+                </p>
+                <p class="so mt-0.5 text-sm text-muted">
+                  Cách {{ khoangCach(g.khoangCachM) }} · giao {{ gio(g.giaoLuc) }} · hạn {{ gio(g.hanLuc) }}<template v-if="g.phanHoiLuc"> · trả lời {{ gio(g.phanHoiLuc) }}</template><template v-if="g.nguoi"> · {{ g.nguoi }}</template>
+                </p>
+                <p v-if="g.ghiChu" class="mt-1 text-sm text-default">“{{ g.ghiChu }}”</p>
+              </li>
+            </ol>
+            <UCollapsible v-if="wf?.lichSu.length" class="mt-3">
+              <UButton color="neutral" variant="link" trailing-icon="i-lucide-chevron-down" class="px-0 font-semibold">
+                Nhật ký luồng phân công ({{ wf.lichSu.length }})
+              </UButton>
+              <template #content>
+                <ol class="mt-1 space-y-0.5 font-mono text-xs text-muted">
+                  <li v-for="(dong, i) in wf.lichSu" :key="i">{{ dong }}</li>
+                </ol>
+              </template>
+            </UCollapsible>
+          </UCard>
 
           <!-- Nút theo vai: thanh cố định dưới màn hình điện thoại để bấm bằng một tay -->
           <section
             v-if="nut.length"
-            class="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 p-3 shadow-[0_-4px_12px_rgba(0,0,0,0.08)] backdrop-blur sm:static sm:rounded-xl sm:border-0 sm:shadow-sm"
+            class="fixed inset-x-0 bottom-0 z-20 border-t border-default bg-default/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-6px_16px_rgb(11_31_54/0.10)] backdrop-blur sm:static sm:rounded-lg sm:p-4 sm:shadow-none sm:ring sm:ring-default"
             aria-label="Thao tác"
           >
-            <form v-if="moForm" class="mx-auto mb-3 max-w-3xl" @submit.prevent="bam(moForm)">
-              <label for="ghi-chu" class="text-sm font-bold text-navy">{{ HANH_DONG[moForm].nhanGhiChu }}</label>
-              <textarea
-                id="ghi-chu" v-model="ghiChu" rows="2" :maxlength="GHI_CHU_TOI_DA"
-                class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-nuoc focus:outline-none focus:ring-2 focus:ring-nuoc/30"
-                placeholder="Không bắt buộc"
-              />
-              <div class="mt-2 flex gap-2">
-                <button
-                  type="submit" :disabled="!!dangGui"
-                  class="min-h-12 flex-1 rounded-lg px-4 font-bold text-white disabled:opacity-60"
-                  :class="moForm === 'xac_nhan' ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-red-700 hover:bg-red-800'"
+            <form v-if="moForm" class="mx-auto max-w-2xl space-y-3" @submit.prevent="bam(moForm)">
+              <UFormField :label="HANH_DONG[moForm].nhanGhiChu" name="ghi-chu" :ui="{ label: 'text-base font-semibold' }">
+                <UTextarea id="ghi-chu" v-model="ghiChu" :rows="2" :maxlength="GHI_CHU_TOI_DA" placeholder="Không bắt buộc" size="xl" class="w-full" />
+              </UFormField>
+              <div class="flex gap-2">
+                <UButton
+                  type="submit" size="xl" block :loading="!!dangGui" :disabled="!!dangGui"
+                  :color="moForm === 'xac_nhan' ? 'success' : 'error'" class="min-h-14 flex-1 text-lg font-semibold"
                 >
                   {{ dangGui ? 'Đang gửi…' : `Xác nhận: ${HANH_DONG[moForm].nhan.toLowerCase()}` }}
-                </button>
-                <button type="button" class="min-h-12 rounded-lg border border-slate-300 px-4 font-bold text-slate-700 hover:bg-slate-100" @click="huyForm">Thôi</button>
+                </UButton>
+                <UButton type="button" size="xl" color="neutral" variant="outline" class="min-h-14 text-lg" @click="huyForm">Thôi</UButton>
               </div>
             </form>
-            <div v-else class="mx-auto flex max-w-3xl gap-2">
-              <button
-                v-for="hd in nut" :key="hd" type="button" :disabled="!!dangGui"
-                class="min-h-12 flex-1 rounded-lg px-3 text-base font-bold disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy"
-                :class="HANH_DONG[hd].chinh ? 'bg-cam text-white hover:bg-cam-600' : 'border-2 border-navy text-navy hover:bg-navy hover:text-white'"
+            <div v-else class="mx-auto flex max-w-2xl gap-2">
+              <UButton
+                v-for="hd in nut" :key="hd" size="xl" block :disabled="!!dangGui" :loading="dangGui === hd"
+                v-bind="kieuNut(hd)" class="min-h-14 flex-1 text-lg font-semibold" :class="HANH_DONG[hd].chinh ? '' : 'ring-2 ring-current'"
                 @click="bam(hd)"
               >
                 {{ dangGui === hd ? 'Đang gửi…' : HANH_DONG[hd].nhan }}
-              </button>
+              </UButton>
             </div>
           </section>
-
-          <section class="rounded-xl bg-white p-4 shadow-sm" aria-labelledby="tieu-de-ls">
-            <h2 id="tieu-de-ls" class="text-sm font-bold text-navy">Lịch sử giao ({{ tin.giao.length }})</h2>
-            <p v-if="tin.giao.length === 0" class="mt-2 text-sm text-slate-500">Chưa giao đội nào.</p>
-            <ol v-else class="mt-2 space-y-2">
-              <li v-for="g in [...tin.giao].reverse()" :key="`${g.lan}-${g.giaoLuc}`" class="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                <p class="flex flex-wrap items-center gap-2">
-                  <span class="font-bold text-chu">Lần {{ g.lan }} · {{ g.doiTen ?? 'Đội khác' }}</span>
-                  <span class="rounded px-1.5 py-0.5 text-xs font-bold" :class="MAU_KQ[g.ketQua]">{{ KET_QUA_GIAO[g.ketQua] }}</span>
-                </p>
-                <p class="text-xs text-slate-600">
-                  Cách {{ khoangCach(g.khoangCachM) }} · giao {{ gio(g.giaoLuc) }} · hạn {{ gio(g.hanLuc) }}<template v-if="g.phanHoiLuc"> · trả lời {{ gio(g.phanHoiLuc) }}</template><template v-if="g.nguoi"> · {{ g.nguoi }}</template>
-                </p>
-                <p v-if="g.ghiChu" class="mt-0.5 text-xs italic text-slate-700">“{{ g.ghiChu }}”</p>
-              </li>
-            </ol>
-            <details v-if="wf?.lichSu.length" class="mt-3 text-xs text-slate-600">
-              <summary class="cursor-pointer font-bold text-navy">Nhật ký luồng phân công ({{ wf.lichSu.length }})</summary>
-              <ol class="mt-1 space-y-0.5 font-mono">
-                <li v-for="(dong, i) in wf.lichSu" :key="i">{{ dong }}</li>
-              </ol>
-            </details>
-          </section>
         </template>
-      </main>
+      </div>
     </template>
   </UDashboardPanel>
 </template>
