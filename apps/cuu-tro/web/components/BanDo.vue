@@ -3,7 +3,8 @@
 // Bản đồ nền MapLibre GL JS + lớp tin kêu cứu thời gian thực (#60). Kiểu nền vector OpenFreeMap (dữ liệu
 // OpenStreetMap), nhãn đổi sang tiếng Việt; không tải được thì dùng ô ảnh OpenStreetMap. Nguồn: DEPENDENCIES.md.
 // Điểm: màu nền theo mức khẩn, màu viền theo trạng thái; nhiều điểm gần nhau thì gom cụm (cụm đỏ nếu có tin
-// khẩn cấp); tin vừa đến có vòng nhấp nháy. Bấm điểm → chọn (danh sách và ô chi tiết bên cạnh đồng bộ).
+// khẩn cấp); tin vừa đến có vòng nhấp nháy. Bấm điểm → chọn (danh sách và ngăn chi tiết đồng bộ).
+// Giao diện tối → kiểu nền tối của OpenFreeMap; đổi kiểu nền thì thêm lại các lớp (sự kiện style.load).
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { GeoJSONSource, Map as MlMap, StyleSpecification } from 'maplibre-gl'
 import {
@@ -12,10 +13,13 @@ import {
 } from '~/utils/ban-do'
 import type { TinKeuCuu } from '~/utils/tin'
 
-const props = defineProps<{ ds: TinKeuCuu[]; moi: Map<string, number>; chon: string | null }>()
+// dePhai: bề rộng (px) ngăn chi tiết che bên phải bản đồ, để điểm được chọn bay vào giữa phần còn thấy
+const props = defineProps<{ ds: TinKeuCuu[]; moi: Map<string, number>; chon: string | null; dePhai?: number }>()
 const emit = defineEmits<{ chon: [id: string] }>()
 const el = ref<HTMLDivElement>()
 const loiNen = ref(false)
+const colorMode = useColorMode()
+const toi = computed(() => colorMode.value === 'dark')
 let map: MlMap | undefined
 let henNhapNhay: ReturnType<typeof setInterval> | undefined
 
@@ -39,6 +43,8 @@ function duLieuChon(id: string | null) {
 }
 
 function themLop(m: MlMap) {
+  if (m.getSource('tin')) return
+  const nenDiem = toi.value ? '#0B1626' : '#ffffff'
   m.addSource('tin', {
     type: 'geojson',
     data: tinSangGeoJson(props.ds, props.moi),
@@ -52,9 +58,9 @@ function themLop(m: MlMap) {
   m.addLayer({
     id: 'cum', type: 'circle', source: 'tin', filter: ['has', 'point_count'],
     paint: {
-      'circle-color': bieuThucMauCum() as never,
+      'circle-color': bieuThucMauCum(toi.value) as never,
       'circle-radius': ['step', ['get', 'point_count'], 16, 10, 21, 50, 27],
-      'circle-stroke-color': '#ffffff',
+      'circle-stroke-color': nenDiem,
       'circle-stroke-width': 3,
       'circle-opacity': 0.9,
     },
@@ -81,7 +87,7 @@ function themLop(m: MlMap) {
     paint: {
       'circle-radius': ['match', ['get', 'urgency'], 'khan_cap', 10, 'cao', 9, 8],
       'circle-color': bieuThucMauKhan() as never,
-      'circle-stroke-color': bieuThucMauTrangThai() as never,
+      'circle-stroke-color': bieuThucMauTrangThai(toi.value) as never,
       'circle-stroke-width': 3,
       'circle-opacity': ['match', ['get', 'status'], ['da_cuu', 'dong'], 0.5, 1],
       'circle-stroke-opacity': ['match', ['get', 'status'], ['da_cuu', 'dong'], 0.6, 1],
@@ -92,9 +98,13 @@ function themLop(m: MlMap) {
     m.addLayer({
       id: 'quan-dao', type: 'symbol', source: 'quan-dao',
       layout: { 'text-field': ['get', 'ten'], 'text-font': ['Noto Sans Bold'], 'text-size': 12 },
-      paint: { 'text-color': '#12355B', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 },
+      paint: { 'text-color': toi.value ? '#C0D1E6' : '#12355B', 'text-halo-color': nenDiem, 'text-halo-width': 1.5 },
     })
   }
+}
+
+/** Sự kiện gắn theo id lớp: gắn một lần, vẫn chạy sau khi đổi kiểu nền (lớp được thêm lại cùng id). */
+function ganSuKien(m: MlMap) {
   m.on('click', 'tin', (e) => {
     const id = e.features?.[0]?.properties?.id
     if (typeof id === 'string') emit('chon', id)
@@ -111,7 +121,6 @@ function themLop(m: MlMap) {
     m.on('mouseenter', lop, () => { m.getCanvas().style.cursor = 'pointer' })
     m.on('mouseleave', lop, () => { m.getCanvas().style.cursor = '' })
   }
-  batNhapNhay(m)
 }
 
 /** Vòng quanh tin mới phóng to và mờ dần (chu kỳ 1,6 giây); người dùng giảm chuyển động thì để vòng tĩnh. */
@@ -129,7 +138,7 @@ function batNhapNhay(m: MlMap) {
 
 onMounted(async () => {
   const { Map, NavigationControl, ScaleControl } = await import('maplibre-gl')
-  const style = await taiKieu(useRuntimeConfig().public.mapStyleUrl as string)
+  const style = await taiKieu(urlKieu())
   if (!el.value) return
   const m = new Map({
     container: el.value,
@@ -139,9 +148,22 @@ onMounted(async () => {
     attributionControl: { compact: false },
   })
   m.addControl(new NavigationControl({ visualizePitch: false }), 'top-left')
-  m.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-left')
-  m.on('load', () => themLop(m))
+  m.addControl(new ScaleControl({ unit: 'metric' }), 'bottom-right')
+  m.on('style.load', () => themLop(m))
+  ganSuKien(m)
+  batNhapNhay(m)
   map = m
+})
+
+function urlKieu() {
+  const rc = useRuntimeConfig().public
+  return (toi.value ? rc.mapStyleUrlToi : rc.mapStyleUrl) as string
+}
+
+watch(toi, async () => {
+  if (!map) return
+  loiNen.value = false
+  map.setStyle(await taiKieu(urlKieu()), { diff: false })
 })
 
 onBeforeUnmount(() => {
@@ -158,14 +180,16 @@ watch(() => props.chon, (id: string | null) => {
   if (!map?.getSource('tin-chon')) return
   ;(map.getSource('tin-chon') as GeoJSONSource).setData(duLieuChon(id) as never)
   const t = props.ds.find((x) => x.id === id)
-  if (t && toaDoHopLe(t.location)) map.flyTo({ center: t.location, zoom: zoomChon(map.getZoom()), speed: 1.2 })
+  if (t && toaDoHopLe(t.location)) {
+    map.flyTo({ center: t.location, zoom: zoomChon(map.getZoom()), speed: 1.2, padding: { top: 0, bottom: 0, left: 0, right: props.dePhai ?? 0 } })
+  }
 })
 </script>
 
 <template>
   <div class="relative h-full w-full">
     <div ref="el" class="h-full w-full" role="region" aria-label="Bản đồ tin kêu cứu" />
-    <p v-if="loiNen" class="absolute right-2 top-2 rounded bg-white/90 px-2 py-1 text-xs shadow">
+    <p v-if="loiNen" class="absolute bottom-16 right-3 rounded-md bg-default/95 px-2.5 py-1.5 text-xs text-muted shadow ring ring-default">
       Không tải được bản đồ nền vector, đang dùng ô ảnh OpenStreetMap
     </p>
   </div>
