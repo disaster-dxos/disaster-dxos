@@ -2,7 +2,7 @@
 <script setup lang="ts">
 // Nút thông báo realtime trên thanh đầu trang (#68): chấm trạng thái kết nối, số tin chưa đọc, bảng
 // tin gần nhất. Thông báo mới được đọc lên cho trình đọc màn hình (aria-live).
-import { thoiGianTruoc } from '~/utils/tin-gia'
+import { thoiGianTruoc } from '~/utils/tin'
 import type { MucDo } from '~/utils/thong-bao'
 
 const { ds, chuaDoc, trangThai, daDoc } = useThongBao()

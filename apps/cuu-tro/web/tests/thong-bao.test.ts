@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from 'vitest'
-import { docThongBao, maNgan, themThongBao, tokenUrl, wsUrl, type ThongBao } from '../utils/thong-bao'
+import { docThongBao, themThongBao, tokenUrl, wsUrl, type ThongBao } from '../utils/thong-bao'
+import { maNgan } from '../utils/tin'
 
 const INC = 'b0000000-0000-4000-8000-000000000004'
 const BAY_GIO = new Date('2026-10-22T10:00:00Z')

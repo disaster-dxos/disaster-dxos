@@ -40,7 +40,7 @@ describe('CSP', () => {
     expect(muc['base-uri']).toEqual(["'self'"])
   })
 
-  it('chỉ kết nối tới Keycloak, gateway (cả WebSocket realtime) và nguồn bản đồ', () => {
+  it('chỉ kết nối tới Keycloak, gateway (cả WebSocket realtime và GraphQL subscription) và nguồn bản đồ', () => {
     expect(muc['connect-src']).toEqual([
       "'self'", 'http://localhost:8080', 'http://localhost:9080', 'ws://localhost:9080',
       'https://tiles.openfreemap.org', 'https://tile.openstreetmap.org',

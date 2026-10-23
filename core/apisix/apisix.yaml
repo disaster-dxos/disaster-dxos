@@ -83,8 +83,7 @@ routes:
     uri: /graphql
     methods: [GET, POST, OPTIONS]
     upstream_id: hasura
-    # Subscription của Hasura đi qua WebSocket (vẫn cần header Authorization lúc bắt tay)
-    enable_websocket: true
+    # Subscription (WebSocket) đi route graphql-ws bên dưới; route này chỉ nhận query/mutation HTTP
     plugins:
       request-id: {}
       client-control: &api-body-limit
@@ -134,6 +133,50 @@ routes:
             - X-Hasura-Admin-Secret
       limit-count: &rate-limit
         count: ${{GW_RATE_LIMIT_COUNT:=300}}
+        time_window: ${{GW_RATE_LIMIT_WINDOW:=60}}
+        key_type: var
+        key: remote_addr
+        rejected_code: 429
+
+  # ---------------- /graphql (WebSocket) → Hasura /v1/graphql, subscription (#60) ----------------
+  # Cùng URI /graphql, chỉ khi bắt tay WebSocket (GET + Upgrade: websocket), ưu tiên hơn route trên.
+  # Giao thức graphql-transport-ws (graphql-ws). Trình duyệt KHÔNG gửi được header Authorization khi mở
+  # WebSocket, nên gateway không kiểm JWT ở bước bắt tay (giống /realtime/websocket, #68): JWT nằm trong
+  # payload của connection_init ({"headers": {"Authorization": "Bearer …"}}) và Hasura kiểm chữ ký, iss,
+  # hạn rồi áp quyền theo vai trò như với HTTP. Thiếu JWT → Hasura coi là vai anonymous, không thấy bảng
+  # nào; JWT sai/hết hạn → Hasura đóng kết nối. Không có cookie nên trang lạ mở WebSocket cũng không
+  # mượn được phiên. WAF kiểm bắt tay (URI, tham số, header); khung WebSocket sau bắt tay không đi qua
+  # WAF (Coraza không phân tích được), nội dung là thông điệp GraphQL do Hasura kiểm theo metadata.
+  # Giới hạn tần suất riêng như route realtime: mỗi lần kết nối/kết nối lại là một request.
+  - id: graphql-ws
+    uri: /graphql
+    priority: 10
+    methods: [GET]
+    vars:
+      - [http_upgrade, "~*", "^websocket$"]
+    upstream_id: hasura
+    enable_websocket: true
+    plugins:
+      request-id: {}
+      client-control: *api-body-limit
+      coraza-filter:
+        conf:
+          directives_map:
+            graphql-ws:
+              - Include @recommended-conf
+              - SecRuleEngine On
+              - SecRequestBodyAccess Off
+              - SecResponseBodyAccess Off
+              - Include @crs-setup-conf
+              - Include @owasp_crs/*.conf
+          default_directives: graphql-ws
+      proxy-rewrite:
+        uri: /v1/graphql
+        headers:
+          remove:
+            - X-Hasura-Admin-Secret
+      limit-count:
+        count: ${{GW_REALTIME_RATE_LIMIT_COUNT:=60}}
         time_window: ${{GW_RATE_LIMIT_WINDOW:=60}}
         key_type: var
         key: remote_addr
