@@ -79,7 +79,7 @@ Hai đường mới, chỉ gọi lõi qua API Gateway bằng JWT của người 
 |---|---|---|---|
 | ![Hàng đợi phân công của điều phối](../../../docs/images/web-phan-cong-dieu-phoi.png) | ![Đổi đội kèm lý do](../../../docs/images/web-phan-cong-doi-doi.png) | ![Chi tiết nhiệm vụ trên điện thoại](../../../docs/images/web-phan-cong-cuu-ho.png) | ![Đội cũ nhận muộn: 403](../../../docs/images/web-phan-cong-nhan-muon.png) |
 
-Ảnh chụp từ bản build web với gateway giả lập trả dữ liệu giả (`docs/images/README.md`). Kiểm trên stack thật: `bash scripts/smoke-phan-cong.sh` (trong `make smoke`), chạy nguyên văn query GraphQL của web.
+Ảnh chụp trên stack thật với tin mẫu là dữ liệu giả (`docs/images/README.md`). Kiểm trên stack thật: `bash scripts/smoke-phan-cong.sh` (trong `make smoke`), chạy nguyên văn query GraphQL của web.
 
 ## Kiểm thử
 
