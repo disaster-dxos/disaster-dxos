@@ -210,6 +210,7 @@ Tầng 2 chỉ thấy cổng `9080` của APISIX. Hasura (`8081`), SeaweedFS S3 
 | `/workflow/minh-bach/*` (#28) | GET, OPTIONS | Như `/workflow/*`, ưu tiên hơn (`priority`) | **Không** (công khai), bỏ header `Authorization` | Bộ `api` | Body 1 MiB; rate limit như trên | Quy ước của lõi: đường công khai chỉ đọc của API ứng dụng (trang "Minh bạch cứu trợ", mục 5.1) |
 | `/ledger/*` (#28) | GET, HEAD, OPTIONS | `ledger:8090` (sổ cái của lõi) | **Không** (công khai) | Bộ `api` | Rate limit như trên | checkpoint, tile, proof, verifier (mục 5.1) |
 | `/ledger/*` (#28) | POST, PUT, PATCH, DELETE | – | – | – | – | **403**: ghi sổ cái chỉ từ dịch vụ nội bộ |
+| `/workflow/keu-cuu` (#66) | POST, OPTIONS | Như `/workflow/*`, ưu tiên hơn (`priority`) | Bắt buộc (không mở gửi ẩn danh) | Bộ `api`: đọc body JSON | Body 1 MiB; **giới hạn riêng** `GW_KEU_CUU_RATE_LIMIT_COUNT` (mặc định 20) / `GW_RATE_LIMIT_WINDOW` / IP, đếm riêng | Quy ước của lõi: đường tạo tin từ hiện trường, dễ bị spam nhất (mục 6.2) |
 | `/workflow/*` | GET, POST, OPTIONS | API workflow của ứng dụng `<DXOS_APP>-api:8000` (`GW_WORKFLOW_UPSTREAM_HOST/PORT`), bỏ tiền tố `/workflow` | Bắt buộc, chuyển nguyên Bearer token (API kiểm lại) | Bộ `api` | Body 1 MiB; rate limit như trên | #29, mục 7.3 |
 | `/realtime/websocket` (#68) | GET (bắt tay WebSocket) | `centrifugo:8000/connection/websocket` | **Không** ở gateway (trình duyệt không gửi header khi mở WebSocket); token ngắn hạn trong lệnh connect, Centrifugo kiểm, mục 3.5 | Bộ `realtime`: kiểm bắt tay (URI, tham số, header), không đọc khung WebSocket | `GW_REALTIME_RATE_LIMIT_COUNT` (mặc định 60) lần mở / `GW_RATE_LIMIT_WINDOW` | Đúng một đường; HTTP API `/api/*` của Centrifugo không có route ra ngoài |
 | `/api/v1/me` | GET, OPTIONS | Keycloak userinfo | Bắt buộc | Bộ `api` | rate limit như trên | Route mẫu v0.0.1 |
@@ -479,6 +480,41 @@ sequenceDiagram
 | Ưu tiên urgency | (1) thứ tự lấy hàng đợi; (2) `priority_key` Temporal; (3) luật SQL `team_reserved_for_more_urgent`: tin kém khẩn không lấy đội đang cần cho tin khẩn hơn đang chờ trong bán kính | (1)(2) chỉ giúp khi nhiều việc cùng lúc; (3) mới quyết định ai được đội khi đội khan hiếm. Không giành lại đội đã giao (không ngắt nhiệm vụ đang làm); `seeking_at` hết hạn tự động nên workflow chết không chặn tin khác |
 | Quá hạn → phân công lại | `workflow.wait_condition` có `timeout` (timer bền) + signal `nhan_nhiem_vu` / `tu_choi` / `huy` | Không vòng lặp sleep/poll; worker khởi động lại vẫn giữ hạn; test bằng máy chủ test tua thời gian |
 | Báo điều phối | Sự kiện JetStream `cuu-tro.dieu-phoi.can-xu-ly.<id>` (stream `CUU_TRO_DIEU_PHOI`, 30 ngày), `Nats-Msg-Id` chống trùng | Cầu nối `cuu-tro-thong-bao` đẩy lên web điều phối qua Centrifugo (#68, mục 3.5); Telegram đọc sau; sự kiện không có dữ liệu cá nhân |
+
+### 6.2. Tiếp nhận tin kêu cứu qua API (#66)
+
+`POST /workflow/keu-cuu` của `cuu-tro-api`: kiểm dữ liệu ở API (Poka-yoke, lỗi tiếng Việt theo trường) rồi `INSERT` bằng role `cuu_tro_app`; chặn trùng vẫn là trigger của CSDL (#25). Chi tiết trường, mã lỗi: `apps/cuu-tro/README.md` mục "Tiếp nhận tin kêu cứu".
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as tinh-nguyen / dieu-phoi
+  participant GW as APISIX /workflow/keu-cuu
+  participant API as cuu-tro-api
+  participant PG as PostgreSQL (cuu_tro)
+  U->>GW: POST JSON + Bearer JWT
+  Note over GW: WAF (body) → JWT → limit-count riêng (20/60 s/IP)
+  GW->>API: /keu-cuu
+  API->>API: kiểm JWT + vai, kiểm trường (422), chuẩn hóa SĐT
+  API->>PG: INSERT incidents (role cuu_tro_app)
+  Note over PG: trigger incidents_no_duplicate:<br/>pg_advisory_xact_lock(SĐT) → ST_DWithin 200 m, 6 giờ
+  alt trùng
+    PG-->>API: 23505 incidents_no_duplicate, DETAIL incident_id=…
+    API-->>U: 409 {ma: tin_trung, incident_id, khoang_cach_m}
+  else hợp lệ
+    Note over PG: trigger outbox (#67): assignment_queue + pg_notify
+    PG-->>API: id, created_at
+    API-->>U: 201 (phân công tự động, bản đồ nhận qua subscription #60)
+  end
+```
+
+| Quyết định | Chọn | Vì sao |
+|---|---|---|
+| REST hay mutation GraphQL | **REST** `POST /workflow/keu-cuu` trên API của ứng dụng; mutation Hasura vẫn giữ cho web điều phối | Cần mã HTTP riêng (`409` kèm mã tin, `422` theo trường), chuẩn hóa SĐT và giới hạn tần suất **chỉ cho đường này**: mọi mutation/query GraphQL chung một URI `/graphql` nên APISIX không tách được. Cùng mẫu với ảnh hiện trường (#27) và phiếu kho (#28) |
+| Ghi bằng gì | Role dịch vụ `cuu_tro_app` (quyền INSERT theo cột, migration 0008), không đi vòng qua Hasura | Lấy được `SQLSTATE`, tên ràng buộc và `DETAIL` (`incident_id=…`) của trigger một cách chắc chắn; qua Hasura chỉ còn chuỗi thông điệp. Quyền vai trò kiểm ở API bằng JWT (giống Hasura: `dieu-phoi`, `tinh-nguyen`); `created_by` lấy từ `sub` |
+| Chặn trùng khi gửi đồng thời | Trong CSDL: trigger `BEFORE INSERT` + `pg_advisory_xact_lock` theo SĐT (có từ #25), nay `SECURITY DEFINER` | Kiểm ở API (đọc rồi ghi) sẽ lọt khi hai request chạy song song hoặc nhiều bản API. Khóa theo SĐT tuần tự hóa đúng các request có thể trùng nhau, request khác SĐT không chờ nhau. Exclusion constraint không dùng được vì điều kiện phụ thuộc thời điểm và trạng thái |
+| Gửi ẩn danh | **Không mở** | Repo chưa có quyết định về kênh công khai. Endpoint ẩn danh + `409` kèm mã tin cho phép dò "số X có đang báo tin quanh chỗ Y không", và chỉ còn giới hạn theo IP để chống spam. Kênh người dân (Telegram bot, việc sau) gọi API bằng tài khoản dịch vụ riêng của bot |
+| Vùng phục vụ | Hình chữ nhật cấu hình bằng `KEU_CUU_VUNG_PHUC_VU` (mặc định Việt Nam) | Bắt lỗi đổi chỗ vĩ độ/kinh độ và tọa độ (0, 0) của GPS chưa bắt được vị trí; xã triển khai thu hẹp về địa bàn của mình |
 
 ## 7. Vì sao lõi độc lập với nghiệp vụ (`core/` và `apps/`)
 

@@ -12,6 +12,9 @@ Client gọi qua API Gateway: APISIX route /workflow/* kiểm JWT + WAF + rate l
   POST /{workflow_id}/huy           dừng luồng khi đội chưa nhận, gỡ đội (chỉ dieu-phoi)
   POST /{workflow_id}/xac-nhan      signal "đã cứu" (dieu-phoi; cuu-ho của đội được gán)
   GET  /healthz                     sống + kết nối Temporal (healthcheck của container)
+Tiếp nhận tin kêu cứu (#66, Poka-yoke: cuu_tro_workflow/keu_cuu.py, apps/cuu-tro/README.md):
+  POST /keu-cuu                     tạo tin (dieu-phoi, tinh-nguyen); 201 · 409 trùng kèm mã tin đang mở ·
+                                    422 lỗi theo trường. Route gateway riêng /workflow/keu-cuu (rate limit chặt)
 Ảnh hiện trường (#27, luật quyền: cuu_tro_workflow/anh.py, apps/cuu-tro/README.md):
   POST /tai-len/su-co/{incident_id}/anh   body = nội dung ảnh (route gateway /workflow/tai-len/*)
   GET  /su-co/{incident_id}/anh           liệt kê ảnh của tin kèm link xem ngắn hạn
@@ -29,6 +32,7 @@ người dùng; luật lọc theo đội của Hasura metadata (#26) trả null 
 """
 
 import hashlib
+import json
 import logging
 import re
 import uuid
@@ -47,8 +51,8 @@ from temporalio.common import Priority, WorkflowIDConflictPolicy, WorkflowIDReus
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError
 
-from . import anh, config, so_cai, thong_bao
-from .auth import VAI_TRO_CUU_HO, VAI_TRO_DIEU_PHOI, NguoiDung, XacThuc, can_vai_tro
+from . import anh, config, keu_cuu, so_cai, thong_bao
+from .auth import VAI_TRO_CUU_HO, VAI_TRO_DIEU_PHOI, VAI_TRO_TINH_NGUYEN, NguoiDung, XacThuc, can_vai_tro
 from .s3 import KhoAnh, LoiS3
 from .logic import PhanHoi, TrangThaiPhanCong, XacNhan, YeuCauHuy, uu_tien
 from .workflows import (
@@ -142,6 +146,27 @@ class SoPhieu:
         )
 
 
+class SoTin:
+    """Tạo tin kêu cứu bằng role dịch vụ cuu_tro_app (migration 0008: INSERT đúng các cột người báo được
+    nhập; status/assigned_team_id lấy mặc định). Trigger của CSDL chặn trùng (0001) và ghi outbox để tự
+    phân công (0007) trong cùng transaction với tin."""
+
+    def __init__(self, pool: asyncpg.Pool) -> None:
+        self._pool = pool
+
+    async def them(self, tin: keu_cuu.TinKeuCuu, created_by: str) -> dict[str, Any]:
+        row = await self._pool.fetchrow(
+            """INSERT INTO cuu_tro.incidents
+                 (description, location, address_text, people_count, urgency, reporter_phone, reporter_name,
+                  source, created_by)
+               VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, $4, $5, $6, $7, $8, $9, $10)
+               RETURNING id, status, urgency, people_count, created_at""",
+            tin.description, tin.lon, tin.lat, tin.address_text, tin.people_count, tin.urgency,
+            tin.reporter_phone, tin.reporter_name, tin.source, created_by,
+        )
+        return dict(row)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     cfg = config.load()
@@ -152,12 +177,14 @@ async def lifespan(app: FastAPI):
     if not hasattr(st, "temporal"):
         st.temporal = await Client.connect(cfg.temporal_address, namespace=cfg.temporal_namespace)
     pool = None
-    if not (hasattr(st, "so_anh") and hasattr(st, "so_phieu")) and cfg.db_url:
+    if not (hasattr(st, "so_anh") and hasattr(st, "so_phieu") and hasattr(st, "so_tin")) and cfg.db_url:
         pool = await asyncpg.create_pool(cfg.db_url, min_size=0, max_size=4)
         if not hasattr(st, "so_anh"):
             st.so_anh = SoAnh(pool)
         if not hasattr(st, "so_phieu"):
             st.so_phieu = SoPhieu(pool)
+        if not hasattr(st, "so_tin"):
+            st.so_tin = SoTin(pool)
     try:
         async with httpx.AsyncClient(base_url=cfg.gateway_url, timeout=10) as http, \
                 httpx.AsyncClient(timeout=30) as http_s3, \
@@ -275,6 +302,50 @@ async def realtime_token(request: Request, response: Response, nd: NguoiDungDep)
             "kenh": kenh}
 
 
+@app.post("/keu-cuu", status_code=201)
+async def keu_cuu_moi(request: Request, nd: NguoiDungDep, response: Response) -> dict[str, Any]:
+    """Tiếp nhận tin kêu cứu (#66). Body JSON: lat, lon, reporter_phone, description bắt buộc; urgency,
+    people_count, address_text, reporter_name, source tùy chọn. Lỗi trả {"detail": {"ma", "thong_bao", …}}."""
+    can_vai_tro(nd, VAI_TRO_DIEU_PHOI, VAI_TRO_TINH_NGUYEN)
+    st = request.app.state
+    # Body JSON tự đọc (không qua model pydantic) để lỗi theo trường bằng tiếng Việt, đủ mọi trường sai
+    raw = await doc_body_gioi_han(request, keu_cuu.BODY_TOI_DA, "Nội dung tin kêu cứu")
+    try:
+        d = json.loads(raw)
+    except ValueError:
+        loi = keu_cuu.LoiTruong("body", "Nội dung gửi lên không phải JSON hợp lệ.")
+        raise HTTPException(422, keu_cuu.loi_422([loi])) from None
+    kq = keu_cuu.kiem_tra(d, st.cfg.keu_cuu_vung)
+    if isinstance(kq, list):
+        raise HTTPException(422, keu_cuu.loi_422(kq))
+    try:
+        dong = await st.so_tin.them(kq, nd.sub)
+    except asyncpg.UniqueViolationError as e:
+        trung = keu_cuu.tin_trung_tu_detail(e.detail) if e.constraint_name == "incidents_no_duplicate" else None
+        if trung is None:
+            raise
+        # Chỉ ghi mã tin đang mở; không ghi SĐT
+        log.info("tin kêu cứu trùng tin đang mở %s, không tạo mới", trung["incident_id"])
+        raise HTTPException(409, keu_cuu.loi_409(trung)) from None
+    except (asyncpg.CheckViolationError, asyncpg.NotNullViolationError) as e:
+        # API đã kiểm trước; tới đây là lệch giữa API và ràng buộc CSDL. Không ghi thông điệp (có thể chứa giá trị)
+        log.error("CSDL từ chối tin kêu cứu: %s %s", type(e).__name__, e.constraint_name)
+        loi = keu_cuu.LoiTruong("body", "Dữ liệu không qua được ràng buộc của CSDL.")
+        raise HTTPException(422, keu_cuu.loi_422([loi])) from None
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "id": str(dong["id"]),
+        "status": dong["status"],
+        "urgency": dong["urgency"],
+        "people_count": dong["people_count"],
+        "lat": kq.lat,
+        "lon": kq.lon,
+        "created_at": dong["created_at"].isoformat(),
+        # Trigger outbox (0007) đã xếp tin vào hàng phân công tự động; bản đồ thấy tin qua subscription (#60)
+        "phan_cong": "tu_dong",
+    }
+
+
 @app.post("/hello")
 async def hello(request: Request, nd: NguoiDungDep, vao: HelloVao | None = None) -> dict[str, str]:
     st = request.app.state
@@ -328,13 +399,13 @@ def _link(request: Request, object_key: str, han_giay: int) -> dict[str, Any]:
             "het_han_luc": het_han.isoformat(timespec="seconds")}
 
 
-async def doc_body_gioi_han(request: Request, toi_da: int) -> bytes:
+async def doc_body_gioi_han(request: Request, toi_da: int, ten: str = "Ảnh") -> bytes:
     """Đọc body theo luồng, dừng ngay khi vượt `toi_da` byte (413); không tin Content-Length."""
     buf = bytearray()
     async for phan in request.stream():
         buf += phan
         if len(buf) > toi_da:
-            raise HTTPException(413, f"Ảnh vượt {toi_da} byte")
+            raise HTTPException(413, f"{ten} vượt {toi_da} byte")
     return bytes(buf)
 
 

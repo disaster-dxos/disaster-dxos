@@ -349,6 +349,8 @@ services:
       GW_WEB_RATE_LIMIT_COUNT: ${GW_WEB_RATE_LIMIT_COUNT:-600}
       # Route /realtime/websocket (#68): số lần mở WebSocket / GW_RATE_LIMIT_WINDOW giây / IP
       GW_REALTIME_RATE_LIMIT_COUNT: ${GW_REALTIME_RATE_LIMIT_COUNT:-60}
+      # Route /workflow/keu-cuu (#66): tạo tin kêu cứu / GW_RATE_LIMIT_WINDOW giây / IP, chống spam
+      GW_KEU_CUU_RATE_LIMIT_COUNT: ${GW_KEU_CUU_RATE_LIMIT_COUNT:-20}
     volumes:
       - ./core/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
       - ./core/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro

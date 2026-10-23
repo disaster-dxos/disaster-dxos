@@ -304,6 +304,34 @@ routes:
             - Authorization
       limit-count: *rate-limit
 
+  # ---------------- /workflow/keu-cuu → tiếp nhận tin kêu cứu của ứng dụng (#66) ----------------
+  # Quy ước của lõi: đường POST /keu-cuu của API ứng dụng là đường người ngoài hiện trường gửi tin (dễ bị
+  # spam nhất), nên có giới hạn tần suất RIÊNG, chặt hơn route API chung (GW_KEU_CUU_RATE_LIMIT_COUNT
+  # request / GW_RATE_LIMIT_WINDOW giây / IP, đếm riêng route này). Ưu tiên hơn /workflow/* (priority).
+  # Còn lại như route /workflow/*: JWT bắt buộc (không mở gửi ẩn danh), WAF đọc body JSON, body ≤ 1 MiB
+  # (API còn giới hạn riêng 16 KiB). API kiểm lại JWT, vai trò, dữ liệu; CSDL chặn tin trùng.
+  - id: workflow-keu-cuu
+    uri: /workflow/keu-cuu
+    priority: 10
+    methods: [POST, OPTIONS]
+    upstream_id: workflow-api
+    plugins:
+      request-id: {}
+      client-control: *api-body-limit
+      serverless-pre-function: *waf-read-body
+      coraza-filter:
+        conf: *waf-api
+      cors: *cors
+      openid-connect: *oidc-pass-token
+      proxy-rewrite:
+        regex_uri: ["^/workflow/(.*)", "/$1"]
+      limit-count:
+        count: ${{GW_KEU_CUU_RATE_LIMIT_COUNT:=20}}
+        time_window: ${{GW_RATE_LIMIT_WINDOW:=60}}
+        key_type: var
+        key: remote_addr
+        rejected_code: 429
+
   # ---------------- /ledger/* → sổ cái minh bạch (#28), CHỈ ĐỌC, công khai ----------------
   # tlog-tiles (C2SP): /ledger/checkpoint (đã ký Ed25519), /ledger/tile/... (tile hash + entry bundle),
   # /ledger/proof/{index} (inclusion proof), /ledger/verifier (khóa công khai). Ai cũng tải về tự kiểm

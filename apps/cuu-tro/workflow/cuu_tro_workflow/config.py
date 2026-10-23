@@ -4,6 +4,7 @@
 import os
 from dataclasses import dataclass, field
 
+from .keu_cuu import VUNG_VIET_NAM, VungPhucVu, vung_tu_chuoi
 from .logic import HAN_NHAN_MAC_DINH, URGENCY_RANK, ThamSoPhanCong
 
 
@@ -68,6 +69,9 @@ class Config:
     # chỉ cuu-tro-api có) và hạn token; Centrifugo đòi làm mới trước khi hết hạn
     realtime_token_secret: str = ""
     realtime_token_han_giay: int = 300
+    # Tiếp nhận tin kêu cứu qua API (#66): vùng phục vụ (kinh_do_min,vi_do_min,kinh_do_max,vi_do_max).
+    # Bán kính và khoảng thời gian chặn trùng nằm trong CSDL (bảng incident_dedup_config, #25).
+    keu_cuu_vung: VungPhucVu = field(default_factory=lambda: vung_tu_chuoi(VUNG_VIET_NAM))
 
 
 def load() -> Config:
@@ -105,6 +109,7 @@ def load() -> Config:
         ledger_verifier_key=os.environ.get("LEDGER_VERIFIER_KEY", ""),
         realtime_token_secret=os.environ.get("REALTIME_TOKEN_SECRET", ""),
         realtime_token_han_giay=min(3600, max(30, _int("REALTIME_TOKEN_HAN_GIAY", 300))),
+        keu_cuu_vung=vung_tu_chuoi(os.environ.get("KEU_CUU_VUNG_PHUC_VU") or VUNG_VIET_NAM),
     )
 
 
