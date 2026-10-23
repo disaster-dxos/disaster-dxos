@@ -90,3 +90,7 @@ export function userFromAccessToken(accessToken: string): UserInfo {
 export function laDieuPhoi(u: UserInfo | null): boolean {
   return !!u?.roles.includes('dieu-phoi')
 }
+
+export function laCuuHo(u: UserInfo | null): boolean {
+  return !!u?.roles.includes('cuu-ho')
+}
