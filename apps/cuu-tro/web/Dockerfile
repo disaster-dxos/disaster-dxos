@@ -8,7 +8,7 @@
 # (additional_contexts trong apps/cuu-tro/compose.yaml), đặt đúng đường dẫn tương đối mà nuxt.config.ts dùng.
 # Build tay: docker build --build-context logo=docs/images/logo -t disaster-dxos/cuu-tro-web:0.1.0 apps/cuu-tro/web
 
-FROM node:22.20.0-bookworm-slim AS build
+FROM node:22.22.3-bookworm-slim AS build
 ENV NUXT_TELEMETRY_DISABLED=1 NPM_CONFIG_UPDATE_NOTIFIER=false NPM_CONFIG_FUND=false
 WORKDIR /src/apps/cuu-tro/web
 COPY package.json package-lock.json ./
@@ -18,7 +18,7 @@ COPY --from=logo . /src/docs/images/logo
 COPY . .
 RUN npm run build
 
-FROM node:22.20.0-alpine3.22
+FROM node:22.22.3-alpine3.22
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 NUXT_TELEMETRY_DISABLED=1
 WORKDIR /app
 # .output tự chứa (server + node_modules đã trace + tệp tĩnh), không cần npm ở image chạy

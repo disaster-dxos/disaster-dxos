@@ -19,7 +19,7 @@ export default defineNitroPlugin((nitroApp) => {
     const pub = useRuntimeConfig().public
     response.headers ??= {}
     response.headers['content-security-policy'] = buildCsp(
-      { keycloakUrl: pub.keycloakUrl, gatewayUrl: pub.gatewayUrl, mapStyleUrl: pub.mapStyleUrl },
+      { keycloakUrl: pub.keycloakUrl, gatewayUrl: pub.gatewayUrl, mapStyleUrl: pub.mapStyleUrl, mapStyleUrlToi: pub.mapStyleUrlToi },
       hashScriptInline(response.body),
     )
     delete response.headers['x-powered-by']

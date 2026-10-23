@@ -15,6 +15,7 @@ const NGOAI_LE = {
   'caniuse-lite': 'CC-BY-4.0: dữ liệu trình duyệt cho autoprefixer lúc build',
   'mdn-data': 'CC0-1.0: dữ liệu CSS cho css-tree/csso lúc build',
   '@speed-highlight/core': 'CC0-1.0: tô màu mã trong trang lỗi của nuxt dev (youch)',
+  'vaul-vue': 'MIT (LICENSE ở repo gốc unovue/vaul-vue), package.json 0.4.1 thiếu trường license; Drawer của Nuxt UI',
 }
 
 function dat(expr) {

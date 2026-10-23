@@ -8,6 +8,8 @@ export interface CspNguon {
   keycloakUrl: string
   gatewayUrl: string
   mapStyleUrl: string
+  /** Kiểu nền chế độ tối (#77); mặc định cùng nguồn OpenFreeMap */
+  mapStyleUrlToi?: string
 }
 
 // Ô ảnh dự phòng khi không tải được kiểu nền vector (utils/ban-do.ts, kieuDuPhongOsm)
@@ -23,14 +25,17 @@ export function origin(url: string): string | null {
   }
 }
 
-/** Hash 'sha256-…' của mọi <script> inline có thực thi (bỏ qua script có src và khối dữ liệu JSON). */
+/**
+ * Hash 'sha256-…' của mọi <script> inline có thực thi (bỏ qua script có src và khối dữ liệu JSON). Import map
+ * inline (Nuxt 4 chèn vào trang) cũng phải được script-src cho phép nên cũng tính hash.
+ */
 export function hashScriptInline(html: string): string[] {
   const ds: string[] = []
   for (const m of html.matchAll(/<script(\s[^>]*)?>([\s\S]*?)<\/script>/gi)) {
     const attrs = m[1] ?? ''
     if (/\ssrc\s*=/i.test(attrs)) continue
     const type = /\stype\s*=\s*["']?([^"'\s>]+)/i.exec(attrs)?.[1]?.toLowerCase()
-    if (type && type !== 'module' && type !== 'text/javascript') continue
+    if (type && type !== 'module' && type !== 'text/javascript' && type !== 'importmap') continue
     ds.push(`'sha256-${createHash('sha256').update(m[2] ?? '', 'utf8').digest('base64')}'`)
   }
   return [...new Set(ds)]
@@ -44,11 +49,12 @@ export function wsOrigin(url: string): string | null {
 
 export function buildCsp(nguon: CspNguon, scriptHashes: string[]): string {
   const ban = origin(nguon.mapStyleUrl)
+  const banToi = nguon.mapStyleUrlToi ? origin(nguon.mapStyleUrlToi) : null
   const ketNoi = [...new Set(
-    ["'self'", origin(nguon.keycloakUrl), origin(nguon.gatewayUrl), wsOrigin(nguon.gatewayUrl), ban, OSM_TILE]
+    ["'self'", origin(nguon.keycloakUrl), origin(nguon.gatewayUrl), wsOrigin(nguon.gatewayUrl), ban, banToi, OSM_TILE]
       .filter((x): x is string => !!x),
   )]
-  const anh = [...new Set(["'self'", 'data:', 'blob:', ban, OSM_TILE].filter((x): x is string => !!x))]
+  const anh = [...new Set(["'self'", 'data:', 'blob:', ban, banToi, OSM_TILE].filter((x): x is string => !!x))]
   return [
     "default-src 'self'",
     `script-src 'self' ${scriptHashes.join(' ')}`.trim(),

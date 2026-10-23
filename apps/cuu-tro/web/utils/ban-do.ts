@@ -3,7 +3,7 @@
 // Việt, kiểu dự phòng. Có test (tests/ban-do.test.ts).
 import type { FeatureCollection, Point } from 'geojson'
 import type { StyleSpecification } from 'maplibre-gl'
-import { MAU_TRANG_THAI, MUC_KHAN, type MucKhan, type TinKeuCuu, type TrangThai } from './tin'
+import { MAU_TRANG_THAI, MUC_KHAN, mauTrangThai, type MucKhan, type TinKeuCuu, type TrangThai } from './tin'
 
 /** Trung tâm mặc định: vùng dữ liệu mẫu (Đà Nẵng – Quảng Nam), [kinh độ, vĩ độ] */
 export const TAM_MAC_DINH: [number, number] = [108.2, 15.92]
@@ -48,10 +48,10 @@ export function bieuThucMauKhan(): unknown[] {
   return ['match', ['get', 'urgency'], ...cap, '#64748B']
 }
 
-/** Biểu thức màu viền điểm theo trạng thái. */
-export function bieuThucMauTrangThai(): unknown[] {
+/** Biểu thức màu viền điểm theo trạng thái (toi: bản đồ nền tối). */
+export function bieuThucMauTrangThai(toi = false): unknown[] {
   const cap: unknown[] = []
-  for (const [k, v] of Object.entries(MAU_TRANG_THAI)) cap.push(k, v)
+  for (const k of Object.keys(MAU_TRANG_THAI) as TrangThai[]) cap.push(k, mauTrangThai(k, toi))
   return ['match', ['get', 'status'], ...cap, '#FFFFFF']
 }
 
@@ -63,8 +63,9 @@ export const CUM_BAN_KINH = 50
 export const THUOC_TINH_CUM = { khan: ['+', ['get', 'khan']] }
 
 /** Màu cụm: đỏ nếu có tin khẩn cấp, cam cứu hộ nếu ≥ 10 tin, navy nếu ít. */
-export function bieuThucMauCum(): unknown[] {
-  return ['case', ['>', ['get', 'khan'], 0], MUC_KHAN.khan_cap.mau, ['>=', ['get', 'point_count'], 10], '#F07B1D', '#12355B']
+/** toi: cụm thường navy sáng hơn để thấy trên bản đồ tối (chữ trắng vẫn ≥ 4,5:1). */
+export function bieuThucMauCum(toi = false): unknown[] {
+  return ['case', ['>', ['get', 'khan'], 0], MUC_KHAN.khan_cap.mau, ['>=', ['get', 'point_count'], 10], '#F07B1D', toi ? '#2A5A8F' : '#12355B']
 }
 
 /** Zoom để tách một điểm ra khỏi cụm khi chọn từ danh sách. */

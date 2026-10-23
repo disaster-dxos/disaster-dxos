@@ -20,6 +20,11 @@ describe('hash script inline', () => {
     expect(hashScriptInline(html)).toEqual([sha(cfg)])
   })
 
+  it('hash cả import map inline (Nuxt 4)', () => {
+    const map = '{"imports":{"#entry":"/_nuxt/a.js"}}'
+    expect(hashScriptInline(`<script type="importmap">${map}</script>`)).toEqual([sha(map)])
+  })
+
   it('không có script inline thì không có hash', () => {
     expect(hashScriptInline('<script src="/a.js"></script>')).toEqual([])
   })
@@ -54,6 +59,14 @@ describe('CSP', () => {
     expect(c).toContain('wss://cuutro.example.vn')
     expect(c).not.toContain('ws://')
     expect(wsOrigin('khong-phai-url')).toBeNull()
+  })
+
+  it('kiểu nền chế độ tối ở nguồn khác thì thêm nguồn đó vào connect-src và img-src', () => {
+    const c = buildCsp({ ...nguon, mapStyleUrlToi: 'https://ban-do.example.vn/styles/toi.json' }, [])
+    const m = Object.fromEntries(c.split('; ').map((d) => [d.split(' ')[0], d.split(' ').slice(1)]))
+    expect(m['connect-src']).toContain('https://ban-do.example.vn')
+    expect(m['img-src']).toContain('https://ban-do.example.vn')
+    expect(buildCsp({ ...nguon, mapStyleUrlToi: 'https://tiles.openfreemap.org/styles/dark' }, [])).toBe(buildCsp(nguon, []))
   })
 
   it('bỏ qua URL sai', () => {
