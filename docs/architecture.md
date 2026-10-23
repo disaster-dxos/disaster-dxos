@@ -1,6 +1,6 @@
 # Kiến trúc Disaster DX-OS
 
-> Phiên bản tài liệu: v0.1.0 (cập nhật 22/10/2026). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
+> Phiên bản tài liệu: v0.2.0 (cập nhật 23/10/2026). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
 
 Disaster DX-OS gồm hai tầng, đúng mô hình Open-Core của đề:
 

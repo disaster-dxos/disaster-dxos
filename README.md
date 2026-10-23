@@ -226,4 +226,4 @@ Mã nguồn phát hành theo [Apache-2.0](LICENSE). Bản quyền và ghi nhận
 
 ## 📝 CHANGELOG
 
-Theo [SemVer](https://semver.org/lang/vi/). Bản mới nhất: [v0.1.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.1.0) (22/10/2026, lõi Tầng 1 đầy đủ + ứng dụng cứu trợ, sổ cái minh bạch); bản trước: [v0.0.1](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.0.1) (19/10/2026, khung dự án + profile `core`). Thay đổi chưa phát hành và lịch sử: [`CHANGELOG.md`](CHANGELOG.md).
+Theo [SemVer](https://semver.org/lang/vi/). Bản mới nhất: [v0.2.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.2.0) (23/10/2026, web điều phối Nuxt UI: bản đồ realtime, phân công tự động, API kêu cứu, thông báo Centrifugo); bản trước: [v0.1.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.1.0) (22/10/2026, lõi Tầng 1 đầy đủ + ứng dụng cứu trợ, sổ cái minh bạch), [v0.0.1](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.0.1) (19/10/2026, khung dự án + profile `core`). Thay đổi chưa phát hành và lịch sử: [`CHANGELOG.md`](CHANGELOG.md).
