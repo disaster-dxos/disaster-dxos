@@ -52,6 +52,12 @@ export const MAU_TRANG_THAI: Record<TrangThai, string> = {
   dong: '#94A3B8',
 }
 
+/** Màu trạng thái trên nền tối: viền navy không thấy trên bản đồ tối → navy nhạt (navy-400). */
+export const NAVY_TOI = '#7A9CC6'
+export function mauTrangThai(s: TrangThai, toi = false): string {
+  return toi && MAU_TRANG_THAI[s] === '#12355B' ? NAVY_TOI : MAU_TRANG_THAI[s]
+}
+
 export const NGUON: Record<string, string> = {
   dien_thoai: 'Điện thoại',
   web: 'Web',

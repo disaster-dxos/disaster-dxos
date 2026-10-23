@@ -16,7 +16,7 @@ Sơ đồ dưới vẽ những gì đang chạy thật trong `make up`: Tầng 2
 ```mermaid
 flowchart TB
   subgraph T2["Tầng 2 · Ứng dụng (H-P-D-I)"]
-    WEB["Web điều phối<br/>Nuxt 3 + MapLibre"]
+    WEB["Web điều phối<br/>Nuxt 4 + Nuxt UI + MapLibre"]
     APP["App hiện trường<br/>Flutter offline-first"]
     BOT["Bot Telegram"]
     SENSOR["Cảm biến mực nước<br/>(mô phỏng)"]

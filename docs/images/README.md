@@ -18,6 +18,9 @@
 | `web-phan-cong-doi-doi.png` | Ảnh chụp (#61): điều phối bấm Đổi đội kèm lý do → thông báo thành công, đội mới + hạn nhận mới, lịch sử ghi lần từ chối do điều phối (1440×900) | Như trên | Như trên |
 | `web-phan-cong-cuu-ho.png` | Ảnh chụp (#61), vai cứu hộ trên điện thoại: chi tiết nhiệm vụ, SĐT che giữa, hạn nhận còn lại, nút Nhận nhiệm vụ / Từ chối cố định cuối màn hình (390×844, @2x) | Như trên | Như trên |
 | `web-phan-cong-nhan-muon.png` | Ảnh chụp (#61): đội cũ bấm Nhận sau khi điều phối đã đổi đội → API 403, thông báo tiếng Việt (390×844, @2x) | Như trên | Như trên |
+| `web-nen-nuxt-ui-ban-do.png` | Ảnh ghép trước/sau (#77): trang bản đồ điều phối trong khung Nuxt UI mới (thanh bên, thanh đầu, font Be Vietnam Pro), thân màn chưa đổi (2 × 1440×900, thu nhỏ 1/1,5) | Mô tả PR #77 | Đội chụp bằng Chrome headless trên `nuxt dev` với gateway giả lập và JWT giả (dữ liệu giả, không chạy stack). Bản đồ nền như trên |
+| `web-nen-nuxt-ui-phan-cong.png` | Như trên, màn phân công vai điều phối | Như trên | Như trên |
+| `web-nen-nuxt-ui-cuu-ho.png` | Như trên, chi tiết nhiệm vụ vai cứu hộ trên điện thoại (2 × 390×844) | Như trên | Như trên |
 
 Mọi tệp trong thư mục này do đội DTU_DZ_1 tạo và cấp phép cùng repo: [Apache-2.0](../../LICENSE), trừ phần bản đồ nền trong các ảnh chụp `web-*.png` (dữ liệu OpenStreetMap, ODbL-1.0). Ảnh `.webp` là tranh minh họa, không phải ảnh chụp sự kiện hay người thật.
 

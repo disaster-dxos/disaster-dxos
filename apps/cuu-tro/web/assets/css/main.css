@@ -1,16 +1,149 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+/* Theme web điều phối trên Nuxt UI: bảng màu nhận diện Team 1, Be Vietnam Pro tự host, chế độ sáng/tối.
+   Quy ước: màu gốc (cam #F07B1D, xanh nước #1FA2C9) chỉ làm nền lớn hoặc đồ họa; chữ dùng biến thể đậm
+   đạt WCAG AA. Mã màn chỉ dùng token Nuxt UI (text-muted, bg-elevated, primary, error…), không dùng
+   palette Tailwind trực tiếp (red-600, slate-500…). */
 @import "tailwindcss";
+@import "@nuxt/ui";
 
-/* Màu theo bộ nhận diện Team 1 (navy, cam cứu hộ, xanh nước) */
-@theme {
+@font-face { font-family: "Be Vietnam Pro"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/be-vietnam-pro/BeVietnamPro-Regular.woff2") format("woff2"); }
+@font-face { font-family: "Be Vietnam Pro"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/be-vietnam-pro/BeVietnamPro-Medium.woff2") format("woff2"); }
+@font-face { font-family: "Be Vietnam Pro"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/be-vietnam-pro/BeVietnamPro-SemiBold.woff2") format("woff2"); }
+@font-face { font-family: "Be Vietnam Pro"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/be-vietnam-pro/BeVietnamPro-Bold.woff2") format("woff2"); }
+
+@theme static {
+  --font-sans: "Be Vietnam Pro", system-ui, sans-serif;
+  /* Cỡ nhỏ nhất 13 px (Nuxt UI dùng text-xs cho nhãn, mô tả) */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.125rem;
+
+  /* Navy #12355B: màu chính (primary). 400 dùng cho chế độ tối */
+  --color-navy-50: #EEF3F9;
+  --color-navy-100: #D9E3EF;
+  --color-navy-200: #C0D1E6;
+  --color-navy-300: #A3BCDA;
+  --color-navy-400: #7A9CC6;
+  --color-navy-500: #12355B;
+  --color-navy-600: #0F2D4E;
+  --color-navy-700: #0D2643;
+  --color-navy-800: #0C2340;
+  --color-navy-900: #08182A;
+  --color-navy-950: #0B1F36;
+
+  /* Cam cứu hộ #F07B1D: nút hành động (secondary), chữ trên cam là navy-950 */
+  --color-cam-50: #FFF4EA;
+  --color-cam-100: #FFE4CC;
+  --color-cam-200: #FDC899;
+  --color-cam-300: #F9A866;
+  --color-cam-400: #F5913F;
+  --color-cam-500: #F07B1D;
+  --color-cam-600: #E06A0E;
+  --color-cam-700: #B4500D;
+  --color-cam-800: #8A3B00;
+  --color-cam-900: #6B2E05;
+  --color-cam-950: #3D1A03;
+
+  /* Xanh nước: 500 = #0B6E8C (chữ, mức Trung bình, 5,80:1); #1FA2C9 gốc = 400 (đồ họa, chế độ tối) */
+  --color-nuoc-50: #E6F5FA;
+  --color-nuoc-100: #C7E9F3;
+  --color-nuoc-200: #94D4E8;
+  --color-nuoc-300: #5BBCDA;
+  --color-nuoc-400: #1FA2C9;
+  --color-nuoc-500: #0B6E8C;
+  --color-nuoc-600: #0A5E78;
+  --color-nuoc-700: #094E63;
+  --color-nuoc-800: #083F50;
+  --color-nuoc-900: #06323F;
+  --color-nuoc-950: #042029;
+
+  /* Mức Khẩn cấp / lỗi: 500 = #B91C1C (chữ trắng 6,47:1) */
+  --color-khan-50: #FEF2F2;
+  --color-khan-100: #FEE2E2;
+  --color-khan-200: #FECACA;
+  --color-khan-300: #FCA5A5;
+  --color-khan-400: #F87171;
+  --color-khan-500: #B91C1C;
+  --color-khan-600: #991B1B;
+  --color-khan-700: #7F1D1D;
+  --color-khan-800: #651818;
+  --color-khan-900: #4C1212;
+  --color-khan-950: #2A0909;
+
+  /* Mức Cao / cảnh báo: 500 = #A3480B (chữ trắng 6,0:1; chữ trên nền nhạt ≥ 4,5:1) */
+  --color-cao-50: #FFF5EB;
+  --color-cao-100: #FDE6CF;
+  --color-cao-200: #FAC99B;
+  --color-cao-300: #F5A865;
+  --color-cao-400: #EE8A3A;
+  --color-cao-500: #A3480B;
+  --color-cao-600: #9A4409;
+  --color-cao-700: #7E3806;
+  --color-cao-800: #642D05;
+  --color-cao-900: #4E2304;
+  --color-cao-950: #2E1402;
+
+  /* Thành công (đã cứu, sổ cái khớp): 500 = #166534 (chữ trắng 7,1:1; chữ trên nền nhạt ≥ 6:1) */
+  --color-ok-50: #F0FDF4;
+  --color-ok-100: #DCFCE7;
+  --color-ok-200: #BBF7D0;
+  --color-ok-300: #86EFAC;
+  --color-ok-400: #4ADE80;
+  --color-ok-500: #166534;
+  --color-ok-600: #14532D;
+  --color-ok-700: #14532D;
+  --color-ok-800: #0F3F22;
+  --color-ok-900: #0B2E19;
+  --color-ok-950: #052E16;
+
+  /* Mức Thấp: chữ trắng trên #475569 (7,58:1) */
+  --color-thap: #475569;
+
+  /* Tạm cho các màn chưa chuyển sang Nuxt UI (bg-navy, text-cam, text-nuoc, text-chu…); xóa khi xong #78 */
   --color-navy: #12355B;
-  --color-navy-700: #1b4675;
   --color-cam: #F07B1D;
-  --color-cam-600: #d9690f;
   --color-nuoc: #1FA2C9;
   --color-chu: #334155;
-  --font-sans: Arial, "Helvetica Neue", system-ui, sans-serif;
+}
+
+/* Chữ đậm hơn mặc định Nuxt UI để đọc được ngoài nắng; chữ phụ không nhạt hơn slate-600 */
+:root:not(.dark) {
+  --ui-text: var(--ui-color-neutral-800);
+  --ui-text-muted: var(--ui-color-neutral-600);
+  --ui-text-dimmed: var(--ui-color-neutral-500);
+  --ui-bg-muted: #F3F6F9;
+}
+:root {
+  --ui-radius: 0.375rem;
+}
+.dark {
+  --ui-bg: #0B1626;
+  --ui-bg-muted: #0F1D31;
+  --ui-bg-elevated: #14243B;
+  --ui-bg-accented: #1C3150;
+  --ui-border: #1F3452;
+  --ui-border-muted: #1A2C46;
+  --ui-border-accented: #2A4466;
+  --ui-text-muted: var(--ui-color-neutral-300);
+  --ui-text-dimmed: var(--ui-color-neutral-400);
+  /* Nút cam giữ đúng màu nhận diện ở chế độ tối */
+  --ui-secondary: var(--ui-color-secondary-500);
 }
 
 html, body, #__nuxt { height: 100%; }
-body { @apply bg-slate-100 text-chu antialiased; }
+body { @apply bg-default text-default antialiased; }
+
+/* Một vòng focus thống nhất, thấy được trên nền trắng, navy và cam */
+:focus-visible { outline: 3px solid var(--ui-info); outline-offset: 2px; }
+
+/* Số đếm, đồng hồ: chữ số đều để không nhảy khi đổi */
+.so { font-variant-numeric: tabular-nums; }
+
+/* MapLibre: nút điều khiển và chú thích theo theme */
+.maplibregl-ctrl-group { border-radius: var(--ui-radius) !important; box-shadow: 0 1px 3px rgb(11 31 54 / 0.18) !important; }
+.maplibregl-ctrl-group button { width: 36px !important; height: 36px !important; }
+.dark .maplibregl-ctrl-group { background: var(--ui-bg-elevated); }
+.dark .maplibregl-ctrl-group button + button { border-top-color: var(--ui-border); }
+.dark .maplibregl-ctrl-icon { filter: invert(1); }
+.maplibregl-ctrl-scale, .maplibregl-ctrl-attrib { font-size: 12px !important; }
+.dark .maplibregl-ctrl-attrib, .dark .maplibregl-ctrl-scale { background: rgb(11 22 38 / 0.85) !important; color: var(--ui-text-muted); }
+.dark .maplibregl-ctrl-attrib a { color: var(--ui-text-muted); }

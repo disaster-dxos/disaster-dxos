@@ -2,7 +2,6 @@
 // Web điều phối (Tầng 2, #59). Chạy thuần phía trình duyệt (ssr: false): đăng nhập OIDC + PKCE
 // với client công khai, không có bí mật nào trong mã web. Mọi lời gọi lõi đi qua API Gateway.
 import { fileURLToPath } from 'node:url'
-import tailwindcss from '@tailwindcss/vite'
 import type { NitroConfig } from 'nitropack'
 
 export default defineNuxtConfig({
@@ -10,9 +9,19 @@ export default defineNuxtConfig({
   ssr: false,
   devtools: { enabled: false },
   telemetry: false,
+  // Nuxt UI (MIT) mang theo Tailwind CSS 4, bảng màu sáng/tối (@nuxtjs/color-mode) và biểu tượng (@nuxt/icon)
+  modules: ['@nuxt/ui'],
   css: ['~/assets/css/main.css'],
-  vite: {
-    plugins: [tailwindcss()],
+  ui: {
+    // Không dùng @nuxt/fonts (tải font từ Google lúc build): Be Vietnam Pro tự host trong public/fonts
+    fonts: false,
+  },
+  // Mặc định giao diện sáng; người dùng đổi Sáng/Tối/Theo máy ở menu tài khoản (các màn hỗ trợ tối dần ở #78)
+  colorMode: { preference: 'light', fallback: 'light' },
+  icon: {
+    // Biểu tượng Lucide đóng gói sẵn trong bundle: không gọi API Iconify (CSP chặn, mất mạng vẫn chạy)
+    provider: 'none',
+    clientBundle: { scan: true },
   },
   app: {
     head: {
@@ -30,7 +39,7 @@ export default defineNuxtConfig({
   },
   hooks: {
     // Bộ logo dùng chung của repo (docs/images/logo/) phục vụ ở /logo, không chép thêm bản sao
-    // Nuxt 3.21 khai báo kiểu tham số là NitroConfigFallback, thiếu publicAssets: ép về NitroConfig
+    // Nuxt khai báo kiểu tham số là NitroConfigFallback, thiếu publicAssets: ép về NitroConfig
     'nitro:config'(cfg) {
       const nitro = cfg as NitroConfig
       nitro.publicAssets ??= []
@@ -49,6 +58,8 @@ export default defineNuxtConfig({
       keycloakClientId: 'dxos-web',
       gatewayUrl: 'http://localhost:9080',
       mapStyleUrl: 'https://tiles.openfreemap.org/styles/liberty',
+      // Kiểu nền khi giao diện ở chế độ tối (cùng nguồn OpenFreeMap nên CSP không đổi)
+      mapStyleUrlToi: 'https://tiles.openfreemap.org/styles/dark',
     },
   },
 })

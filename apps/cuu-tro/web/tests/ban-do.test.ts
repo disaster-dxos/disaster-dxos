@@ -5,7 +5,7 @@ import {
   CUM_ZOOM_TOI_DA, NHAN_TIENG_VIET, THUOC_TINH_CUM, bieuThucMauCum, bieuThucMauKhan, bieuThucMauTrangThai, kieuDuPhongOsm,
   nhanTiengViet, tinSangGeoJson, toaDoHopLe, zoomChon,
 } from '~/utils/ban-do'
-import { MAU_TRANG_THAI, MUC_KHAN, type TinKeuCuu } from '~/utils/tin'
+import { MAU_TRANG_THAI, MUC_KHAN, NAVY_TOI, mauTrangThai, type TinKeuCuu } from '~/utils/tin'
 
 const T1: TinKeuCuu = {
   id: 'd0000000-0000-4000-8000-000000000001', location: [108.2212, 15.9785], urgency: 'khan_cap', status: 'tiep_nhan',
@@ -57,6 +57,15 @@ describe('bản đồ', () => {
     expect(c[2]).toBe(MUC_KHAN.khan_cap.mau)
     expect(zoomChon(8)).toBe(CUM_ZOOM_TOI_DA + 1)
     expect(zoomChon(16)).toBe(16)
+  })
+  it('chế độ tối: viền navy đổi sang navy nhạt, màu khác giữ nguyên; cụm thường sáng hơn', () => {
+    expect(mauTrangThai('phan_cong', true)).toBe(NAVY_TOI)
+    expect(mauTrangThai('phan_cong')).toBe('#12355B')
+    for (const k of ['tiep_nhan', 'dang_cuu', 'da_cuu', 'dong'] as const) expect(mauTrangThai(k, true)).toBe(MAU_TRANG_THAI[k])
+    const s = bieuThucMauTrangThai(true)
+    expect(s[s.indexOf('phan_cong') + 1]).toBe(NAVY_TOI)
+    expect(bieuThucMauCum(true).at(-1)).not.toBe('#12355B')
+    expect(bieuThucMauCum().at(-1)).toBe('#12355B')
   })
   it('nhãn tên đổi sang tiếng Việt, nhãn khác và lớp không phải symbol giữ nguyên', () => {
     const style = {

@@ -294,6 +294,7 @@ services:
       NUXT_PUBLIC_KEYCLOAK_CLIENT_ID: dxos-web
       NUXT_PUBLIC_GATEWAY_URL: ${GATEWAY_PUBLIC_URL:-http://localhost:9080}
       NUXT_PUBLIC_MAP_STYLE_URL: ${NUXT_PUBLIC_MAP_STYLE_URL:-https://tiles.openfreemap.org/styles/liberty}
+      NUXT_PUBLIC_MAP_STYLE_URL_TOI: ${NUXT_PUBLIC_MAP_STYLE_URL_TOI:-https://tiles.openfreemap.org/styles/dark}
     # Mã chỉ đọc, không ghi gì ra đĩa
     read_only: true
     cap_drop: [ALL]

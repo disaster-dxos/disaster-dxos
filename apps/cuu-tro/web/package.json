@@ -6,7 +6,7 @@
   "description": "Web điều phối cứu trợ (Tầng 2) của Disaster DX-OS",
   "type": "module",
   "engines": {
-    "node": ">=22.12"
+    "node": "^22.22.3 || ^24.15.0"
   },
   "scripts": {
     "dev": "nuxt dev",
@@ -18,13 +18,14 @@
     "licenses": "node scripts/check-licenses.mjs"
   },
   "dependencies": {
+    "@iconify-json/lucide": "1.2.147",
+    "@nuxt/ui": "4.12.0",
     "centrifuge": "5.7.4",
     "graphql-ws": "6.3.0",
     "maplibre-gl": "5.24.0",
-    "nuxt": "3.21.11"
+    "nuxt": "4.6.2"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "4.3.3",
     "@types/geojson": "7946.0.16",
     "@types/node": "22.20.5",
     "tailwindcss": "4.3.3",
