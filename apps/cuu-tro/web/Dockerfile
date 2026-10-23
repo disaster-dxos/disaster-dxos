@@ -6,7 +6,7 @@
 #
 # Build context = apps/cuu-tro/web; bộ logo của repo (docs/images/logo) đưa vào bằng context phụ "logo"
 # (additional_contexts trong apps/cuu-tro/compose.yaml), đặt đúng đường dẫn tương đối mà nuxt.config.ts dùng.
-# Build tay: docker build --build-context logo=docs/images/logo -t disaster-dxos/cuu-tro-web:0.1.0 apps/cuu-tro/web
+# Build tay: docker build --build-context logo=docs/images/logo -t disaster-dxos/cuu-tro-web:0.2.0 apps/cuu-tro/web
 
 FROM node:22.22.3-bookworm-slim AS build
 ENV NUXT_TELEMETRY_DISABLED=1 NPM_CONFIG_UPDATE_NOTIFIER=false NPM_CONFIG_FUND=false
