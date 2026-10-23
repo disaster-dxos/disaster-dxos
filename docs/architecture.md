@@ -1,6 +1,6 @@
 # Kiến trúc Disaster DX-OS
 
-> Phiên bản tài liệu: v0.1.0 (cập nhật 22/10/2026). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
+> Phiên bản tài liệu: v0.2.0 (cập nhật 23/10/2026). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
 
 Disaster DX-OS gồm hai tầng, đúng mô hình Open-Core của đề:
 
@@ -16,7 +16,7 @@ Sơ đồ dưới vẽ những gì đang chạy thật trong `make up`: Tầng 2
 ```mermaid
 flowchart TB
   subgraph T2["Tầng 2 · Ứng dụng (H-P-D-I)"]
-    WEB["Web điều phối<br/>Nuxt 3 + MapLibre"]
+    WEB["Web điều phối<br/>Nuxt 4 + Nuxt UI + MapLibre"]
     APP["App hiện trường<br/>Flutter offline-first"]
     BOT["Bot Telegram"]
     SENSOR["Cảm biến mực nước<br/>(mô phỏng)"]
@@ -77,7 +77,7 @@ flowchart TB
 ```
 
 Đường liền: luồng dữ liệu. Đường đứt: xác thực, khóa và bí mật.
-Hiện profile `core` có `openbao` (+ 8 bao agent), `postgres` (+ `postgres-roles`), `keycloak`, `apisix`, `hasura`, `seaweedfs`, `temporal` (+ `temporal-ui`), `nats` (#11; bắt buộc xác thực, MQTT cho thiết bị, #30), `ledger` (sổ cái Tessera, #28) và route gateway `/graphql`, `/files/*`, `/workflow/*`, `/ledger/*` (đọc công khai, #28), `/api/v1/me` sau Coraza WAF (#12, mục 3.3); các thành phần còn lại tuần 3–5 (xem `docs/PLAN.md`).
+Hiện profile `core` có `openbao` (+ 8 bao agent), `postgres` (+ `postgres-roles`), `keycloak`, `apisix`, `hasura`, `seaweedfs`, `temporal` (+ `temporal-ui`), `nats` (#11; bắt buộc xác thực, MQTT cho thiết bị, #30), `ledger` (sổ cái Tessera, #28) và route gateway `/graphql`, `/files/*`, `/workflow/*`, `/ledger/*` (đọc công khai, #28), `/api/v1/me` sau Coraza WAF (#12, mục 3.3), route `/*` cho web điều phối `cuu-tro-web` (profile `app`, #64); các thành phần còn lại tuần 3–5 (xem `docs/PLAN.md`).
 
 ## 2. Ánh xạ 4 dịch vụ bắt buộc của đề
 
@@ -87,7 +87,7 @@ Hiện profile `core` có `openbao` (+ 8 bao agent), `postgres` (+ `postgres-rol
 | API Gateway | **Apache APISIX 3.19** + **Coraza WAF** (coraza-proxy-wasm 0.6.0, OWASP CRS 4.14) | Điểm vào duy nhất của Tầng 2: `/graphql` → Hasura, `/files/*` → SeaweedFS S3, `/workflow/*` → API workflow của ứng dụng (#29, mục 7.3). WAF chặn ở biên, kiểm chữ ký JWT bằng JWKS của Keycloak, rate limit theo IP, CORS, gắn request-id. Chế độ standalone: route nằm trong git (GitOps) | `core/apisix/config.yaml`, `core/apisix/apisix.yaml`, `core/apisix/Dockerfile` | Chạy trong `core` (#12, mục 3.3) |
 | Dữ liệu có cấu trúc | **PostgreSQL 17 + PostGIS 3.5**, **Hasura CE v2.51** | Sự cố, đội cứu hộ, điểm trú ẩn, kho hàng, cảm biến (có tọa độ). Hasura tự sinh GraphQL + subscription, phân quyền theo claim vai trò trong JWT | `docker-compose.yml` (`postgres`, `postgres-roles`, `hasura`), `core/postgres/sync-roles.sh` | Chạy trong `core` (#11); schema nghiệp vụ ở #25, #26 |
 | Dữ liệu phi cấu trúc | **SeaweedFS 4.48** (S3) + ClamAV | Ảnh hiện trường (#27: tải lên qua API ứng dụng, xem bằng link presigned ngắn hạn qua `/files/*`, mục 7.5), tệp đính kèm, file Parquet lịch sử. File tải lên sẽ được ClamAV quét trước khi công bố | `docker-compose.yml` (`seaweedfs`, `s3-buckets`), `core/openbao/agent-seaweedfs.hcl`, `core/seaweedfs/create-buckets.sh` | S3 chạy trong `core`, khóa từ OpenBao (#11); bucket + API ảnh (#27); ClamAV sau |
-| Workflow engine | **Temporal 1.29** + Python SDK | Quy trình kêu cứu: tiếp nhận → phân công đội gần nhất → xác nhận → đóng. Cảnh báo vượt ngưỡng → thông báo | `docker-compose.yml` (`temporal`, `temporal-ui`) | Chạy trong `core` (#11); worker ở #29 |
+| Workflow engine | **Temporal 1.29** + Python SDK | Quy trình kêu cứu: tin mới tự khởi chạy → phân công đội gần nhất (ưu tiên urgency) → đội nhận trong hạn, quá hạn thì phân công lại → xác nhận → đóng (#29, #67, mục 6.1). Cảnh báo vượt ngưỡng → thông báo | `docker-compose.yml` (`temporal`, `temporal-ui`) | Chạy trong `core` (#11); worker ở #29 |
 
 Thành phần hỗ trợ: OpenBao (bí mật, chạy chế độ server trong profile `core` – mục 8), NATS JetStream + MQTT (sự kiện, IoT), Scorpio (NGSI-LD, bản sao số trạm đo), sổ cái minh bạch `core/ledger` (transparency log Tessera, D-007) cho tiền/hàng cứu trợ.
 
@@ -202,16 +202,20 @@ Tầng 2 chỉ thấy cổng `9080` của APISIX. Hasura (`8081`), SeaweedFS S3 
 
 | Route | Phương thức | Upstream | JWT | WAF (Coraza + CRS) | Giới hạn | Ghi chú |
 |---|---|---|---|---|---|---|
-| `/graphql` | GET, POST, OPTIONS (+ WebSocket) | `hasura:8080/v1/graphql` | Bắt buộc, chuyển nguyên token cho Hasura kiểm lần 2 | Bộ `api`: đọc body JSON | Body 1 MiB; `GW_RATE_LIMIT_COUNT`/`GW_RATE_LIMIT_WINDOW` theo IP (mặc định 300/60 s) | Bỏ header `X-Hasura-Admin-Secret` của client |
+| `/graphql` | GET, POST, OPTIONS | `hasura:8080/v1/graphql` | Bắt buộc, chuyển nguyên token cho Hasura kiểm lần 2 | Bộ `api`: đọc body JSON | Body 1 MiB; `GW_RATE_LIMIT_COUNT`/`GW_RATE_LIMIT_WINDOW` theo IP (mặc định 300/60 s) | Bỏ header `X-Hasura-Admin-Secret` của client |
+| `/graphql` WebSocket (#60) | GET kèm `Upgrade: websocket` (route `graphql-ws`, ưu tiên hơn) | `hasura:8080/v1/graphql`, giao thức `graphql-transport-ws` | **Không** ở gateway (trình duyệt không gửi header khi mở WebSocket); JWT nằm trong `connection_init`, Hasura kiểm chữ ký/hạn và áp quyền theo vai | Bộ `graphql-ws`: kiểm bắt tay (URI, tham số, header), không đọc khung WebSocket | `GW_REALTIME_RATE_LIMIT_COUNT` lần mở / `GW_RATE_LIMIT_WINDOW` (đếm riêng) | Bỏ header `X-Hasura-Admin-Secret` |
 | `/v1/*`, `/v2/*`, `/console*` | mọi | không | – | – | – | Luôn 403: `/v1/metadata`, `/v2/query`, console Hasura không ra ngoài |
 | `/files/*` | GET, HEAD, OPTIONS (**chỉ đọc**, #27) | `seaweedfs:8333` (bỏ tiền tố `/files`) | Bắt buộc, rồi **bỏ** header `Authorization` | Bộ `files`: không đọc body | Body `GW_FILES_MAX_BODY_BYTES`; rate limit như trên | S3 kiểm chữ ký SigV4 dạng presigned (tham số `X-Amz-*`) = quyền theo object, mục 7.5 |
 | `/workflow/tai-len/*` (#27) | POST, OPTIONS | Như `/workflow/*`, ưu tiên hơn (`priority`) | Như `/workflow/*` | Bộ `upload`: không đọc body nhị phân, vẫn kiểm URI/tham số/header; chỉ nhận kiểu `image/jpeg\|png\|webp`, `application/octet-stream` | Body `GW_UPLOAD_MAX_BODY_BYTES` (mặc định 20 MiB, vượt → 413); rate limit như trên | Quy ước của lõi: đường dẫn nhận tệp nhị phân của API ứng dụng (ảnh hiện trường, mục 7.5) |
 | `/workflow/minh-bach/*` (#28) | GET, OPTIONS | Như `/workflow/*`, ưu tiên hơn (`priority`) | **Không** (công khai), bỏ header `Authorization` | Bộ `api` | Body 1 MiB; rate limit như trên | Quy ước của lõi: đường công khai chỉ đọc của API ứng dụng (trang "Minh bạch cứu trợ", mục 5.1) |
 | `/ledger/*` (#28) | GET, HEAD, OPTIONS | `ledger:8090` (sổ cái của lõi) | **Không** (công khai) | Bộ `api` | Rate limit như trên | checkpoint, tile, proof, verifier (mục 5.1) |
 | `/ledger/*` (#28) | POST, PUT, PATCH, DELETE | – | – | – | – | **403**: ghi sổ cái chỉ từ dịch vụ nội bộ |
+| `/workflow/keu-cuu` (#66) | POST, OPTIONS | Như `/workflow/*`, ưu tiên hơn (`priority`) | Bắt buộc (không mở gửi ẩn danh) | Bộ `api`: đọc body JSON | Body 1 MiB; **giới hạn riêng** `GW_KEU_CUU_RATE_LIMIT_COUNT` (mặc định 20) / `GW_RATE_LIMIT_WINDOW` / IP, đếm riêng | Quy ước của lõi: đường tạo tin từ hiện trường, dễ bị spam nhất (mục 6.2) |
 | `/workflow/*` | GET, POST, OPTIONS | API workflow của ứng dụng `<DXOS_APP>-api:8000` (`GW_WORKFLOW_UPSTREAM_HOST/PORT`), bỏ tiền tố `/workflow` | Bắt buộc, chuyển nguyên Bearer token (API kiểm lại) | Bộ `api` | Body 1 MiB; rate limit như trên | #29, mục 7.3 |
+| `/realtime/websocket` (#68) | GET (bắt tay WebSocket) | `centrifugo:8000/connection/websocket` | **Không** ở gateway (trình duyệt không gửi header khi mở WebSocket); token ngắn hạn trong lệnh connect, Centrifugo kiểm, mục 3.5 | Bộ `realtime`: kiểm bắt tay (URI, tham số, header), không đọc khung WebSocket | `GW_REALTIME_RATE_LIMIT_COUNT` (mặc định 60) lần mở / `GW_RATE_LIMIT_WINDOW` | Đúng một đường; HTTP API `/api/*` của Centrifugo không có route ra ngoài |
 | `/api/v1/me` | GET, OPTIONS | Keycloak userinfo | Bắt buộc | Bộ `api` | rate limit như trên | Route mẫu v0.0.1 |
 | `/healthz` | GET | không (APISIX tự trả) | Không | – | 20 request / 10 s / IP | Healthcheck; smoke dùng để kiểm `limit-count` |
+| `/`, `/*` (#64) | GET, HEAD | Web Tầng 2 của ứng dụng `<DXOS_APP>-web:3000` (`GW_WEB_UPSTREAM_HOST/PORT`) | Không (web tự đăng nhập OIDC + PKCE), bỏ header `Authorization` | Bộ `web`: không đọc body; tham số `iss` miễn nhóm luật SSRF/RFI | `GW_WEB_RATE_LIMIT_COUNT` (mặc định 600) / `GW_RATE_LIMIT_WINDOW` | Ưu tiên thấp nhất: mọi route trên có đường dẫn cụ thể hơn luôn thắng. CSP và header bảo mật do web đặt |
 
 Thứ tự xử lý một request (priority của plugin trong APISIX):
 
@@ -237,9 +241,51 @@ flowchart LR
 - **Rate limit.** `limit-count` chạy ở pha `access`, sau kiểm JWT: request không token bị từ chối 401 ở gateway mà không tới upstream, request có token bị đếm theo IP. Các header `X-RateLimit-Limit/Remaining/Reset` được trả về (và mở cho CORS). Bộ đếm là `local` (mỗi node APISIX một bộ đếm); chạy nhiều node thì chuyển sang `redis`.
 - **CORS.** Chỉ origin trong `GW_CORS_ALLOW_ORIGINS` (mặc định `http://localhost:3000`, dev server Nuxt) nhận `Access-Control-Allow-Origin`; origin lạ không có header này nên trình duyệt chặn. Không dùng `*`.
 - **Biến môi trường trong route.** APISIX standalone thay `${{TÊN:=mặc định}}` trong `apisix.yaml` khi nạp file (biến phải khai báo ở `nginx_config.envs`). Tên realm (`KEYCLOAK_REALM`), CORS, rate limit, giới hạn body đều lấy theo cách này.
-- **WebSocket.** `/graphql` bật `enable_websocket` cho subscription của Hasura, nhưng `openid-connect` vẫn đòi header `Authorization` lúc bắt tay. Trình duyệt không đặt được header này cho WebSocket, nên realtime phía web sẽ đi qua Centrifugo (tuần 3) hoặc cấu hình riêng khi làm #26.
+- **WebSocket.** Trình duyệt không đặt được header `Authorization` khi mở WebSocket, nên hai đường WebSocket không kiểm JWT ở bước bắt tay mà xác thực trong giao thức: thông báo realtime qua Centrifugo (`/realtime/websocket`, #68, mục 3.5: token trong lệnh connect) và subscription GraphQL của bản đồ (#60: route `graphql-ws` chỉ khớp `GET` + `Upgrade: websocket` trên `/graphql`; JWT Keycloak nằm trong `connection_init.payload.headers.Authorization`, Hasura kiểm như với HTTP). Không token → vai `anonymous` của Hasura, không thấy bảng nào; token sai/hết hạn → Hasura đóng kết nối; web làm mới token rồi kết nối lại. Query/mutation HTTP trên `/graphql` vẫn bắt buộc JWT ở gateway.
 
 Kiểm thử: `make up && bash scripts/smoke-gateway.sh` (cũng trong `make smoke`): mỗi route không token/token giả → 401, token Keycloak → 200 (`/workflow/hello` chạy workflow Hello); `/v1/metadata`, `/v2/query`, `/v1/query`, `/console` → 403; GET/HEAD ảnh qua `/files` bằng URL presigned + JWT, PUT/DELETE không có route (404); vượt kích thước → 413 (`/graphql`; tải ảnh: `scripts/smoke-anh.sh`); SQLi/XSS trong query hoặc body → 403, request thường vẫn 200; CORS; 25 request vào `/healthz` trong 10 giây → 20 lần 200, 5 lần 429.
+
+### 3.5. Thông báo realtime: Centrifugo OSS (#68)
+
+Web điều phối nhận ba loại thông báo đẩy: **tin kêu cứu mới**, **cần xử lý** (workflow phân công dừng: hết lần giao, không có đội, quá hạn xác nhận, #67) và **vượt ngưỡng** mực nước/lượng mưa (#30). Centrifugo OSS 6.9.7 (Apache-2.0, **không** dùng bản PRO) là dịch vụ riêng của lõi; cầu nối NATS → Centrifugo và việc cấp token thuộc ứng dụng.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant W as Web điều phối
+  participant GW as APISIX
+  participant API as cuu-tro-api
+  participant CF as Centrifugo OSS
+  participant BR as cuu-tro-thong-bao<br/>(cầu nối)
+  participant JS as NATS JetStream
+  W->>GW: GET /workflow/realtime/token (Bearer JWT Keycloak)
+  GW->>API: JWT đã kiểm (openid-connect)
+  API->>API: kiểm lại JWT (JWKS) + vai trò dieu-phoi/quan-tri, nếu không → 403
+  API-->>W: token HS256 5 phút: sub, iss cuu-tro-api, aud centrifugo, channels [dieu-phoi]
+  W->>GW: WebSocket /realtime/websocket (WAF kiểm bắt tay)
+  GW->>CF: /connection/websocket
+  W->>CF: connect {token}
+  CF->>CF: kiểm chữ ký, iss, aud, exp, Origin → đăng ký server-side kênh dieu-phoi
+  JS-->>BR: consumer bền realtime-dieu-phoi / realtime-canh-bao
+  BR->>BR: danh sách trắng trường (không SĐT/tên)
+  BR->>CF: POST /api/publish (X-API-Key, idempotency_key = Nats-Msg-Id)
+  CF-->>W: publication
+  BR->>JS: ack (Centrifugo đã nhận)
+```
+
+| Quyết định | Chọn | Vì sao |
+|---|---|---|
+| Xác thực kết nối | **Token riêng do API ứng dụng cấp** (HS256, hạn `REALTIME_TOKEN_HAN_GIAY` = 300 s, `iss` `<DXOS_APP>-api`, `aud` `centrifugo`), khóa trong OpenBao | (1) JWT Keycloak không mang quyền theo kênh; Centrifugo OSS chỉ đọc kênh từ claim `channels`/`subs`, muốn lọc theo vai trò thì phải thêm subscribe proxy. API đã kiểm JWT + vai trò cho mọi endpoint, giờ chỉ thêm một chỗ quyết định kênh. (2) Token chỉ có `sub` và kênh, không mang tên/email/vai trò như JWT Keycloak; lộ token cũng không dùng được cho `/graphql` hay `/workflow`. (3) `iss`/`aud` riêng: JWT Keycloak đưa thẳng vào Centrifugo bị từ chối (smoke kiểm). (4) Hạn ngắn: mất vai trò điều phối thì lần làm mới token kế tiếp bị 403 và kết nối bị đóng |
+| Quyền theo kênh | Kênh **server-side** (claim `channels`); client không tự đăng ký được kênh nào (mặc định của Centrifugo: `allow_subscribe_for_client` tắt) | Quyền nằm hoàn toàn ở API (`thong_bao.kenh_cua`): chỉ `dieu-phoi` (và `quan-tri` khi realm có) nhận kênh `dieu-phoi` |
+| Đường WebSocket | APISIX `/realtime/websocket` → `centrifugo:8000/connection/websocket`, Coraza WAF bật cho bắt tay, rate limit riêng; Centrifugo không mở cổng ra host; HTTP API chỉ mạng nội bộ | Một cửa vào duy nhất như mọi route khác. Khung WebSocket sau bắt tay không đi qua WAF (Coraza không phân tích); nội dung client gửi chỉ là lệnh giao thức, client không publish được |
+| Origin | `CENTRIFUGO_CLIENT_ALLOWED_ORIGINS` = `GATEWAY_PUBLIC_URL` | Chặn trang lạ mở WebSocket bằng token bị lộ (bắt tay 403) |
+| Bí mật | `secret/app/<DXOS_APP>/realtime` (`token_hmac_secret`, `api_key`): `bao-agent-centrifugo` render file cấu hình chỉ chứa 2 bí mật (tmpfs); `bao-agent-cuu-tro` render khóa ký cho `cuu-tro-api`, API key + `NATS_URL` cho cầu nối (volume riêng). Tùy chọn khác đặt bằng biến `CENTRIFUGO_*` | Không có bí mật trong `.env`, image hay web |
+| Nguồn sự kiện | JetStream: `cuu-tro.dieu-phoi.can-xu-ly.<id>` (#67), `cuu-tro.dieu-phoi.tin-moi.<id>` (bộ khởi chạy phát sau khi khởi chạy phân công, cùng stream `CUU_TRO_DIEU_PHOI`), `cuu-tro.canh-bao.cam-bien.<trạm>` (#30) | Không thêm stream; tin mới đi theo outbox của #67 nên không phát cho tin bị rollback. Tắt phân công tự động (`PHAN_CONG_TU_DONG=0`) thì không có thông báo tin mới |
+| Giao đúng một lần (với người xem) | Consumer bền `realtime-*` (`deliver_policy: new`, ack sau khi Centrifugo nhận, nak 5 s khi lỗi); `Nats-Msg-Id` chống trùng ở JetStream, `idempotency_key` chống trùng ở Centrifugo (5 phút); web bỏ trùng theo `id` | Cầu nối khởi động lại không mất tin, không đẩy lại sự kiện cũ lúc tạo consumer lần đầu |
+| Dữ liệu cá nhân | Cầu nối chỉ chép trường trong danh sách trắng theo loại (id tin, mức khẩn, lý do, số lần giao; mã/tên trạm, giá trị, ngưỡng); chuỗi có dãy số dạng SĐT/CCCD bị bỏ | Web điều phối xem chi tiết tin qua `/graphql` theo quyền Hasura, không qua kênh đẩy |
+| Kết nối lại | centrifuge-js tự kết nối lại (backoff 0,5–20 s), tự xin token mới; kênh giữ 50 tin / 10 phút (`force_recovery`) để lấy bù tin lỡ khi mất kết nối ngắn | Engine `memory` một nút: Centrifugo khởi động lại thì mất lịch sử kênh (chấp nhận được với thông báo; dữ liệu gốc vẫn ở PostgreSQL/JetStream) |
+
+RAM đo 22/10/2026 sau `make smoke`: centrifugo ~33 MiB (`mem_limit` 128 MiB, `GOMEMLIMIT=80MiB`), cầu nối `cuu-tro-thong-bao` ~30 MiB (`mem_limit` 96 MiB). Kiểm thử: `scripts/smoke-realtime.sh` (26 ca, trong `make smoke`), pytest `tests/test_cuu_tro_thong_bao.py`, Vitest `tests/thong-bao.test.ts`.
 
 ## 4. Chia profile docker-compose
 
@@ -254,6 +300,7 @@ flowchart LR
     bao --> sw[seaweedfs]
     bao --> nt[nats<br/>JetStream + MQTT có xác thực]
     bao --> ld[ledger<br/>Tessera · POSIX]
+    bao --> cf[centrifugo<br/>WebSocket qua apisix]
   end
   subgraph later["profile sau"]
     gis["gis · Scorpio, mô phỏng cảm biến"]
@@ -266,7 +313,7 @@ flowchart LR
 
 | Profile | Dịch vụ | Lệnh | RAM |
 |---|---|---|---|
-| `core` | openbao, openbao-unseal (dev), 8 bao agent, postgres, postgres-roles (chạy một lần rồi thoát), keycloak, apisix, hasura, seaweedfs, temporal, temporal-ui, nats, ledger (#28) | `make up` | **Đo 19/10/2026** (`docker stats --no-stream`, Mac Apple Silicon, PostGIS chạy giả lập amd64): ~1,5 GB ngay sau khi mọi dịch vụ healthy; ~2,1 GB sau `make smoke` (bảng dưới; APISIX đo lại sau #12) |
+| `core` | openbao, openbao-unseal (dev), 8 bao agent, postgres, postgres-roles (chạy một lần rồi thoát), keycloak, apisix, hasura, seaweedfs, temporal, temporal-ui, nats, ledger (#28), centrifugo (#68) | `make up` | **Đo 19/10/2026** (`docker stats --no-stream`, Mac Apple Silicon, PostGIS chạy giả lập amd64): ~1,5 GB ngay sau khi mọi dịch vụ healthy; ~2,1 GB sau `make smoke` (bảng dưới; APISIX đo lại sau #12) |
 | `gis` | Scorpio (dùng chung postgis), mô phỏng cảm biến | tuần 4 | |
 | `sec` | ClamAV | tuần 2–4 | ClamAV ~1,5 GB. `ledger` (Tessera) đã vào `core` (#28) |
 | `ai` | Ollama, Qdrant, agent | tuần 5 | Qwen2.5 7B ~5 GB |
@@ -285,6 +332,7 @@ RAM từng dịch vụ của `core` (MiB; "sau smoke" = sau khi chạy `make smo
 | openbao | 33 | 145 | 256 | `mem_limit` |
 | nats | 12 | 25 | 256 | `mem_limit`, `GOMEMLIMIT=200MiB`, JetStream bộ nhớ 64 MB, ổ 1 GB (`NATS_JS_MAX_MEMORY`, `NATS_JS_MAX_FILE`, #30) |
 | temporal-ui | 11 | 33 | 128 | `mem_limit`, `GOMEMLIMIT=100MiB` |
+| centrifugo (#68, đo 22/10) | ~30 | 33 | 128 | `mem_limit`, `GOMEMLIMIT=80MiB`, engine `memory` |
 | 6 bao agent + openbao-unseal | ~100 | ~115 | 64 mỗi cái | `mem_limit` |
 | **Tổng** | **~1478** | **~2125** | | |
 
@@ -391,6 +439,83 @@ flowchart LR
   F --> L["Ghi nhận hàng/tiền đã cấp → core/ledger (Tessera)"]
 ```
 
+### 6.1. Phân công tự động (#67)
+
+Từ #67 không ai phải bấm "phân công": tin kêu cứu mới tự khởi chạy workflow `PhanCongCuuHo`; đội không nhận trong hạn thì workflow tự giao đội kế tiếp; tin khẩn hơn được đội trước.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant SRC as Hasura / API kêu cứu / SQL
+  participant PG as PostgreSQL (cuu_tro)
+  participant KC as cuu-tro-worker<br/>bộ khởi chạy
+  participant TP as Temporal
+  participant WF as PhanCongCuuHo<br/>(worker)
+  participant DOI as Đội cứu hộ<br/>(API /workflow)
+  participant NATS as NATS JetStream
+  SRC->>PG: INSERT incidents (tiep_nhan)
+  Note over PG: trigger cùng transaction:<br/>assignment_queue + pg_notify
+  PG-->>KC: NOTIFY cuu_tro_tin_moi (hoặc quét mỗi 30 s)
+  KC->>PG: SELECT … ORDER BY urgency_rank FOR UPDATE SKIP LOCKED
+  KC->>TP: start phan-cong-{id} (USE_EXISTING / REJECT_DUPLICATE, priority_key)
+  KC->>PG: started_at = now()
+  TP->>WF: chạy
+  loop tối đa PHAN_CONG_SO_LAN_GIAO_TOI_DA lần
+    WF->>PG: tìm đội gần nhất (PostGIS KNN), luật nhường đội, gán + lịch sử cho_nhan
+    WF->>WF: timer hạn nhận theo urgency
+    alt đội nhận (signal nhan_nhiem_vu)
+      DOI->>WF: POST /workflow/{id}/nhan
+      WF->>PG: tin dang_cuu, lịch sử da_nhan
+    else từ chối / quá hạn
+      WF->>PG: gỡ đội, đội san_sang, lịch sử tu_choi / qua_han
+    end
+  end
+  WF->>NATS: hết lần giao / không có đội → cuu-tro.dieu-phoi.can-xu-ly.{id}
+```
+
+| Quyết định | Chọn | Vì sao |
+|---|---|---|
+| Nguồn sự kiện "có tin mới" | **Outbox trong PostgreSQL** (`assignment_queue`, trigger `AFTER INSERT` + `pg_notify`), bộ khởi chạy chạy trong worker | Ghi cùng transaction với tin: không mất tin khi Temporal/NATS/worker đang lỗi, không phát sự kiện cho tin bị rollback. Mọi đường tạo tin (GraphQL, API kêu cứu #66, SQL, nhập lô) đều qua, không phải sửa từng nơi. Hasura event trigger cần thêm webhook vào API và đặt trigger lên bảng bằng role `hasura` (role này cố ý không có DDL, mục 7.1); NATS thì PostgreSQL không tự phát được, vẫn cần outbox ở giữa |
+| Không chạy trùng | Workflow id tất định `phan-cong-<incident_id>`; `USE_EXISTING` khi đang chạy, `REJECT_DUPLICATE` khi đã xong; `FOR UPDATE SKIP LOCKED` | Bộ khởi chạy chết giữa "start" và "đánh dấu" thì lần sau gọi lại vô hại; nhiều worker không lấy trùng dòng |
+| Ưu tiên urgency | (1) thứ tự lấy hàng đợi; (2) `priority_key` Temporal; (3) luật SQL `team_reserved_for_more_urgent`: tin kém khẩn không lấy đội đang cần cho tin khẩn hơn đang chờ trong bán kính | (1)(2) chỉ giúp khi nhiều việc cùng lúc; (3) mới quyết định ai được đội khi đội khan hiếm. Không giành lại đội đã giao (không ngắt nhiệm vụ đang làm); `seeking_at` hết hạn tự động nên workflow chết không chặn tin khác |
+| Quá hạn → phân công lại | `workflow.wait_condition` có `timeout` (timer bền) + signal `nhan_nhiem_vu` / `tu_choi` / `huy` | Không vòng lặp sleep/poll; worker khởi động lại vẫn giữ hạn; test bằng máy chủ test tua thời gian |
+| Báo điều phối | Sự kiện JetStream `cuu-tro.dieu-phoi.can-xu-ly.<id>` (stream `CUU_TRO_DIEU_PHOI`, 30 ngày), `Nats-Msg-Id` chống trùng | Cầu nối `cuu-tro-thong-bao` đẩy lên web điều phối qua Centrifugo (#68, mục 3.5); Telegram đọc sau; sự kiện không có dữ liệu cá nhân |
+
+### 6.2. Tiếp nhận tin kêu cứu qua API (#66)
+
+`POST /workflow/keu-cuu` của `cuu-tro-api`: kiểm dữ liệu ở API (Poka-yoke, lỗi tiếng Việt theo trường) rồi `INSERT` bằng role `cuu_tro_app`; chặn trùng vẫn là trigger của CSDL (#25). Chi tiết trường, mã lỗi: `apps/cuu-tro/README.md` mục "Tiếp nhận tin kêu cứu".
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as tinh-nguyen / dieu-phoi
+  participant GW as APISIX /workflow/keu-cuu
+  participant API as cuu-tro-api
+  participant PG as PostgreSQL (cuu_tro)
+  U->>GW: POST JSON + Bearer JWT
+  Note over GW: WAF (body) → JWT → limit-count riêng (20/60 s/IP)
+  GW->>API: /keu-cuu
+  API->>API: kiểm JWT + vai, kiểm trường (422), chuẩn hóa SĐT
+  API->>PG: INSERT incidents (role cuu_tro_app)
+  Note over PG: trigger incidents_no_duplicate:<br/>pg_advisory_xact_lock(SĐT) → ST_DWithin 200 m, 6 giờ
+  alt trùng
+    PG-->>API: 23505 incidents_no_duplicate, DETAIL incident_id=…
+    API-->>U: 409 {ma: tin_trung, incident_id, khoang_cach_m}
+  else hợp lệ
+    Note over PG: trigger outbox (#67): assignment_queue + pg_notify
+    PG-->>API: id, created_at
+    API-->>U: 201 (phân công tự động, bản đồ nhận qua subscription #60)
+  end
+```
+
+| Quyết định | Chọn | Vì sao |
+|---|---|---|
+| REST hay mutation GraphQL | **REST** `POST /workflow/keu-cuu` trên API của ứng dụng; mutation Hasura vẫn giữ cho web điều phối | Cần mã HTTP riêng (`409` kèm mã tin, `422` theo trường), chuẩn hóa SĐT và giới hạn tần suất **chỉ cho đường này**: mọi mutation/query GraphQL chung một URI `/graphql` nên APISIX không tách được. Cùng mẫu với ảnh hiện trường (#27) và phiếu kho (#28) |
+| Ghi bằng gì | Role dịch vụ `cuu_tro_app` (quyền INSERT theo cột, migration 0008), không đi vòng qua Hasura | Lấy được `SQLSTATE`, tên ràng buộc và `DETAIL` (`incident_id=…`) của trigger một cách chắc chắn; qua Hasura chỉ còn chuỗi thông điệp. Quyền vai trò kiểm ở API bằng JWT (giống Hasura: `dieu-phoi`, `tinh-nguyen`); `created_by` lấy từ `sub` |
+| Chặn trùng khi gửi đồng thời | Trong CSDL: trigger `BEFORE INSERT` + `pg_advisory_xact_lock` theo SĐT (có từ #25), nay `SECURITY DEFINER` | Kiểm ở API (đọc rồi ghi) sẽ lọt khi hai request chạy song song hoặc nhiều bản API. Khóa theo SĐT tuần tự hóa đúng các request có thể trùng nhau, request khác SĐT không chờ nhau. Exclusion constraint không dùng được vì điều kiện phụ thuộc thời điểm và trạng thái |
+| Gửi ẩn danh | **Không mở** | Repo chưa có quyết định về kênh công khai. Endpoint ẩn danh + `409` kèm mã tin cho phép dò "số X có đang báo tin quanh chỗ Y không", và chỉ còn giới hạn theo IP để chống spam. Kênh người dân (Telegram bot, việc sau) gọi API bằng tài khoản dịch vụ riêng của bot |
+| Vùng phục vụ | Hình chữ nhật cấu hình bằng `KEU_CUU_VUNG_PHUC_VU` (mặc định Việt Nam) | Bắt lỗi đổi chỗ vĩ độ/kinh độ và tọa độ (0, 0) của GPS chưa bắt được vị trí; xã triển khai thu hẹp về địa bàn của mình |
+
 ## 7. Vì sao lõi độc lập với nghiệp vụ (`core/` và `apps/`)
 
 Đề yêu cầu dịch vụ Tầng 1 **độc lập hoàn toàn với nghiệp vụ cụ thể**, chỉ cung cấp dịch vụ cơ bản (xác thực, lưu trữ, workflow…) cho người phát triển ứng dụng Tầng 2. Vì vậy repo chia hai phần:
@@ -491,6 +616,8 @@ flowchart LR
 | API → Temporal | gRPC nội bộ `temporal:7233` (start, signal, query, describe) | Temporal không có giao thức HTTP cho client; gRPC không qua APISIX. Temporal UI vẫn chỉ cho admin |
 | Worker → PostgreSQL | Role `cuu_tro_app`: `SELECT` vài cột của `incidents`, `rescue_teams`; `UPDATE` chỉ `status`, `assigned_team_id`; không `INSERT/DELETE`, không đọc SĐT người báo, giới hạn 10 kết nối (migration `0003`, kiểm bằng `make test-db`) | Worker là dịch vụ nền tin cậy của ứng dụng, không có người dùng; không dùng token `dieu-phoi` của người dùng, không dùng admin secret Hasura |
 | Worker → bí mật | `bao-agent-cuu-tro` (AppRole `app-cuu-tro-workflow`, chỉ đọc `secret/app/cuu-tro/db`) render `APP_DB_URL` lên tmpfs, `env-from-files.sh` export | Cùng mẫu với dịch vụ lõi (mục 8.3) |
+| Worker → hàng đợi phân công (#67) | Cùng role `cuu_tro_app`: `SELECT` + `UPDATE` vài cột `assignment_queue`, `SELECT`/`INSERT` + `UPDATE` cột kết quả `incident_assignments`, không `DELETE` (migration `0007`); `LISTEN cuu_tro_tin_moi`. Trigger ghi outbox chạy `SECURITY DEFINER` nên role `hasura` không cần quyền trên hàng đợi | Mục 6.1 |
+| Worker → NATS (#67) | User `cuu-tro-app` (`NATS_URL` từ OpenBao), chỉ phát `cuu-tro.dieu-phoi.>`; worker khai báo stream theo `apps/cuu-tro/nats/streams.json` khi khởi động | Báo điều phối khi hết lần giao / không có đội / quá hạn xác nhận |
 
 Điểm lõi biết về ứng dụng chỉ là **quy ước tên** suy ra từ `DXOS_APP`: role `<schema>_app`, bí mật `secret/app/<DXOS_APP>/db`, policy `apps/<DXOS_APP>/openbao/policies/`, upstream `<DXOS_APP>-api:8000`. Lõi chạy một mình (không bật profile `app`) thì `/workflow/*` trả 502/503, các route khác không ảnh hưởng. Sơ đồ workflow `PhanCongCuuHo` và API: `apps/cuu-tro/README.md` mục "Workflow".
 
@@ -601,6 +728,7 @@ OpenBao 2.7.1 (MPL-2.0, nhánh nguồn mở của Vault) chạy như dịch vụ
 | `secret/app/<DXOS_APP>/ledger` | `write_token` | `core/ledger` (file `writers`: dịch vụ được ghi) và `cuu-tro-api` (`LEDGER_WRITE_TOKEN`) | ✔ (#28) |
 | `secret/app/<DXOS_APP>/s3` | `access_key`, `secret_key` | SeaweedFS (định danh `<DXOS_APP>-app`, chỉ bucket `<DXOS_APP>-*`, không Admin); `bao-agent-cuu-tro` render `S3_ACCESS_KEY`, `S3_SECRET_KEY` chỉ cho `cuu-tro-api` | ✔ (#27) |
 | `secret/app/<DXOS_APP>/nats` | `app_password`, `device_password` | NATS (`auth.conf` do `bao-agent-nats` render): user `<DXOS_APP>-app` (backend, cổng NATS thường) và `<DXOS_APP>-thiet-bi` (thiết bị, chỉ MQTT); `bao-agent-cuu-tro` render `NATS_URL`, `MQTT_PASSWORD` cho ứng dụng | ✔ (#30) |
+| `secret/app/<DXOS_APP>/realtime` | `token_hmac_secret`, `api_key` | Centrifugo (`client.token.hmac_secret_key`, `http_api.key` trong file cấu hình do `bao-agent-centrifugo` render); `bao-agent-cuu-tro` render `REALTIME_TOKEN_SECRET` cho `cuu-tro-api` (ký token kết nối) và `CENTRIFUGO_API_KEY` cho cầu nối `cuu-tro-thong-bao` | ✔ (#68) |
 
 `.env` không còn bí mật của dịch vụ lõi. `KC_DEMO_USER_PASSWORD` là mật khẩu của user mẫu (dữ liệu giả của `apps/cuu-tro`, dùng cho `make smoke`), không phải bí mật của dịch vụ lõi.
 
@@ -633,7 +761,8 @@ Mỗi dịch vụ một AppRole, mỗi AppRole một policy **chỉ đọc** đ�
 | `seaweedfs` | `core-seaweedfs` | `core/s3`, `app/+/s3` (#27) |
 | `ledger` | `core-ledger` | `core/ledger`, `app/+/ledger` (#28) |
 | `nats` | `core-nats` | `app/+/nats` (#30) |
-| `app-cuu-tro-workflow` | `app-cuu-tro-workflow` (`apps/cuu-tro/openbao/policies/workflow.hcl`) | `app/cuu-tro/db` (#29), `app/cuu-tro/nats` (#30), `app/cuu-tro/s3` (#27), `app/cuu-tro/ledger` (#28). Không đọc được `core/ledger` (khóa ký) |
+| `centrifugo` | `core-centrifugo` | `app/+/realtime` (#68) |
+| `app-cuu-tro-workflow` | `app-cuu-tro-workflow` (`apps/cuu-tro/openbao/policies/workflow.hcl`) | `app/cuu-tro/db` (#29), `app/cuu-tro/nats` (#30), `app/cuu-tro/s3` (#27), `app/cuu-tro/ledger` (#28), `app/cuu-tro/realtime` (#68). Không đọc được `core/ledger` (khóa ký) |
 
 `core-postgres` đọc thêm `app/+/db` (một đoạn đường dẫn bất kỳ) để `postgres-roles` đồng bộ mật khẩu role `<schema>_app` của ứng dụng đang chọn.
 
@@ -651,6 +780,7 @@ flowchart LR
   BAO -->|"AppRole temporal"| AT["bao-agent-temporal"] --> VT[["tmpfs secrets-temporal"]] --> TP["temporal"]
   BAO -->|"AppRole seaweedfs"| AS["bao-agent-seaweedfs"] --> VS[["tmpfs secrets-seaweedfs<br/>s3.json"]] --> SW["seaweedfs"]
   BAO -->|"AppRole nats"| AN["bao-agent-nats"] --> VN[["tmpfs secrets-nats<br/>auth.conf"]] --> NT["nats"]
+  BAO -->|"AppRole centrifugo"| AC["bao-agent-centrifugo"] --> VC[["tmpfs secrets-centrifugo<br/>config.json"]] --> CF["centrifugo"]
 ```
 
 - Mỗi dịch vụ đọc bí mật có một `bao agent` riêng (`core/openbao/agent-<dịch vụ>.hcl`), đăng nhập bằng `role_id`/`secret_id` của AppRole tương ứng, render mỗi bí mật thành một file trên volume **tmpfs** (nằm trong RAM, mất khi dừng). Agent đọc lại KV mỗi 5 phút.

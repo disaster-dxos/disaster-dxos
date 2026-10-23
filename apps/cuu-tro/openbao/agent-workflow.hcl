@@ -6,6 +6,9 @@
 # Ảnh hiện trường (#27): volume riêng /out/cuu-tro-api cho cuu-tro-api: APP_DB_URL + khóa S3 của ứng
 # dụng (định danh cuu-tro-app trên SeaweedFS, chỉ bucket cuu-tro-*), không có mật khẩu NATS/MQTT.
 # Sổ cái (#28): /out/cuu-tro-api/LEDGER_WRITE_TOKEN, token để cuu-tro-api ghi lá lên core/ledger.
+# Thông báo realtime (#68): /out/cuu-tro-api/REALTIME_TOKEN_SECRET (cuu-tro-api ký token kết nối
+# Centrifugo); volume riêng /out/cuu-tro-thong-bao cho cầu nối: NATS_URL + CENTRIFUGO_API_KEY, không có
+# mật khẩu DB, khóa S3 hay khóa ký token.
 # Tên role/CSDL lấy từ biến môi trường của agent (apps/cuu-tro/compose.yaml).
 
 vault {
@@ -71,4 +74,22 @@ template {
   destination = "/out/cuu-tro-api/LEDGER_WRITE_TOKEN"
   perms       = "0444"
   contents    = "{{ with secret \"secret/data/app/cuu-tro/ledger\" }}{{ .Data.data.write_token }}{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro-api/REALTIME_TOKEN_SECRET"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/realtime\" }}{{ .Data.data.token_hmac_secret }}{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro-thong-bao/NATS_URL"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/nats\" }}nats://cuu-tro-app:{{ .Data.data.app_password | urlquery }}@nats:4222{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro-thong-bao/CENTRIFUGO_API_KEY"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/realtime\" }}{{ .Data.data.api_key }}{{ end }}"
 }

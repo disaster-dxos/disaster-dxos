@@ -196,6 +196,9 @@ do_setup() {
   # Token ghi sổ cái của backend ứng dụng (#28): bao-agent-ledger render thành danh sách dịch vụ được
   # POST /ledger/entries ("<APP>-api <token>"), bao agent của ứng dụng render cho <APP>-api.
   kv_seed "app/$APP/ledger"   write_token=@rand:32
+  # Thông báo realtime (#68): khóa HS256 ký/kiểm token kết nối Centrifugo (backend ứng dụng ký,
+  # Centrifugo kiểm) và API key HTTP API của Centrifugo (cầu nối NATS → Centrifugo gọi publish).
+  kv_seed "app/$APP/realtime" token_hmac_secret=@rand:32 api_key=@rand:32
 
   # AppRole
   api_ok GET sys/auth

@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/logo/logo-ngang-nen-trang.png">
+    <img src="docs/images/logo/logo-ngang.png" width="480" alt="Logo Disaster DX-OS: khiên che mái nhà trên sóng lũ, có sóng tín hiệu và phao cứu sinh; khẩu hiệu Ứng phó Thiên tai và Cứu trợ Cộng đồng">
+  </picture>
+</p>
+
 ![DTU_DZ_1 · Disaster DX-OS: Hệ điều hành Ứng phó Thiên tai & Cứu trợ Cộng đồng](docs/images/banner.webp)
 
 # Disaster DX-OS
@@ -47,7 +54,7 @@ Miền Trung mỗi năm hứng nhiều cơn bão và lũ. Trong vài giờ nư�
 | Chức năng | Trạng thái |
 |---|---|
 | **Kêu cứu** có tọa độ, chặn tin trùng | ✅ Đã có ở v0.1 (API GraphQL, phân quyền theo vai trò) |
-| **Phân công cứu hộ** đội gần nhất, chờ xác nhận | ✅ Đã có ở v0.1 (workflow Temporal, API `/workflow`) |
+| **Phân công cứu hộ** đội gần nhất, chờ xác nhận | ✅ Đã có ở v0.1 (workflow Temporal, API `/workflow`); từ #67 (chưa phát hành): tự khởi chạy khi có tin mới, ưu tiên theo mức khẩn, đội không nhận trong hạn thì phân công lại |
 | **Cảnh báo mực nước** từ trạm đo | ✅ Đã có ở v0.1: trạm đo (giả lập) → MQTT → phát sự kiện vượt ngưỡng · 🔜 thông báo Telegram (tuần 4) |
 | **Sổ cái minh bạch** tiền và hàng cứu trợ | ✅ Đã có ở v0.1 (Tessera, trang công khai, CLI tự kiểm) |
 | **Bản đồ thời gian thực** cho người điều phối | 🔜 Tuần 3 (web Nuxt + MapLibre; dữ liệu và GraphQL đã sẵn) |
@@ -76,7 +83,7 @@ Sơ đồ chi tiết, luồng JWT, route gateway, quản lý bí mật: [`docs/a
 | Sổ cái minh bạch | Tessera (Go, `core/ledger`) | Apache-2.0 |
 | Bí mật | OpenBao | MPL-2.0 |
 | Backend ứng dụng | Python 3.12, FastAPI | PSF-2.0, MIT |
-| Sắp có | Nuxt 3 + MapLibre, Flutter, Scorpio NGSI-LD, Centrifugo, Ollama + Qwen2.5, Qdrant, Grafana, ClamAV | MIT, BSD-3, Apache-2.0, AGPL-3.0/GPL-2.0 (dịch vụ riêng) |
+| Sắp có | Nuxt 4 + Nuxt UI + MapLibre, Flutter, Scorpio NGSI-LD, Centrifugo, Ollama + Qwen2.5, Qdrant, Grafana, ClamAV | MIT, BSD-3, Apache-2.0, AGPL-3.0/GPL-2.0 (dịch vụ riêng) |
 
 Phiên bản và giấy phép từng image, thư viện: [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
@@ -88,8 +95,8 @@ Phiên bản và giấy phép từng image, thư viện: [`DEPENDENCIES.md`](DEP
 
 1. **Báo tin:** người dân hoặc tình nguyện viên gửi tin kêu cứu kèm tọa độ.
 2. **Kiểm tra:** CSDL từ chối tin thiếu tọa độ và tin trùng số điện thoại trong 200 m / 6 giờ.
-3. **Điều phối:** người điều phối bấm phân công, hệ thống khởi chạy workflow Temporal.
-4. **Đội gần nhất:** workflow tìm đội sẵn sàng gần nhất bằng PostGIS, gán đội và chờ xác nhận có hạn.
+3. **Điều phối:** tin mới tự khởi chạy workflow Temporal (#67), tin khẩn được xếp trước; người điều phối chỉ can thiệp khi hệ thống báo (hết lần giao, không có đội).
+4. **Đội gần nhất:** workflow tìm đội sẵn sàng gần nhất bằng PostGIS và giao đội; đội không nhận hoặc từ chối trong hạn (theo mức khẩn) thì giao đội kế tiếp.
 5. **Đã cứu:** đội cứu hộ xác nhận, tin được đóng, đội trở lại trạng thái sẵn sàng.
 
 **Hàng cứu trợ → kiểm chứng công khai**
@@ -107,7 +114,7 @@ API và lệnh mẫu của từng bước: [`apps/cuu-tro/README.md`](apps/cuu-t
 
 Theo [`docs/PLAN.md`](docs/PLAN.md):
 
-- **Tuần 3:** web điều phối Nuxt 3 với bản đồ MapLibre thời gian thực, màn hình phân công; tự khởi chạy phân công khi có tin mới; thông báo realtime qua Centrifugo.
+- **Tuần 3:** web điều phối Nuxt 4 + Nuxt UI với bản đồ MapLibre thời gian thực, màn hình phân công; tự khởi chạy phân công khi có tin mới; thông báo realtime qua Centrifugo.
 - **Tuần 4:** trạm đo thành bản sao số NGSI-LD trên Scorpio; cảnh báo vượt ngưỡng gửi Telegram; dữ liệu cũ ra Parquet + DuckDB; dashboard Grafana; lên VPS có HTTPS.
 - **Tuần 5:** AI bóc tách tin kêu cứu tự do thành dữ liệu có cấu trúc, người điều phối duyệt lại; app hiện trường Flutter chạy được khi mất mạng; demo công khai.
 - **Tuần 6–7:** sửa theo phản hồi người dùng thật, module mẫu cho `apps/`, phát hành v1.0.0.
@@ -137,11 +144,13 @@ make up
 make smoke
 ```
 
+Sau `make up`, mở web điều phối qua gateway: **http://localhost:9080/** (đăng nhập bằng tài khoản mẫu bên dưới).
+
 | Bước | Việc xảy ra |
 |---|---|
 | `cp .env.example .env` | Cấu hình cho máy dev. Không có bí mật nào trong file này; `KC_DEMO_USER_PASSWORD` chỉ là mật khẩu của tài khoản mẫu |
-| `make up` | Chạy OpenBao, khởi tạo (Shamir 3 mảnh, ngưỡng 2), mở khóa, sinh ngẫu nhiên mọi bí mật lõi, rồi chạy profile `core` + `app`: kéo image, build 3 image từ mã nguồn (APISIX + Coraza, sổ cái Go, backend Python), áp migration, áp metadata Hasura, tạo bucket |
-| `make smoke` | Nạp dữ liệu giả rồi kiểm 339 ca: OpenBao, JWT, route gateway + WAF, ràng buộc CSDL, phân quyền GraphQL, workflow phân công, cảm biến MQTT, ảnh hiện trường, sổ cái |
+| `make up` | Chạy OpenBao, khởi tạo (Shamir 3 mảnh, ngưỡng 2), mở khóa, sinh ngẫu nhiên mọi bí mật lõi, rồi chạy profile `core` + `app`: kéo image, build 4 image từ mã nguồn (APISIX + Coraza, sổ cái Go, backend Python, web Nuxt), áp migration, áp metadata Hasura, tạo bucket |
+| `make smoke` | Nạp dữ liệu giả rồi kiểm 339 ca: OpenBao, JWT, route gateway + WAF, ràng buộc CSDL, phân quyền GraphQL, workflow phân công, cảm biến MQTT, ảnh hiện trường, sổ cái; từ #64 thêm 31 ca web điều phối qua gateway (`scripts/smoke-web.sh`) |
 
 Đo thật ngày 22/10/2026 trên bản clone sạch từ GitHub, chạy ở thư mục khác thư mục mã gốc (Mac Apple Silicon, Docker Desktop, Docker Engine 28.5, chưa có image nào trên máy): `make up` lần đầu 2 phút 36 giây (gồm kéo khoảng 6,9 GB image và build), lần sau 48 giây; `make smoke` 72 giây, đạt 339/339. Mạng chậm hơn thì lần đầu lâu hơn.
 
@@ -163,7 +172,7 @@ Tài khoản trong realm `disaster` là **dữ liệu giả** của `apps/cuu-tr
 
 Dữ liệu mẫu là xã An Lạc giả định (`make seed`, `make smoke` cũng tự nạp).
 
-Thử nhanh qua gateway (client `dxos-dev-cli` chỉ dùng khi dev):
+Web điều phối: http://localhost:9080/ chuyển sang trang đăng nhập Keycloak (client `dxos-web`, PKCE) rồi quay về bản đồ. Thử nhanh API qua gateway (client `dxos-dev-cli` chỉ dùng khi dev):
 
 ```bash
 set -a; . ./.env; set +a
@@ -217,4 +226,4 @@ Mã nguồn phát hành theo [Apache-2.0](LICENSE). Bản quyền và ghi nhận
 
 ## 📝 CHANGELOG
 
-Theo [SemVer](https://semver.org/lang/vi/). Bản mới nhất: [v0.1.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.1.0) (22/10/2026, lõi Tầng 1 đầy đủ + ứng dụng cứu trợ, sổ cái minh bạch); bản trước: [v0.0.1](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.0.1) (19/10/2026, khung dự án + profile `core`). Thay đổi chưa phát hành và lịch sử: [`CHANGELOG.md`](CHANGELOG.md).
+Theo [SemVer](https://semver.org/lang/vi/). Bản mới nhất: [v0.2.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.2.0) (23/10/2026, web điều phối Nuxt UI: bản đồ realtime, phân công tự động, API kêu cứu, thông báo Centrifugo); bản trước: [v0.1.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.1.0) (22/10/2026, lõi Tầng 1 đầy đủ + ứng dụng cứu trợ, sổ cái minh bạch), [v0.0.1](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.0.1) (19/10/2026, khung dự án + profile `core`). Thay đổi chưa phát hành và lịch sử: [`CHANGELOG.md`](CHANGELOG.md).

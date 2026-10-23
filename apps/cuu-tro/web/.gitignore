@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Sinh ra khi build/dev Nuxt, không đưa lên repo (node_modules/ đã bỏ qua ở gốc)
+.nuxt/
+.output/
+.cache/

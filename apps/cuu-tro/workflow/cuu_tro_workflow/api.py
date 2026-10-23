@@ -4,10 +4,17 @@
 Client gọi qua API Gateway: APISIX route /workflow/* kiểm JWT + WAF + rate limit rồi bỏ tiền tố
 /workflow (core/apisix/apisix.yaml). Đường dẫn bên dưới là đường dẫn SAU khi bỏ tiền tố:
   POST /hello                       chạy workflow Hello (mọi vai trò)
-  POST /phan-cong/{incident_id}     khởi chạy PhanCongCuuHo (chỉ dieu-phoi)
+  POST /phan-cong/{incident_id}     khởi chạy tay PhanCongCuuHo (chỉ dieu-phoi). Tin mới đã TỰ khởi
+                                    chạy (#67, khoi_chay.py); dùng khi luồng tự động đã dừng (báo điều phối)
   GET  /{workflow_id}               trạng thái (dieu-phoi; cuu-ho của đội được gán)
+  POST /{workflow_id}/nhan          đội nhận nhiệm vụ trong hạn (dieu-phoi; cuu-ho của đội được gán)
+  POST /{workflow_id}/tu-choi       đội từ chối → workflow giao đội kế tiếp (dieu-phoi; cuu-ho của đội)
+  POST /{workflow_id}/huy           dừng luồng khi đội chưa nhận, gỡ đội (chỉ dieu-phoi)
   POST /{workflow_id}/xac-nhan      signal "đã cứu" (dieu-phoi; cuu-ho của đội được gán)
   GET  /healthz                     sống + kết nối Temporal (healthcheck của container)
+Tiếp nhận tin kêu cứu (#66, Poka-yoke: cuu_tro_workflow/keu_cuu.py, apps/cuu-tro/README.md):
+  POST /keu-cuu                     tạo tin (dieu-phoi, tinh-nguyen); 201 · 409 trùng kèm mã tin đang mở ·
+                                    422 lỗi theo trường. Route gateway riêng /workflow/keu-cuu (rate limit chặt)
 Ảnh hiện trường (#27, luật quyền: cuu_tro_workflow/anh.py, apps/cuu-tro/README.md):
   POST /tai-len/su-co/{incident_id}/anh   body = nội dung ảnh (route gateway /workflow/tai-len/*)
   GET  /su-co/{incident_id}/anh           liệt kê ảnh của tin kèm link xem ngắn hạn
@@ -17,11 +24,15 @@ Sổ cái minh bạch (#28, luồng: cuu_tro_workflow/so_cai.py, apps/cuu-tro/RE
   POST /kho/phieu/{id}/ghi-so       ghi lại sổ cái cho phiếu chưa ghi (chỉ dieu-phoi; gửi lại an toàn)
   GET  /minh-bach/phieu/{ma}        CÔNG KHAI, không cần đăng nhập (route /workflow/minh-bach/*):
                                     bản ghi không định danh + trạng thái xác minh trên sổ cái
+Thông báo realtime (#68, cuu_tro_workflow/thong_bao.py):
+  GET  /realtime/token              token kết nối Centrifugo ngắn hạn (dieu-phoi; quan-tri khi realm có),
+                                    kênh server-side "dieu-phoi"; web mở WebSocket /realtime/websocket
 "Cuu-ho của đội được gán" không viết lại luật ở đây: API hỏi Hasura qua gateway bằng chính JWT
 người dùng; luật lọc theo đội của Hasura metadata (#26) trả null thì người dùng không có quyền.
 """
 
 import hashlib
+import json
 import logging
 import re
 import uuid
@@ -36,21 +47,32 @@ import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 from temporalio.client import Client, WorkflowExecutionStatus
-from temporalio.common import WorkflowIDConflictPolicy, WorkflowIDReusePolicy
+from temporalio.common import Priority, WorkflowIDConflictPolicy, WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError
 
-from . import anh, config, so_cai
-from .auth import VAI_TRO_CUU_HO, VAI_TRO_DIEU_PHOI, NguoiDung, XacThuc, can_vai_tro
+from . import anh, config, keu_cuu, so_cai, thong_bao
+from .auth import VAI_TRO_CUU_HO, VAI_TRO_DIEU_PHOI, VAI_TRO_TINH_NGUYEN, NguoiDung, XacThuc, can_vai_tro
 from .s3 import KhoAnh, LoiS3
-from .logic import ThamSoPhanCong, TrangThaiPhanCong, XacNhan
-from .workflows import QUERY_TRANG_THAI, SIGNAL_XAC_NHAN, Hello, PhanCongCuuHo
+from .logic import PhanHoi, TrangThaiPhanCong, XacNhan, YeuCauHuy, uu_tien
+from .workflows import (
+    BUOC_CHO_NHAN,
+    BUOC_CHO_XAC_NHAN,
+    BUOC_XONG,
+    QUERY_TRANG_THAI,
+    SIGNAL_HUY,
+    SIGNAL_NHAN,
+    SIGNAL_TU_CHOI,
+    SIGNAL_XAC_NHAN,
+    Hello,
+    PhanCongCuuHo,
+)
 
 TIEN_TO_PHAN_CONG = "phan-cong-"
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 _WF_ID = re.compile(rf"^{TIEN_TO_PHAN_CONG}({_UUID})$")
 
-Q_TIN = "query($id: uuid!) { incidents_by_pk(id: $id) { id status assigned_team_id } }"
+Q_TIN = "query($id: uuid!) { incidents_by_pk(id: $id) { id status assigned_team_id urgency } }"
 # Ảnh hiện trường: chỉ hỏi cột mà cả 3 vai trò được đọc (tinh-nguyen không có assigned_team_id;
 # hỏi cột không có quyền thì Hasura báo lỗi validation chứ không trả null)
 Q_TIN_ANH = "query($id: uuid!) { incidents_by_pk(id: $id) { id status } }"
@@ -124,6 +146,27 @@ class SoPhieu:
         )
 
 
+class SoTin:
+    """Tạo tin kêu cứu bằng role dịch vụ cuu_tro_app (migration 0008: INSERT đúng các cột người báo được
+    nhập; status/assigned_team_id lấy mặc định). Trigger của CSDL chặn trùng (0001) và ghi outbox để tự
+    phân công (0007) trong cùng transaction với tin."""
+
+    def __init__(self, pool: asyncpg.Pool) -> None:
+        self._pool = pool
+
+    async def them(self, tin: keu_cuu.TinKeuCuu, created_by: str) -> dict[str, Any]:
+        row = await self._pool.fetchrow(
+            """INSERT INTO cuu_tro.incidents
+                 (description, location, address_text, people_count, urgency, reporter_phone, reporter_name,
+                  source, created_by)
+               VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, $4, $5, $6, $7, $8, $9, $10)
+               RETURNING id, status, urgency, people_count, created_at""",
+            tin.description, tin.lon, tin.lat, tin.address_text, tin.people_count, tin.urgency,
+            tin.reporter_phone, tin.reporter_name, tin.source, created_by,
+        )
+        return dict(row)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     cfg = config.load()
@@ -134,12 +177,14 @@ async def lifespan(app: FastAPI):
     if not hasattr(st, "temporal"):
         st.temporal = await Client.connect(cfg.temporal_address, namespace=cfg.temporal_namespace)
     pool = None
-    if not (hasattr(st, "so_anh") and hasattr(st, "so_phieu")) and cfg.db_url:
+    if not (hasattr(st, "so_anh") and hasattr(st, "so_phieu") and hasattr(st, "so_tin")) and cfg.db_url:
         pool = await asyncpg.create_pool(cfg.db_url, min_size=0, max_size=4)
         if not hasattr(st, "so_anh"):
             st.so_anh = SoAnh(pool)
         if not hasattr(st, "so_phieu"):
             st.so_phieu = SoPhieu(pool)
+        if not hasattr(st, "so_tin"):
+            st.so_tin = SoTin(pool)
     try:
         async with httpx.AsyncClient(base_url=cfg.gateway_url, timeout=10) as http, \
                 httpx.AsyncClient(timeout=30) as http_s3, \
@@ -160,7 +205,7 @@ async def lifespan(app: FastAPI):
 # Đường dẫn công khai /workflow/... phía sau gateway: uvicorn --root-path /workflow (compose)
 app = FastAPI(
     title="cuu-tro workflow API",
-    version="0.1.0",
+    version="0.2.0",
     docs_url=None,
     redoc_url=None,
     lifespan=lifespan,
@@ -195,18 +240,23 @@ async def hoi_tin(request: Request, nd: NguoiDung, vai_tro: str, incident_id: st
     return (await hoi_hasura(request, nd, vai_tro, Q_TIN, {"id": incident_id}))["incidents_by_pk"]
 
 
-async def kiem_quyen_workflow(request: Request, nd: NguoiDung, workflow_id: str) -> str:
-    """Trả incident_id nếu người dùng được xem/xác nhận workflow phân công này, nếu không 403/404."""
+async def kiem_quyen_workflow(request: Request, nd: NguoiDung, workflow_id: str) -> tuple[str, str | None]:
+    """Kiểm người dùng được xem/phản hồi workflow phân công này, nếu không 403/404.
+
+    Trả (incident_id, đội của người dùng): dieu-phoi → None; cuu-ho → đội đang được giao tin theo
+    Hasura (luật lọc theo thành viên đội, #26), dùng để workflow bỏ phản hồi của đội đã bị thay.
+    """
     m = _WF_ID.match(workflow_id)
     if not m:
         raise HTTPException(404, "Không có workflow này")
     incident_id = m.group(1)
     can_vai_tro(nd, VAI_TRO_DIEU_PHOI, VAI_TRO_CUU_HO)
     if nd.co(VAI_TRO_DIEU_PHOI):
-        return incident_id
-    if await hoi_tin(request, nd, VAI_TRO_CUU_HO, incident_id) is None:
+        return incident_id, None
+    tin = await hoi_tin(request, nd, VAI_TRO_CUU_HO, incident_id)
+    if tin is None:
         raise HTTPException(403, "Tin kêu cứu không được phân công cho đội của bạn")
-    return incident_id
+    return incident_id, tin["assigned_team_id"]
 
 
 async def trang_thai_wf(request: Request, workflow_id: str) -> tuple[str, TrangThaiPhanCong]:
@@ -227,10 +277,73 @@ class XacNhanVao(BaseModel):
     ghi_chu: str = Field("", max_length=500)
 
 
+class HuyVao(BaseModel):
+    ly_do: str = Field("", max_length=500)
+
+
 @app.get("/healthz")
 async def healthz(request: Request) -> dict[str, str]:
     await request.app.state.temporal.service_client.check_health()
     return {"status": "ok"}
+
+
+@app.get("/realtime/token")
+async def realtime_token(request: Request, response: Response, nd: NguoiDungDep) -> dict[str, Any]:
+    """Token kết nối Centrifugo cho web điều phối. Không cache: token chỉ dùng một phiên kết nối."""
+    kenh = thong_bao.kenh_cua(nd.vai_tro)
+    if not kenh:
+        raise HTTPException(403, f"Cần vai trò: {', '.join(thong_bao.VAI_TRO_NHAN)}")
+    cfg = request.app.state.cfg
+    if not cfg.realtime_token_secret:
+        raise HTTPException(503, "Chưa cấu hình thông báo realtime (REALTIME_TOKEN_SECRET)")
+    response.headers["Cache-Control"] = "no-store"
+    han = cfg.realtime_token_han_giay
+    return {"token": thong_bao.ky_token(nd.sub, kenh, cfg.realtime_token_secret, han), "han_giay": han,
+            "kenh": kenh}
+
+
+@app.post("/keu-cuu", status_code=201)
+async def keu_cuu_moi(request: Request, nd: NguoiDungDep, response: Response) -> dict[str, Any]:
+    """Tiếp nhận tin kêu cứu (#66). Body JSON: lat, lon, reporter_phone, description bắt buộc; urgency,
+    people_count, address_text, reporter_name, source tùy chọn. Lỗi trả {"detail": {"ma", "thong_bao", …}}."""
+    can_vai_tro(nd, VAI_TRO_DIEU_PHOI, VAI_TRO_TINH_NGUYEN)
+    st = request.app.state
+    # Body JSON tự đọc (không qua model pydantic) để lỗi theo trường bằng tiếng Việt, đủ mọi trường sai
+    raw = await doc_body_gioi_han(request, keu_cuu.BODY_TOI_DA, "Nội dung tin kêu cứu")
+    try:
+        d = json.loads(raw)
+    except ValueError:
+        loi = keu_cuu.LoiTruong("body", "Nội dung gửi lên không phải JSON hợp lệ.")
+        raise HTTPException(422, keu_cuu.loi_422([loi])) from None
+    kq = keu_cuu.kiem_tra(d, st.cfg.keu_cuu_vung)
+    if isinstance(kq, list):
+        raise HTTPException(422, keu_cuu.loi_422(kq))
+    try:
+        dong = await st.so_tin.them(kq, nd.sub)
+    except asyncpg.UniqueViolationError as e:
+        trung = keu_cuu.tin_trung_tu_detail(e.detail) if e.constraint_name == "incidents_no_duplicate" else None
+        if trung is None:
+            raise
+        # Chỉ ghi mã tin đang mở; không ghi SĐT
+        log.info("tin kêu cứu trùng tin đang mở %s, không tạo mới", trung["incident_id"])
+        raise HTTPException(409, keu_cuu.loi_409(trung)) from None
+    except (asyncpg.CheckViolationError, asyncpg.NotNullViolationError) as e:
+        # API đã kiểm trước; tới đây là lệch giữa API và ràng buộc CSDL. Không ghi thông điệp (có thể chứa giá trị)
+        log.error("CSDL từ chối tin kêu cứu: %s %s", type(e).__name__, e.constraint_name)
+        loi = keu_cuu.LoiTruong("body", "Dữ liệu không qua được ràng buộc của CSDL.")
+        raise HTTPException(422, keu_cuu.loi_422([loi])) from None
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "id": str(dong["id"]),
+        "status": dong["status"],
+        "urgency": dong["urgency"],
+        "people_count": dong["people_count"],
+        "lat": kq.lat,
+        "lon": kq.lon,
+        "created_at": dong["created_at"].isoformat(),
+        # Trigger outbox (0007) đã xếp tin vào hàng phân công tự động; bản đồ thấy tin qua subscription (#60)
+        "phan_cong": "tu_dong",
+    }
 
 
 @app.post("/hello")
@@ -254,14 +367,7 @@ async def phan_cong(request: Request, incident_id: uuid.UUID, nd: NguoiDungDep) 
     if tin["status"] != "tiep_nhan":
         raise HTTPException(409, f"Tin kêu cứu đang ở trạng thái {tin['status']}, chỉ phân công tin tiep_nhan")
     cfg = st.cfg
-    ts = ThamSoPhanCong(
-        incident_id=str(incident_id),
-        nguoi_khoi_chay=nd.ten_dang_nhap or nd.sub,
-        ban_kinh_m=cfg.ban_kinh_m,
-        han_xac_nhan_giay=cfg.han_xac_nhan_giay,
-        so_lan_tim_doi=cfg.so_lan_tim_doi,
-        cho_tim_lai_giay=cfg.cho_tim_lai_giay,
-    )
+    ts = config.tham_so_phan_cong(cfg, str(incident_id), nd.ten_dang_nhap or nd.sub)
     wf_id = f"{TIEN_TO_PHAN_CONG}{incident_id}"
     try:
         handle = await st.temporal.start_workflow(
@@ -272,6 +378,7 @@ async def phan_cong(request: Request, incident_id: uuid.UUID, nd: NguoiDungDep) 
             # Một tin chỉ có một luồng phân công đang chạy; chạy xong được khởi chạy lại
             id_reuse_policy=WorkflowIDReusePolicy.ALLOW_DUPLICATE,
             id_conflict_policy=WorkflowIDConflictPolicy.FAIL,
+            priority=Priority(priority_key=uu_tien(tin.get("urgency"))),
         )
     except WorkflowAlreadyStartedError as e:
         raise HTTPException(409, f"Workflow {wf_id} đang chạy") from e
@@ -292,13 +399,13 @@ def _link(request: Request, object_key: str, han_giay: int) -> dict[str, Any]:
             "het_han_luc": het_han.isoformat(timespec="seconds")}
 
 
-async def doc_body_gioi_han(request: Request, toi_da: int) -> bytes:
+async def doc_body_gioi_han(request: Request, toi_da: int, ten: str = "Ảnh") -> bytes:
     """Đọc body theo luồng, dừng ngay khi vượt `toi_da` byte (413); không tin Content-Length."""
     buf = bytearray()
     async for phan in request.stream():
         buf += phan
         if len(buf) > toi_da:
-            raise HTTPException(413, f"Ảnh vượt {toi_da} byte")
+            raise HTTPException(413, f"{ten} vượt {toi_da} byte")
     return bytes(buf)
 
 
@@ -490,16 +597,62 @@ async def xem(request: Request, workflow_id: str, nd: NguoiDungDep) -> dict[str,
     return {"workflow_id": workflow_id, "trang_thai": trang_thai, "chi_tiet": asdict(tt)}
 
 
+async def _chuan_bi_signal(
+    request: Request, workflow_id: str, nd: NguoiDung, buoc: tuple[str, ...]
+) -> tuple[str, str | None]:
+    """Kiểm quyền + workflow đang ở đúng bước. Trả (vai trò người gửi, đội người gửi thay mặt)."""
+    _, doi_cua_nd = await kiem_quyen_workflow(request, nd, workflow_id)
+    trang_thai, tt = await trang_thai_wf(request, workflow_id)
+    if trang_thai != WorkflowExecutionStatus.RUNNING.name or tt.buoc not in buoc:
+        raise HTTPException(409, f"Workflow không ở bước {'/'.join(buoc)} (trạng thái {trang_thai}, bước {tt.buoc})")
+    if doi_cua_nd is not None and doi_cua_nd != tt.doi_id:
+        raise HTTPException(409, "Nhiệm vụ đã được giao cho đội khác")
+    vai_tro = VAI_TRO_DIEU_PHOI if nd.co(VAI_TRO_DIEU_PHOI) else VAI_TRO_CUU_HO
+    return vai_tro, doi_cua_nd or tt.doi_id
+
+
+async def _gui(request: Request, workflow_id: str, signal: str, arg: Any) -> dict[str, str]:
+    await request.app.state.temporal.get_workflow_handle(workflow_id).signal(signal, arg)
+    return {"workflow_id": workflow_id, "da_gui": signal}
+
+
+@app.post("/{workflow_id}/nhan", status_code=202)
+async def nhan(
+    request: Request, workflow_id: str, nd: NguoiDungDep, vao: XacNhanVao | None = None
+) -> dict[str, str]:
+    vai_tro, doi_id = await _chuan_bi_signal(request, workflow_id, nd, (BUOC_CHO_NHAN,))
+    ph = PhanHoi(loai="", nguoi=nd.ten_dang_nhap or nd.sub, vai_tro=vai_tro, doi_id=doi_id,
+                 ghi_chu=(vao or XacNhanVao()).ghi_chu)
+    return await _gui(request, workflow_id, SIGNAL_NHAN, ph)
+
+
+@app.post("/{workflow_id}/tu-choi", status_code=202)
+async def tu_choi(
+    request: Request, workflow_id: str, nd: NguoiDungDep, vao: XacNhanVao | None = None
+) -> dict[str, str]:
+    vai_tro, doi_id = await _chuan_bi_signal(request, workflow_id, nd, (BUOC_CHO_NHAN,))
+    ph = PhanHoi(loai="", nguoi=nd.ten_dang_nhap or nd.sub, vai_tro=vai_tro, doi_id=doi_id,
+                 ghi_chu=(vao or XacNhanVao()).ghi_chu)
+    return await _gui(request, workflow_id, SIGNAL_TU_CHOI, ph)
+
+
+@app.post("/{workflow_id}/huy", status_code=202)
+async def huy(request: Request, workflow_id: str, nd: NguoiDungDep, vao: HuyVao | None = None) -> dict[str, str]:
+    can_vai_tro(nd, VAI_TRO_DIEU_PHOI)
+    await kiem_quyen_workflow(request, nd, workflow_id)
+    trang_thai, tt = await trang_thai_wf(request, workflow_id)
+    if trang_thai != WorkflowExecutionStatus.RUNNING.name or tt.buoc in (BUOC_CHO_XAC_NHAN, BUOC_XONG):
+        raise HTTPException(409, f"Không hủy được: đội đã nhận hoặc workflow đã xong (trạng thái {trang_thai}, bước {tt.buoc})")
+    yc = YeuCauHuy(nguoi=nd.ten_dang_nhap or nd.sub, ly_do=(vao or HuyVao()).ly_do)
+    return await _gui(request, workflow_id, SIGNAL_HUY, yc)
+
+
 @app.post("/{workflow_id}/xac-nhan", status_code=202)
 async def xac_nhan(
     request: Request, workflow_id: str, nd: NguoiDungDep, vao: XacNhanVao | None = None
 ) -> dict[str, str]:
-    await kiem_quyen_workflow(request, nd, workflow_id)
-    trang_thai, tt = await trang_thai_wf(request, workflow_id)
-    if trang_thai != WorkflowExecutionStatus.RUNNING.name or tt.buoc != "cho_xac_nhan":
-        raise HTTPException(409, f"Workflow không chờ xác nhận (trạng thái {trang_thai}, bước {tt.buoc})")
-    vai_tro = VAI_TRO_DIEU_PHOI if nd.co(VAI_TRO_DIEU_PHOI) else VAI_TRO_CUU_HO
-    xn = XacNhan(nguoi=nd.ten_dang_nhap or nd.sub, vai_tro=vai_tro, ghi_chu=(vao or XacNhanVao()).ghi_chu)
-    await request.app.state.temporal.get_workflow_handle(workflow_id).signal(SIGNAL_XAC_NHAN, xn)
-    return {"workflow_id": workflow_id, "da_gui": SIGNAL_XAC_NHAN}
-
+    # Đội xác nhận "đã cứu" ngay khi còn chờ nhận cũng được: workflow coi như đã nhận rồi đóng tin
+    vai_tro, doi_id = await _chuan_bi_signal(request, workflow_id, nd, (BUOC_CHO_NHAN, BUOC_CHO_XAC_NHAN))
+    xn = XacNhan(nguoi=nd.ten_dang_nhap or nd.sub, vai_tro=vai_tro, ghi_chu=(vao or XacNhanVao()).ghi_chu,
+                 doi_id=doi_id)
+    return await _gui(request, workflow_id, SIGNAL_XAC_NHAN, xn)

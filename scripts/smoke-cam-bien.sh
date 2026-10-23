@@ -92,7 +92,7 @@ num() { python3 -c 'import sys; print("%.2f" % float(sys.argv[1]))' "$1"; }
 
 # ---------- (1) Stream + consumer ----------
 out=$(jsz)
-check "stream CUU_TRO_CAM_BIEN, CUU_TRO_CANH_BAO đã tạo" "CUU_TRO_CAM_BIEN CUU_TRO_CANH_BAO" \
+check "stream CUU_TRO_CAM_BIEN, CUU_TRO_CANH_BAO, CUU_TRO_DIEU_PHOI đã tạo" "CUU_TRO_CAM_BIEN CUU_TRO_CANH_BAO CUU_TRO_DIEU_PHOI" \
   "$(jf '" ".join(sorted(s["name"] for a in d.get("account_details", []) for s in a.get("stream_detail", []) if s["name"].startswith("CUU_TRO_")))' <<<"$out")"
 check "consumer ghi-csdl trên CUU_TRO_CAM_BIEN" True \
   "$(jf 'any(c["name"] == "ghi-csdl" for a in d.get("account_details", []) for s in a.get("stream_detail", []) if s["name"] == "CUU_TRO_CAM_BIEN" for c in s.get("consumer_detail", []))' <<<"$out")"

@@ -156,9 +156,10 @@ check "cuu-ho xin link ảnh tin của đội mình → 200" 200 "$(hc "$(req "$
 check "tinh-nguyen liệt kê ảnh của tin → 403" 403 "$(hc "$(req "$T" "$GW/workflow/su-co/$INC_DOI/anh")")"
 check "tinh-nguyen xin link ảnh người khác tải → 403" 403 "$(hc "$(req "$T" "$GW/workflow/anh/$ID1/link")")"
 check "tinh-nguyen gửi ảnh cho tin không phải mình tạo → 403" 403 "$(hc "$(tai "$T" "$INC_DOI" "$TMP/hien-truong.jpg")")"
-# tinh-nguyen tạo tin kêu cứu mới qua GraphQL (SĐT/tọa độ riêng để không trùng với tin seed)
+# tinh-nguyen tạo tin kêu cứu mới qua GraphQL (SĐT/tọa độ riêng để không trùng với tin seed; ngoài
+# bán kính mọi đội seed để luồng phân công tự động #67 không giao đội cho tin này)
 # shellcheck disable=SC2016 # $o là biến GraphQL
-gq='{"query":"mutation($o: incidents_insert_input!) { insert_incidents_one(object: $o) { id status } }","variables":{"o":{"description":"Smoke #27: nhà bị nước cuốn, gửi kèm ảnh","location":{"type":"Point","coordinates":[108.2%s,15.9%s]},"reporter_phone":"09%08d","source":"app"}}}'
+gq='{"query":"mutation($o: incidents_insert_input!) { insert_incidents_one(object: $o) { id status } }","variables":{"o":{"description":"Smoke #27: nhà bị nước cuốn, gửi kèm ảnh","location":{"type":"Point","coordinates":[107.6%s,15.6%s]},"reporter_phone":"09%08d","source":"app"}}}'
 # shellcheck disable=SC2059 # chuỗi định dạng có chủ đích
 r=$(req "$T" -H 'Content-Type: application/json' -H 'X-Hasura-Role: tinh-nguyen' \
   -d "$(printf "$gq" "$((RANDOM % 1000))" "$((RANDOM % 1000))" "$((RANDOM * 3 % 100000000))")" "$GW/graphql")

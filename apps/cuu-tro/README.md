@@ -6,16 +6,16 @@
 | Thư mục | Nội dung | Trạng thái |
 |---|---|---|
 | `keycloak/realm.json` | Realm `disaster`: vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen`; client `dxos-gateway`, `dxos-web`, `dxos-dev-cli` (chỉ dev); 3 người dùng mẫu, mật khẩu lấy từ `.env` | Có |
-| `db/migrations/` | Schema `cuu_tro`: `incidents`, `rescue_teams`, `shelters`, `supplies`, `supply_movements`, `sensors` (PostGIS); `team_members` (#26); `sensor_readings` chuỗi đo cảm biến (#30); `incident_media` ảnh hiện trường (#27); quyền lập phiếu + ghi sổ cái cho `cuu_tro_app` (#28) | Có (#25, #26, #30, #27, #28) |
+| `db/migrations/` | Schema `cuu_tro`: `incidents`, `rescue_teams`, `shelters`, `supplies`, `supply_movements`, `sensors` (PostGIS); `team_members` (#26); `sensor_readings` chuỗi đo cảm biến (#30); `incident_media` ảnh hiện trường (#27); quyền lập phiếu + ghi sổ cái cho `cuu_tro_app` (#28); quyền tạo tin kêu cứu cho `cuu_tro_app` (#66) | Có (#25, #26, #30, #27, #28, #66) |
 | `db/seed/` | Dữ liệu giả xã An Lạc (giả định) | Có (#25) |
-| `db/tests/` | Kiểm thử ràng buộc (Poka-yoke, CHECK, quyền theo search_path, quyền role `cuu_tro_app`, chuỗi đo cảm biến, ảnh hiện trường, phiếu kho + sổ cái) | Có (#25, #26, #29, #30, #27, #28) |
+| `db/tests/` | Kiểm thử ràng buộc (Poka-yoke, CHECK, quyền theo search_path, quyền role `cuu_tro_app`, chuỗi đo cảm biến, ảnh hiện trường, phiếu kho + sổ cái, tạo tin bằng role của API kêu cứu) | Có (#25, #26, #29, #30, #27, #28, #66) |
 | `hasura/metadata/` | Metadata Hasura: bảng track, quan hệ, quyền theo vai trò JWT | Có (#26) |
-| `workflow/` | Backend Python: Temporal worker (`PhanCongCuuHo`, `Hello`) + API FastAPI khởi chạy workflow qua gateway `/workflow/*` (#29); consumer cảm biến NATS JetStream + bộ giả lập trạm đo MQTT (#30); API ảnh hiện trường (#27); phiếu nhập/xuất → sổ cái minh bạch + trang công khai (#28); pytest | Có (#29, #30, #27, #28) |
-| `compose.yaml` | Dịch vụ `cuu-tro-worker`, `cuu-tro-api`, `cuu-tro-cam-bien`, `bao-agent-cuu-tro` (profile `app`), `cuu-tro-gia-lap` (profile `gia-lap`), lõi nạp bằng `include` | Có (#29, #30, #27) |
+| `workflow/` | Backend Python: Temporal worker (`PhanCongCuuHo`, `Hello`) + API FastAPI khởi chạy workflow qua gateway `/workflow/*` (#29); consumer cảm biến NATS JetStream + bộ giả lập trạm đo MQTT (#30); API ảnh hiện trường (#27); phiếu nhập/xuất → sổ cái minh bạch + trang công khai (#28); API tiếp nhận tin kêu cứu có Poka-yoke (#66); pytest | Có (#29, #30, #27, #28, #66) |
+| `compose.yaml` | Dịch vụ `cuu-tro-worker`, `cuu-tro-api`, `cuu-tro-cam-bien`, `cuu-tro-thong-bao` (#68), `bao-agent-cuu-tro` (profile `app`), `cuu-tro-gia-lap` (profile `gia-lap`), lõi nạp bằng `include` | Có (#29, #30, #27) |
 | `openbao/` | Policy + template bao agent cho backend (mật khẩu role `cuu_tro_app`, NATS/MQTT, khóa S3 của ứng dụng, token ghi sổ cái) | Có (#29, #30, #27, #28) |
 | `s3/buckets.conf` | Bucket S3 của ứng dụng (`cuu-tro-media`), lõi tạo khi `make up` | Có (#27) |
-| `nats/streams.json` | Khai báo stream/consumer JetStream của ứng dụng (tạo khi `cuu-tro-cam-bien` khởi động) | Có (#30) |
-| `web/` | Web điều phối Nuxt 3 + MapLibre | Tuần 3 |
+| `nats/streams.json` | Khai báo stream/consumer JetStream của ứng dụng (`cuu-tro-cam-bien` tạo consumer `ghi-csdl`, `cuu-tro-thong-bao` tạo consumer `realtime-*`) | Có (#30, #68) |
+| `web/` | Web điều phối Nuxt 4 + Nuxt UI + MapLibre: đăng nhập Keycloak OIDC + PKCE (client `dxos-web`), bản đồ + danh sách tin kêu cứu thời gian thực qua GraphQL subscription (gom cụm, lọc, chi tiết theo quyền); dịch vụ `cuu-tro-web`, mở qua gateway http://localhost:9080/; xem `web/README.md` | Khung (#59), trong stack (#64), bản đồ realtime (#60), nền Nuxt UI (#77) |
 | `mobile/` | App hiện trường Flutter | Tuần 5 |
 
 ## Dữ liệu (`db/`, #25)
@@ -30,6 +30,9 @@ erDiagram
   shelters ||--o{ supply_movements : "nơi nhận"
   rescue_teams ||--o{ team_members : "thành viên"
   sensors ||--o{ sensor_readings : "chuỗi đo"
+  incidents ||--o| assignment_queue : "outbox phân công (#67)"
+  incidents ||--o{ incident_assignments : "lịch sử giao (#67)"
+  rescue_teams ||--o{ incident_assignments : "được giao"
 
   incidents {
     uuid id PK
@@ -105,6 +108,8 @@ Mọi bảng có `created_at`, `updated_at` (trigger tự cập nhật), khóa c
 | Xuất kho không quá tồn | Phiếu `supply_movements` cộng/trừ `supplies.quantity` trong cùng transaction, CHECK `quantity >= 0` | `23514` |
 | Phiếu nhập/xuất không sửa/xóa (chỉ điền `ledger_*` một lần) | Trigger `supply_movements_immutable` | `23001` restrict_violation |
 
+Tầng API (#66) kiểm thêm trước khi ghi và trả lỗi tiếng Việt theo trường: mục "Tiếp nhận tin kêu cứu" bên dưới.
+
 Vì sao trigger mà không phải exclusion constraint: điều kiện "trong 6 giờ" và "tin cũ còn mở" phụ thuộc thời điểm và trạng thái, exclusion constraint (GiST) chỉ so được giá trị cố định của hai dòng.
 
 Phiếu nhập/xuất và leaf sổ cái (#28) không chứa dữ liệu cá nhân (D-007). Chuỗi đo cảm biến: bảng `sensor_readings` (#30, mục "Cảm biến" bên dưới).
@@ -140,7 +145,8 @@ R = đọc, C = tạo, U = sửa, D = xóa, – = không có (bảng không xu�
 | `sensors` | R · U tên, ngưỡng, bật/tắt | R | R thông tin công khai của trạm (#30) |
 | `sensor_readings` | R (quan hệ `sensor`, `sensors.readings`) | R | R (tối đa 500 dòng/truy vấn) |
 | `incident_media` (#27) | R mọi ảnh (quan hệ `incident`, `incidents.media`) | R ảnh của tin **đội mình** | R chỉ ảnh **mình tải lên**, không có `uploaded_by`, `uploader_role` |
-| `incident_dedup_config` | không track: không vai trò nào thấy | | |
+| `incident_assignments` (#67) | R mọi lần giao (quan hệ `incident`, `team`, `incidents.assignments`) | R lần giao cho **đội mình** | – |
+| `incident_dedup_config`, `assignment_queue` (#67) | không track: không vai trò nào thấy | | |
 
 Cột hệ thống gán từ token, client không tự đặt được: `incidents.created_by` = `X-Hasura-User-Id` (sub Keycloak); `supply_movements.created_by` = tên đăng nhập trong JWT, API gán (#28). Tồn kho chỉ đổi qua phiếu nhập/xuất (trigger, sổ cái #28); cột `ledger_*` và giá trị đo cảm biến do dịch vụ nội bộ ghi (#28, #30), không qua vai trò người dùng.
 
@@ -183,40 +189,58 @@ Backend nghiệp vụ của ứng dụng (D-008), không thuộc lõi. Hai dịc
 
 | Dịch vụ | Lệnh | Gọi tới |
 |---|---|---|
-| `cuu-tro-worker` | `python -m cuu_tro_workflow.worker` | Temporal (task queue `cuu-tro`), PostgreSQL bằng role `cuu_tro_app` (`APP_DB_URL` từ OpenBao qua `bao-agent-cuu-tro`) |
-| `cuu-tro-api` | `uvicorn cuu_tro_workflow.api:app --root-path /workflow` | Temporal (start/signal/query), Hasura qua gateway `/graphql` bằng JWT người dùng. Không có bí mật, không mở cổng ra host |
+| `cuu-tro-worker` | `python -m cuu_tro_workflow.worker` | Temporal (task queue `cuu-tro`), PostgreSQL bằng role `cuu_tro_app` (`APP_DB_URL` từ OpenBao qua `bao-agent-cuu-tro`), NATS (báo điều phối, #67). Cùng tiến trình: bộ khởi chạy tự động `khoi_chay.py` (#67) |
+| `cuu-tro-api` | `uvicorn cuu_tro_workflow.api:app --root-path /workflow` | Temporal (start/signal/query), Hasura qua gateway `/graphql` bằng JWT người dùng. Không mở cổng ra host. Cấp token kết nối Centrifugo (#68) |
+| `cuu-tro-thong-bao` | `python -m cuu_tro_workflow.thong_bao_cau_noi` | Cầu nối thông báo realtime (#68): consumer JetStream `realtime-dieu-phoi`, `realtime-canh-bao` → HTTP API Centrifugo (mạng nội bộ) → kênh `dieu-phoi`. Không đọc CSDL |
 
 Cách backend gọi lõi và vì sao: `docs/architecture.md` mục 7.3.
 
-### `PhanCongCuuHo`: tiếp nhận → phân công → xác nhận → đóng
+### `PhanCongCuuHo`: tiếp nhận → phân công → nhận → xác nhận → đóng (#29, #67)
+
+**Tự khởi chạy (#67).** Không ai phải bấm "phân công": mỗi tin `tiep_nhan` mới (từ Hasura, API kêu cứu #66 hay SQL) được trigger `incidents_enqueue_assignment` ghi vào outbox `assignment_queue` **cùng transaction** rồi `pg_notify('cuu_tro_tin_moi')`. Bộ khởi chạy `khoi_chay.py` chạy trong tiến trình worker, `LISTEN` kênh đó và quét lại mỗi `PHAN_CONG_QUET_GIAY` giây (phòng lỡ NOTIFY), lấy tin khẩn trước (`urgency_rank`, rồi thời điểm tạo), `FOR UPDATE SKIP LOCKED`, khởi chạy workflow id **`phan-cong-<incident_id>`** rồi đánh dấu `started_at`. Gọi lại an toàn: đang chạy → dùng lại (`USE_EXISTING`), đã chạy xong → Temporal từ chối (`REJECT_DUPLICATE`). Seed dữ liệu mẫu đặt `SET LOCAL cuu_tro.tu_phan_cong = off` nên tin mẫu không tự chạy. Tắt cả cơ chế: `PHAN_CONG_TU_DONG=0` (vẫn khởi chạy tay qua API).
 
 ```mermaid
 stateDiagram-v2
-  [*] --> doc_tin: POST /workflow/phan-cong/{incident_id}<br/>(dieu-phoi)
+  [*] --> doc_tin: tin mới (outbox, tự động)<br/>hoặc POST /workflow/phan-cong/{id} (dieu-phoi)
   doc_tin --> xong_bo_qua: tin không có / không ở tiep_nhan
   doc_tin --> tim_doi
-  tim_doi --> tim_doi: chưa có đội sẵn sàng trong bán kính<br/>chờ PHAN_CONG_CHO_TIM_LAI_GIAY
-  tim_doi --> xong_khong_co_doi: hết PHAN_CONG_SO_LAN_TIM_DOI lần
-  tim_doi --> gan_doi: đội san_sang gần nhất (PostGIS KNN)
-  gan_doi --> tim_doi: đội vừa bị gán cho tin khác
-  gan_doi --> cho_xac_nhan: tin phan_cong, đội dang_lam_nhiem_vu
-  cho_xac_nhan --> ket_thuc: signal xac_nhan_da_cuu<br/>POST /workflow/{id}/xac-nhan
-  cho_xac_nhan --> xong_qua_han: quá PHAN_CONG_HAN_XAC_NHAN_GIAY
+  tim_doi --> tim_doi: chưa có đội sẵn sàng / mọi đội phải nhường<br/>timer PHAN_CONG_CHO_TIM_LAI_GIAY
+  tim_doi --> xong_bao_dieu_phoi: hết PHAN_CONG_SO_LAN_TIM_DOI vòng (khong_co_doi)
+  tim_doi --> cho_nhan: gan_doi: đội san_sang gần nhất, không bị giữ cho tin khẩn hơn
+  cho_nhan --> tim_doi: signal tu_choi / quá hạn nhận theo urgency<br/>gỡ đội, ghi lịch sử, giao đội kế tiếp
+  cho_nhan --> xong_bao_dieu_phoi: hết PHAN_CONG_SO_LAN_GIAO_TOI_DA lần giao (het_lan_giao)
+  cho_nhan --> xong_huy: signal huy (dieu-phoi), gỡ đội
+  cho_nhan --> cho_xac_nhan: signal nhan_nhiem_vu<br/>tin dang_cuu
+  cho_xac_nhan --> ket_thuc: signal xac_nhan_da_cuu
+  cho_xac_nhan --> xong_bao_dieu_phoi: quá PHAN_CONG_HAN_XAC_NHAN_GIAY (qua_han_xac_nhan)
   ket_thuc --> [*]: tin da_cuu → dong, đội san_sang
   xong_bo_qua --> [*]
-  xong_khong_co_doi --> [*]
-  xong_qua_han --> [*]
+  xong_huy --> [*]: tin tiep_nhan, đội san_sang
+  xong_bao_dieu_phoi --> [*]: sự kiện NATS cuu-tro.dieu-phoi.can-xu-ly.{id}
 ```
 
 | Bước | Activity (I/O) | Ghi chú |
 |---|---|---|
-| `doc_tin` | `SELECT` tin | Chỉ phân công tin `tiep_nhan` |
-| `tim_doi` | `tim_doi_ung_vien`: tối đa 10 đội `san_sang` có vị trí trong `PHAN_CONG_BAN_KINH_M` (mặc định 20 km), xếp theo `location <-> incident.location` | Chọn đội: `logic.chon_doi_gan_nhat` (gần nhất; hòa thì đội đông người hơn, rồi theo id), logic thuần có test |
-| `gan_doi` | Một transaction: khóa tin (`FOR UPDATE`), kiểm chuyển trạng thái, `UPDATE` đội chỉ khi còn `san_sang` | Hai luồng giành cùng một đội: luồng thua nhận `False`, chọn đội kế tiếp |
-| `cho_xac_nhan` | – | Signal `xac_nhan_da_cuu` (người, vai trò, ghi chú); quá hạn mặc định 6 giờ thì kết thúc `qua_han_xac_nhan`, chưa đổi CSDL (tuần 3: báo điều phối, phân công lại) |
-| `ket_thuc` | Tin `da_cuu` → `dong`, đội về `san_sang` | Mọi activity chạy lại được (Temporal thử lại 5 lần); lỗi nghiệp vụ (chuyển trạng thái sai) không thử lại |
+| `doc_tin` | `SELECT` tin (kèm `urgency`) | Chỉ phân công tin `tiep_nhan`; hạn nhận lấy theo `urgency` của tin |
+| `tim_doi` | `tim_doi_ung_vien`: đánh dấu tin đang tìm đội (`assignment_queue.seeking_at`), tối đa 10 đội `san_sang` có vị trí trong `PHAN_CONG_BAN_KINH_M` (mặc định 20 km), xếp theo `location <-> incident.location` | Chọn đội: `logic.chon_doi_gan_nhat` (gần nhất; hòa thì đội đông người hơn, rồi theo id), bỏ các đội đã từ chối/quá hạn với tin này |
+| `gan_doi` | Một transaction: khóa tin, **luật ưu tiên** `team_reserved_for_more_urgent`, `UPDATE` đội chỉ khi còn `san_sang`, ghi `incident_assignments` (`cho_nhan`, `deadline_at`) | Trả `da_gan` · `bi_gianh` (đội vừa bị tin khác lấy) · `nhuong` (đội đang được giữ cho tin khẩn hơn) · `tin_da_doi` |
+| `cho_nhan` | – | Timer bền của Temporal (`wait_condition` có hạn), không vòng lặp sleep. Signal `nhan_nhiem_vu` / `tu_choi` mang `doi_id`: phản hồi muộn của đội đã bị thay bị bỏ qua |
+| (từ chối/quá hạn/hủy) | `go_doi`: tin `phan_cong → tiep_nhan`, đội về `san_sang`, lịch sử `tu_choi`/`qua_han`/`huy` | Đội đã thử không được giao lại cho cùng tin |
+| (nhận) | `nhan_nhiem_vu`: tin `phan_cong → dang_cuu`, lịch sử `da_nhan` | Sau khi đội nhận, signal `huy` không còn tác dụng (đội đang ở hiện trường) |
+| `cho_xac_nhan` | – | Signal `xac_nhan_da_cuu`; quá hạn (mặc định 6 giờ) → báo điều phối, tin giữ `dang_cuu` |
+| `ket_thuc` | Tin `da_cuu` → `dong`, đội về `san_sang` | Mọi activity chạy lại được (Temporal thử lại 5 lần); lỗi nghiệp vụ không thử lại |
+| báo điều phối | `bao_dieu_phoi`: JetStream `cuu-tro.dieu-phoi.can-xu-ly.<incident_id>` (stream `CUU_TRO_DIEU_PHOI`), `Nats-Msg-Id` = run + lý do | Chỉ id tin, urgency, lý do, số lần giao: không có SĐT/tên. NATS lỗi kéo dài không làm hỏng kết quả workflow |
 
-Luồng trạng thái tin hợp lệ (`logic.CHUYEN_TRANG_THAI`): `tiep_nhan → phan_cong | dong`, `phan_cong → dang_cuu | da_cuu`, `dang_cuu → da_cuu`, `da_cuu → dong`. `cuu-ho` vẫn tự chuyển `phan_cong → dang_cuu` qua GraphQL (#26) khi bắt đầu cứu, workflow chấp nhận cả hai.
+**Ưu tiên theo `urgency`** (`khan_cap` > `cao` > `trung_binh` > `thap`, hàm SQL `urgency_rank`):
+1. Bộ khởi chạy lấy tin khẩn trước khi có nhiều tin cùng lúc.
+2. Workflow và activity mang `priority_key` của Temporal (1 = khẩn nhất): máy chủ Temporal đưa việc của tin khẩn cho worker trước khi worker bận.
+3. Quan trọng nhất là **giành đội**: khi đội khan hiếm, `gan_doi` của một tin không lấy đội nếu có tin **khẩn hơn hẳn**, còn `tiep_nhan`, đang tìm đội (`seeking_at` trong 2 chu kỳ tìm lại + 30 giây) và đội đó nằm trong bán kính của tin khẩn hơn. Tin kém khẩn đi tìm đội kế tiếp hoặc chờ vòng sau. Không giành lại đội đã giao (không ngắt nhiệm vụ đang làm); workflow chết thì `seeking_at` tự hết hạn, không ai bị chặn mãi.
+
+**Hạn nhận nhiệm vụ** theo urgency: `PHAN_CONG_HAN_NHAN_GIAY_KHAN_CAP` (mặc định 300), `_CAO` (600), `_TRUNG_BINH` (900), `_THAP` (1800). Tối đa `PHAN_CONG_SO_LAN_GIAO_TOI_DA` (mặc định 3) lần giao, mỗi lần một đội, rồi báo điều phối.
+
+Lịch sử giao (`incident_assignments`): mỗi lần giao một dòng (đội, lần, urgency, khoảng cách, `assigned_at`, `deadline_at`, kết quả, người phản hồi). GraphQL chỉ đọc: `dieu-phoi` mọi dòng, `cuu-ho` dòng của đội mình, `tinh-nguyen` không; quan hệ `incidents.assignments`.
+
+Luồng trạng thái tin hợp lệ (`logic.CHUYEN_TRANG_THAI`): `tiep_nhan → phan_cong | dong`, `phan_cong → dang_cuu | da_cuu | tiep_nhan` (gỡ đội, #67), `dang_cuu → da_cuu`, `da_cuu → dong`. `cuu-ho` vẫn tự chuyển `phan_cong → dang_cuu` qua GraphQL (#26) khi bắt đầu cứu, workflow chấp nhận cả hai.
 
 `Hello`: workflow một activity, kiểm đường đi gateway → API → Temporal → worker.
 
@@ -225,9 +249,14 @@ Luồng trạng thái tin hợp lệ (`logic.CHUYEN_TRANG_THAI`): `tiep_nhan →
 | Phương thức, đường dẫn | Vai trò | Kết quả |
 |---|---|---|
 | `POST /workflow/hello` body `{"ten": "…"}` (tùy chọn) | mọi vai trò | `200 {"workflow_id", "ket_qua", "nguoi_goi"}` |
-| `POST /workflow/phan-cong/{incident_id}` | `dieu-phoi` | `202 {"workflow_id": "phan-cong-<incident_id>", "run_id", "incident_id"}` · `404` tin không có · `409` tin không ở `tiep_nhan` hoặc luồng đang chạy |
-| `GET /workflow/{workflow_id}` | `dieu-phoi`; `cuu-ho` của đội được gán | `200 {"workflow_id", "trang_thai": "RUNNING\|COMPLETED\|…", "chi_tiet": {buoc, doi_id, doi_ten, khoang_cach_m, so_lan_tim, xac_nhan, ket_qua, lich_su}}` |
-| `POST /workflow/{workflow_id}/xac-nhan` body `{"ghi_chu": "…"}` (tùy chọn) | `dieu-phoi`; `cuu-ho` của đội được gán | `202` · `409` workflow không ở bước chờ xác nhận |
+| `POST /workflow/keu-cuu` (#66) | `dieu-phoi`, `tinh-nguyen` | Tạo tin kêu cứu (tự phân công): `201` · `409` trùng kèm mã tin đang mở · `422` lỗi theo trường. Mục "Tiếp nhận tin kêu cứu" |
+| `POST /workflow/phan-cong/{incident_id}` | `dieu-phoi` | Khởi chạy tay (tin mới đã tự chạy; dùng khi luồng tự động đã dừng và báo điều phối). `202 {"workflow_id": "phan-cong-<incident_id>", "run_id", "incident_id"}` · `404` tin không có · `409` tin không ở `tiep_nhan` hoặc luồng đang chạy |
+| `GET /workflow/{workflow_id}` | `dieu-phoi`; `cuu-ho` của đội được giao | `200 {"workflow_id", "trang_thai": "RUNNING\|COMPLETED\|…", "chi_tiet": {buoc, urgency, han_nhan_giay, doi_id, doi_ten, khoang_cach_m, so_lan_tim, giao: [{lan, doi_id, doi_ten, ket_qua, …}], da_bao_dieu_phoi, xac_nhan, ket_qua, lich_su}}` |
+| `POST /workflow/{workflow_id}/nhan` body `{"ghi_chu": "…"}` (tùy chọn) | `dieu-phoi`; `cuu-ho` của đội được giao | `202` · `409` không ở bước `cho_nhan` hoặc nhiệm vụ đã giao cho đội khác |
+| `POST /workflow/{workflow_id}/tu-choi` body `{"ghi_chu": "…"}` (tùy chọn) | `dieu-phoi`; `cuu-ho` của đội được giao | `202` (workflow giao đội kế tiếp) · `409` như trên |
+| `POST /workflow/{workflow_id}/huy` body `{"ly_do": "…"}` (tùy chọn) | `dieu-phoi` | `202` (gỡ đội nếu đang giao, tin về `tiep_nhan`) · `409` đội đã nhận hoặc workflow đã xong |
+| `POST /workflow/{workflow_id}/xac-nhan` body `{"ghi_chu": "…"}` (tùy chọn) | `dieu-phoi`; `cuu-ho` của đội được giao | `202` (ở `cho_nhan` thì coi như đã nhận) · `409` workflow không chờ nhận/xác nhận |
+| `GET /workflow/realtime/token` (#68) | `dieu-phoi` (`quan-tri` khi realm có) | `200 {"token", "han_giay", "kenh": ["dieu-phoi"]}`, `Cache-Control: no-store`: token HS256 kết nối Centrifugo qua `ws://<gateway>/realtime/websocket` (chỉ `sub` + kênh server-side, `REALTIME_TOKEN_HAN_GIAY` giây) · `403` vai khác · `503` chưa có khóa ký |
 
 Không token → `401` ở APISIX; vai trò không đủ → `403` ở API; `cuu-ho` đội khác → `403` (API hỏi `incidents_by_pk` qua `/graphql` bằng JWT người dùng, luật lọc theo đội của Hasura trả `null`).
 
@@ -251,7 +280,54 @@ uv run pytest -q        # hoặc từ gốc repo: make test-py
 uv lock && uv export --frozen --no-dev --no-emit-project -o requirements.txt
 ```
 
-Test: logic thuần (chọn đội, chuyển trạng thái), workflow trên máy chủ test của `temporalio` (tự tua thời gian để thử quá hạn; activity thay bằng bản giả trong bộ nhớ), kiểm JWT/vai trò của API bằng khóa RSA sinh tại chỗ. Lần chạy đầu `temporalio` tải máy chủ test về thư mục tạm. Kiểm thử thật qua gateway: `scripts/smoke-workflow.sh` (trong `make smoke`).
+Test: logic thuần (chọn đội, chuyển trạng thái), workflow trên máy chủ test của `temporalio` (tự tua thời gian: quá hạn nhận → phân công lại, hạn theo urgency, hết lần giao → báo điều phối, tin khẩn cấp được đội trước, từ chối, hủy, tự khởi chạy không trùng; activity thay bằng bản giả trong bộ nhớ), API nhận/từ chối/hủy với Hasura và Temporal giả, kiểm JWT/vai trò của API bằng khóa RSA sinh tại chỗ. Luật SQL (outbox, `urgency_rank`, nhường đội, lịch sử giao, quyền `cuu_tro_app`): `db/tests/0007_phan_cong_tu_dong.sql` (`make test-db`). Lần chạy đầu `temporalio` tải máy chủ test về thư mục tạm. Kiểm thử thật qua gateway: `scripts/smoke-workflow.sh` (trong `make smoke`).
+
+## Tiếp nhận tin kêu cứu (`workflow/cuu_tro_workflow/keu_cuu.py`, #66)
+
+`POST /workflow/keu-cuu` là đường tạo tin kêu cứu có Poka-yoke ở tầng API, bổ sung cho ràng buộc ở tầng dữ liệu (#25). Tin tạo xong đi đúng luồng hiện có: trigger outbox xếp vào hàng phân công tự động (#67), bản đồ thấy ngay qua subscription (#60).
+
+| Lớp | Đã có trước #66 | #66 thêm |
+|---|---|---|
+| CSDL (#25) | `location NOT NULL`; domain `phone_vn` (`0` + 9 số); `urgency` 4 giá trị, `people_count` 1..10000; trigger `incidents_no_duplicate` (cùng SĐT, tin chưa `da_cuu`/`dong`, `ST_DWithin` trên geography ≤ `radius_m`, trong `window_minutes`, khóa advisory theo SĐT); tham số trong bảng `incident_dedup_config` (200 m, 360 phút) | Migration `0008`: role `cuu_tro_app` được `INSERT` đúng các cột người báo nhập + `created_by` (không `status`, `assigned_team_id`), đọc lại `created_at`, **không** đọc SĐT/tên; trigger chặn trùng chạy `SECURITY DEFINER` (role chỉ có quyền INSERT theo cột vẫn được kiểm đủ) |
+| API | Hasura mutation `insert_incidents_one` (dieu-phoi, tinh-nguyen) trả lỗi CSDL thô | Kiểm đủ mọi trường rồi trả **một** lỗi `422` liệt kê từng trường sai (tiếng Việt); chuẩn hóa SĐT (`+84`, dấu cách/chấm/gạch); vùng phục vụ; mô tả ≤ 500 ký tự; lỗi trùng của trigger → `409` kèm mã tin đang mở |
+| Gateway | Route `/workflow/*` (JWT, WAF, 300 request/60 s/IP) | Route riêng `/workflow/keu-cuu` giới hạn chặt `GW_KEU_CUU_RATE_LIMIT_COUNT` (20)/60 s/IP, WAF đọc body |
+
+**Vai trò:** `dieu-phoi`, `tinh-nguyen` (giống quyền tạo tin ở Hasura); `cuu-ho` → `403`; không token → `401` ở APISIX. **Không có đường gửi ẩn danh:** repo chưa có quyết định mở kênh công khai; kênh người dân (Telegram bot, việc sau) sẽ gọi API bằng tài khoản dịch vụ của bot. `created_by` = `sub` trong JWT (API gán, client không gửi được).
+
+**Body JSON** (`Content-Type: application/json`, ≤ 16 KiB):
+
+| Trường | Bắt buộc | Kiểm |
+|---|---|---|
+| `lat`, `lon` | có | Số (không nhận chuỗi, `true`, NaN), vĩ độ −90..90, kinh độ −180..180, trong vùng phục vụ `KEU_CUU_VUNG_PHUC_VU` (mặc định Việt Nam kể cả Hoàng Sa, Trường Sa: `102.1,6.0,117.9,23.4`) |
+| `reporter_phone` | có | Di động Việt Nam 10 số đầu `03/05/07/08/09`; nhận `+84…`, `84…`, dấu cách, chấm, gạch, ngoặc rồi chuẩn hóa về `0…` |
+| `description` | có | Chuỗi, bỏ khoảng trắng đầu cuối, 1..500 ký tự, không ký tự điều khiển |
+| `urgency` | không (`trung_binh`) | `khan_cap`, `cao`, `trung_binh`, `thap` |
+| `people_count` | không (1) | Số nguyên 1..10000 |
+| `address_text`, `reporter_name` | không | ≤ 300, ≤ 100 ký tự |
+| `source` | không (`app`) | `app`, `web`, `dien_thoai`, `telegram`, `mang_xa_hoi`, `khac` |
+
+Trường lạ (vd `latitude`) cũng là lỗi, để client gõ sai tên không âm thầm mất vị trí.
+
+| Kết quả | Body |
+|---|---|
+| `201` | `{"id", "status": "tiep_nhan", "urgency", "people_count", "lat", "lon", "created_at", "phan_cong": "tu_dong"}`, `Cache-Control: no-store`; không trả lại SĐT |
+| `409` trùng | `{"detail": {"ma": "tin_trung", "thong_bao": "Số điện thoại này đã báo một tin kêu cứu còn mở cách vị trí này khoảng 150 m. Không tạo tin mới; …", "incident_id": "<tin đang mở>", "khoang_cach_m": 150, "ban_kinh_m": 200, "trong_vong_phut": 360}}` |
+| `422` | `{"detail": {"ma": "du_lieu_khong_hop_le", "thong_bao": "Chưa gửi được tin kêu cứu: …", "loi": [{"truong": "lat", "thong_bao": "Thiếu vĩ độ: tin kêu cứu bắt buộc có vị trí."}, …]}}` |
+| `401` / `403` / `413` / `429` | Không token (APISIX) / vai không được tạo tin hoặc WAF chặn / body > 16 KiB / vượt giới hạn tần suất |
+
+**Gửi đồng thời.** Chặn trùng nằm trong CSDL, không ở API: trigger `BEFORE INSERT` lấy `pg_advisory_xact_lock` theo SĐT trước khi tìm tin trùng, nên yêu cầu thứ hai cùng SĐT phải chờ transaction thứ nhất commit rồi mới kiểm (READ COMMITTED: câu `SELECT` trong trigger lấy snapshot mới, thấy tin vừa commit) → `23505` → API trả `409`. Nhiều bản `cuu-tro-api` hay Hasura cùng ghi cũng không lọt. Kiểm thật: `scripts/smoke-keu-cuu.sh` (5 request cùng lúc qua gateway → 1 × `201` + 4 × `409`; hai phiên PostgreSQL, phiên sau phải chờ phiên trước rồi bị chặn).
+
+**Đổi bán kính / khoảng thời gian chặn trùng** (áp cho mọi đường tạo tin, không cần khởi động lại): `UPDATE cuu_tro.incident_dedup_config SET radius_m = 300, window_minutes = 240;` bằng role chủ (`cuu_tro_owner`) hoặc superuser.
+
+**Không ghi SĐT ra log:** API không bật access log, chỉ ghi mã tin đang mở khi trùng, lỗi CSDL bất thường chỉ ghi loại lỗi + tên ràng buộc (thông điệp của PostgreSQL có thể chứa giá trị); thông báo lỗi không lặp lại số người dùng nhập.
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"lat": 15.8502, "lon": 108.1035, "reporter_phone": "0900 000 099", "description": "Nước ngập tới mái, 3 người", "urgency": "khan_cap", "people_count": 3}' \
+  http://localhost:9080/workflow/keu-cuu
+```
+
+Kiểm thử: `tests/test_cuu_tro_keu_cuu.py` (kiểm dữ liệu, chuẩn hóa SĐT, ánh xạ 409/422, quyền theo vai, gửi đồng thời trên CSDL giả, không có SĐT trong log); `db/tests/0008_api_keu_cuu.sql` (INSERT thật bằng `cuu_tro_app`: thiếu tọa độ, SĐT sai, trùng trong 200 m, khác SĐT cùng chỗ, cùng SĐT ngoài 200 m, DETAIL đúng dạng API đọc, quyền theo cột); `scripts/smoke-keu-cuu.sh` (trong `make smoke`, chạy cuối vì ca 429 khóa route trong `GW_RATE_LIMIT_WINDOW` giây).
 
 ## Ảnh hiện trường (`workflow/cuu_tro_workflow/anh.py`, `s3.py`, #27)
 

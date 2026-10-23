@@ -27,7 +27,7 @@ Giấy phép kiểm tra ngày 17/10/2026 trên file LICENSE ở repo chính th�
 | Scorpio Broker (NGSI-LD) | ghim ở tuần 4 | BSD-3-Clause | github.com/ScorpioBroker/ScorpioBroker | Dịch vụ riêng, dùng chung postgis | gis | ☐ |
 | Sổ cái `core/ledger` (nhúng Tessera, xem mục 2) | `disaster-dxos/ledger:0.1.0` build từ nguồn trong repo (`core/ledger/Dockerfile`): bước build `golang:1.26.10-alpine3.24` (BSD-3-Clause, không vào image chạy), image chạy `scratch` | Apache-2.0 | mã của đội | Dịch vụ của đội, ghi chỉ trong mạng nội bộ, đọc công khai qua APISIX `/ledger/*` (#28) | core | ✔ |
 | ClamAV | ghim ở tuần 2+ | GPL-2.0 | github.com/Cisco-Talos/clamav | Dịch vụ riêng | sec | ☐ |
-| Centrifugo **OSS** | ghim ở tuần 3 | Apache-2.0 | github.com/centrifugal/centrifugo | Dịch vụ riêng | core | ☐ |
+| Centrifugo **OSS** | `centrifugo/centrifugo:v6.9.7` | Apache-2.0 (LICENSE tại tag v6.9.7) | github.com/centrifugal/centrifugo | Dịch vụ riêng, image gốc không sửa, không dùng bản PRO. Chỉ đường WebSocket đi qua APISIX `/realtime/websocket`; HTTP API chỉ trong mạng nội bộ; khóa ký token + API key do bao agent render (#68) | core | ✔ |
 | Grafana | ghim ở tuần 4 | AGPL-3.0 | github.com/grafana/grafana | Dịch vụ riêng | bi | ☐ |
 | Ollama | ghim ở tuần 5 | MIT | github.com/ollama/ollama | Dịch vụ riêng (hoặc chạy trên máy host) | ai | ☐ |
 | Qwen2.5 7B / 14B Instruct | tải qua Ollama, tuần 5 | Apache-2.0 | huggingface.co/Qwen | Trọng số model, không đưa vào repo | ai | ☐ |
@@ -49,10 +49,15 @@ Giấy phép kiểm tra ngày 17/10/2026 trên file LICENSE ở repo chính th�
 | Eclipse Paho MQTT Python (`paho-mqtt`) | 2.1.0 | EPL-2.0 OR BSD-3-Clause (dùng theo EDL-1.0 = BSD-3-Clause) | github.com/eclipse-paho/paho.mqtt.python | Bộ giả lập trạm cảm biến gửi MQTT (PyPI, #30) | ✔ |
 | DuckDB | tuần 4 | MIT | github.com/duckdb/duckdb | Truy vấn Parquet lịch sử (PyPI) | ☐ |
 | LangGraph | tuần 5 | MIT | github.com/langchain-ai/langgraph | Agent AI bóc tách tin kêu cứu (PyPI) | ☐ |
-| Vue 3 | tuần 3 | MIT | github.com/vuejs/core | Web điều phối (npm) | ☐ |
-| Nuxt 3 | tuần 3 | MIT | github.com/nuxt/nuxt | Web điều phối (npm) | ☐ |
-| Tailwind CSS | tuần 3 | MIT | github.com/tailwindlabs/tailwindcss | Web điều phối (npm) | ☐ |
-| MapLibre GL JS | tuần 3 | BSD-3-Clause | github.com/maplibre/maplibre-gl-js | Bản đồ thời gian thực (npm) | ☐ |
+| Vue 3 (qua Nuxt) | 3.5.44 | MIT | github.com/vuejs/core | Web điều phối `apps/cuu-tro/web` (npm, #59) | ✔ |
+| Nuxt 4 | 4.6.2 | MIT | github.com/nuxt/nuxt | Web điều phối, chạy chế độ SPA (`ssr: false`) (npm, #59; nâng từ 3.21.11 ở #77 vì Nuxt UI 4 cần Nuxt ≥ 4.1) | ✔ |
+| Nuxt UI (`@nuxt/ui`) | 4.12.0 | MIT | github.com/nuxt/ui | Bộ thành phần giao diện web điều phối: khung trang có thanh bên, nút, nhãn, ngăn bên, chế độ sáng/tối (npm, #77). Kéo theo reka-ui 2.11.0, `@nuxt/icon` 2.5.1, `@nuxtjs/color-mode` 4.0.1, tailwind-variants 3.3.1, `@vueuse/core` 14.4.0, `@tailwindcss/vite` 4.3.3 (đều MIT) và `@nuxt/fonts` 0.14.0 (MIT, **tắt** bằng `ui.fonts: false` để không tải Google Fonts) | ✔ |
+| Tailwind CSS | 4.3.3 | MIT | github.com/tailwindlabs/tailwindcss | Giao diện web điều phối, màu theo bộ nhận diện (npm, chỉ lúc build, #59; nạp qua Nuxt UI từ #77) | ✔ |
+| Lucide icons (`@iconify-json/lucide`) | 1.2.147 | ISC | github.com/lucide-icons/lucide | Biểu tượng web điều phối, đóng gói sẵn vào bundle (`icon.provider: 'none'`), không gọi API Iconify (npm, #77) | ✔ |
+| Be Vietnam Pro (font) | commit `804e62d` | OFL-1.1 | github.com/bettergui/BeVietnamPro | Font chữ web điều phối, 4 độ đậm woff2 tự host trong `apps/cuu-tro/web/public/fonts/be-vietnam-pro/` (kèm `OFL.txt`, SHA-256 trong README cùng thư mục), không sửa tệp font (#77) | ✔ |
+| MapLibre GL JS | 5.24.0 | BSD-3-Clause | github.com/maplibre/maplibre-gl-js | Bản đồ web điều phối (npm, #59). Chưa dùng 6.x: bản chỉ ESM, worker tách tệp, kiểu bản đồ không nạp được khi Vite đóng gói | ✔ |
+| graphql-ws | 6.3.0 | MIT | github.com/enisdenjo/graphql-ws | Client GraphQL subscription qua WebSocket (giao thức `graphql-transport-ws`) của bản đồ tin kêu cứu realtime: tự kết nối lại, ping giữ kết nối (npm, #60). Kéo theo peer `graphql` 17.0.2 (MIT, chỉ dùng kiểu); `ws`, `crossws`, `@fastify/websocket` là peer tùy chọn cho phía máy chủ, không cài | ✔ |
+| centrifuge-js (`centrifuge`) | 5.7.4 | MIT | github.com/centrifugal/centrifuge-js | Client WebSocket của web điều phối nhận thông báo realtime từ Centrifugo, tự kết nối lại và lấy bù tin (npm, #68). Kéo theo protobufjs 7.6.6 + `@protobufjs/*` (BSD-3-Clause), long 5.3.2 (Apache-2.0), events 3.3.0 (MIT); web chỉ dùng giao thức JSON | ✔ |
 | Flutter SDK | tuần 5 | BSD-3-Clause | github.com/flutter/flutter | App hiện trường (pub) | ☐ |
 | Tessera (đã chốt – D-007, driver POSIX + antispam BadgerDB) | v1.0.4 (`core/ledger/go.mod`) | Apache-2.0 | github.com/transparency-dev/tessera | Sổ cái minh bạch `core/ledger`: appender, tile/checkpoint tlog-tiles, gói `client` dựng inclusion proof (Go modules, #28) | ✔ |
 | transparency-dev/formats | v0.0.0-20251017110053-404c0d5b696c | Apache-2.0 | github.com/transparency-dev/formats | Đọc/kiểm checkpoint (`log.ParseCheckpoint`) trong `core/ledger` (#28) | ✔ |
@@ -82,6 +87,29 @@ Phiên bản thư viện được ghim trong file khai báo của từng ứng d
 | k8s.io/klog/v2 | v2.130.1 | Apache-2.0 |
 
 Công cụ chỉ dùng trong CI, không vào image: `github.com/google/go-licenses/v2` v2.0.1 (Apache-2.0).
+
+**Web điều phối `apps/cuu-tro/web`** (#59). Phiên bản ghim chính xác trong `package.json`, cây phụ thuộc khóa trong `package-lock.json` (`npm ci`). Image `disaster-dxos/cuu-tro-web:0.1.0` build từ nguồn (`apps/cuu-tro/web/Dockerfile`, #64): bước build `node:22.22.3-bookworm-slim`, image chạy `node:22.22.3-alpine3.22` (Node.js MIT + gói Alpine; Nuxt 4.6 cần Node ≥ 22.22.3, #77), chỉ dùng để chạy, không chép mã vào repo. Phụ thuộc trực tiếp ngoài bảng trên, chỉ dùng lúc phát triển/kiểm thử, không vào bản build: Vitest 5.0.5 (MIT), TypeScript 5.9.3 (Apache-2.0), vue-tsc 3.3.13 (MIT), `@types/node` 22.20.5 và `@types/geojson` 7946.0.16 (MIT).
+
+Giấy phép mọi gói (kể cả gián tiếp) kiểm bằng `npm run licenses` (`apps/cuu-tro/web/scripts/check-licenses.mjs`, đọc `package-lock.json`, không cần mạng); thoát mã 1 nếu gặp giấy phép ngoài danh sách OSI MIT, ISC, Apache-2.0, BSD-2/3-Clause, 0BSD, MPL-2.0, BlueOak-1.0.0, Python-2.0. Kết quả ngày 23/10/2026 sau #77 (Nuxt 4 + Nuxt UI), 913 gói: MIT 768, ISC 46, MPL-2.0 24 (lightningcss, chỉ lúc build, dùng nguyên dạng), Apache-2.0 23, BSD-3-Clause 23 (gồm protobufjs của centrifuge-js), BlueOak-1.0.0 13, BSD-2-Clause 7, `MIT OR Apache-2.0` 2, CC0-1.0 2 và CC-BY-4.0 1 (ngoại lệ dưới đây), 0BSD 1, `MIT OR CC0-1.0` 1 (type-fest, dùng theo MIT), `BSD-3-Clause OR GPL-2.0` 1 (node-forge của máy chủ dev `nuxt dev`, dùng theo BSD-3-Clause), không ghi giấy phép 1 (vaul-vue, ngoại lệ dưới đây). Không có gói GPL/AGPL/LGPL bắt buộc.
+
+Ngoại lệ đã duyệt (không phải giấy phép OSI nhưng tương thích Apache-2.0, chỉ là dữ liệu/công cụ lúc build hoặc dev, không nằm trong `.output`):
+
+| Gói | Giấy phép | Kéo vào bởi | Lý do chấp nhận |
+|---|---|---|---|
+| caniuse-lite | CC-BY-4.0 | autoprefixer ← `@nuxt/vite-builder` | Bảng dữ liệu trình duyệt dùng khi build CSS; không vào bản build |
+| mdn-data (2 bản) | CC0-1.0 | css-tree ← csso/cssnano ← Nuxt | Dữ liệu thuộc tính CSS dùng khi nén CSS; không vào bản build |
+| @speed-highlight/core | CC0-1.0 | youch ← `@nuxt/cli` | Tô màu mã trong trang lỗi của `nuxt dev`; không vào bản build |
+| vaul-vue 0.4.1 | MIT (không ghi trong `package.json`) | `@nuxt/ui` (thành phần Drawer) | Gói thiếu trường `license`; repo gốc `github.com/unovue/vaul-vue` có tệp LICENSE MIT. Web chưa dùng Drawer nên tree-shaking loại khỏi bản build (#77) |
+
+**Nguồn bản đồ nền của web điều phối:**
+
+| Nguồn | Giấy phép / điều khoản | Dùng |
+|---|---|---|
+| OpenFreeMap, kiểu `liberty` (`https://tiles.openfreemap.org/styles/liberty`, ô vector OpenMapTiles) | Mã OpenFreeMap MIT; dữ liệu © những người đóng góp OpenStreetMap, ODbL-1.0; lược đồ OpenMapTiles BSD-3-Clause / CC-BY-4.0. Không cần khóa API, bắt buộc ghi công (MapLibre tự hiện từ kiểu bản đồ) | Mặc định (`NUXT_PUBLIC_MAP_STYLE_URL`). Web đổi nhãn sang tên tiếng Việt (`name:vi`) và thêm nhãn "Quần đảo Hoàng Sa (Việt Nam)", "Quần đảo Trường Sa (Việt Nam)" |
+| OpenFreeMap, kiểu `dark` (`https://tiles.openfreemap.org/styles/dark`) | Như kiểu `liberty` | Kiểu nền khi giao diện ở chế độ tối (`NUXT_PUBLIC_MAP_STYLE_URL_TOI`, #77; bản đồ dùng từ #78) |
+| Ô ảnh OpenStreetMap (`tile.openstreetmap.org`) | Dữ liệu ODbL-1.0, theo Chính sách dùng ô bản đồ của OSMF (lượng truy cập nhỏ, ghi công) | Dự phòng khi không tải được kiểu vector |
+
+Không dùng ô bản đồ Google hay Mapbox (điều khoản đóng). Khi triển khai thật (tuần 4) có thể tự host ô OpenFreeMap/OpenMapTiles và đổi `NUXT_PUBLIC_MAP_STYLE_URL`.
 
 ## 3. Danh sách không dùng
 
