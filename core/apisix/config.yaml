@@ -27,6 +27,7 @@ nginx_config:
     - GW_WEB_UPSTREAM_PORT
     - GW_WEB_RATE_LIMIT_COUNT
     - GW_REALTIME_RATE_LIMIT_COUNT
+    - GW_KEU_CUU_RATE_LIMIT_COUNT
   http:
     # Trần cứng của nginx; route /files đặt giới hạn thấp hơn bằng plugin client-control
     client_max_body_size: 64m

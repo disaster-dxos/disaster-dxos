@@ -6,11 +6,11 @@
 | Thư mục | Nội dung | Trạng thái |
 |---|---|---|
 | `keycloak/realm.json` | Realm `disaster`: vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen`; client `dxos-gateway`, `dxos-web`, `dxos-dev-cli` (chỉ dev); 3 người dùng mẫu, mật khẩu lấy từ `.env` | Có |
-| `db/migrations/` | Schema `cuu_tro`: `incidents`, `rescue_teams`, `shelters`, `supplies`, `supply_movements`, `sensors` (PostGIS); `team_members` (#26); `sensor_readings` chuỗi đo cảm biến (#30); `incident_media` ảnh hiện trường (#27); quyền lập phiếu + ghi sổ cái cho `cuu_tro_app` (#28) | Có (#25, #26, #30, #27, #28) |
+| `db/migrations/` | Schema `cuu_tro`: `incidents`, `rescue_teams`, `shelters`, `supplies`, `supply_movements`, `sensors` (PostGIS); `team_members` (#26); `sensor_readings` chuỗi đo cảm biến (#30); `incident_media` ảnh hiện trường (#27); quyền lập phiếu + ghi sổ cái cho `cuu_tro_app` (#28); quyền tạo tin kêu cứu cho `cuu_tro_app` (#66) | Có (#25, #26, #30, #27, #28, #66) |
 | `db/seed/` | Dữ liệu giả xã An Lạc (giả định) | Có (#25) |
-| `db/tests/` | Kiểm thử ràng buộc (Poka-yoke, CHECK, quyền theo search_path, quyền role `cuu_tro_app`, chuỗi đo cảm biến, ảnh hiện trường, phiếu kho + sổ cái) | Có (#25, #26, #29, #30, #27, #28) |
+| `db/tests/` | Kiểm thử ràng buộc (Poka-yoke, CHECK, quyền theo search_path, quyền role `cuu_tro_app`, chuỗi đo cảm biến, ảnh hiện trường, phiếu kho + sổ cái, tạo tin bằng role của API kêu cứu) | Có (#25, #26, #29, #30, #27, #28, #66) |
 | `hasura/metadata/` | Metadata Hasura: bảng track, quan hệ, quyền theo vai trò JWT | Có (#26) |
-| `workflow/` | Backend Python: Temporal worker (`PhanCongCuuHo`, `Hello`) + API FastAPI khởi chạy workflow qua gateway `/workflow/*` (#29); consumer cảm biến NATS JetStream + bộ giả lập trạm đo MQTT (#30); API ảnh hiện trường (#27); phiếu nhập/xuất → sổ cái minh bạch + trang công khai (#28); pytest | Có (#29, #30, #27, #28) |
+| `workflow/` | Backend Python: Temporal worker (`PhanCongCuuHo`, `Hello`) + API FastAPI khởi chạy workflow qua gateway `/workflow/*` (#29); consumer cảm biến NATS JetStream + bộ giả lập trạm đo MQTT (#30); API ảnh hiện trường (#27); phiếu nhập/xuất → sổ cái minh bạch + trang công khai (#28); API tiếp nhận tin kêu cứu có Poka-yoke (#66); pytest | Có (#29, #30, #27, #28, #66) |
 | `compose.yaml` | Dịch vụ `cuu-tro-worker`, `cuu-tro-api`, `cuu-tro-cam-bien`, `cuu-tro-thong-bao` (#68), `bao-agent-cuu-tro` (profile `app`), `cuu-tro-gia-lap` (profile `gia-lap`), lõi nạp bằng `include` | Có (#29, #30, #27) |
 | `openbao/` | Policy + template bao agent cho backend (mật khẩu role `cuu_tro_app`, NATS/MQTT, khóa S3 của ứng dụng, token ghi sổ cái) | Có (#29, #30, #27, #28) |
 | `s3/buckets.conf` | Bucket S3 của ứng dụng (`cuu-tro-media`), lõi tạo khi `make up` | Có (#27) |
@@ -107,6 +107,8 @@ Mọi bảng có `created_at`, `updated_at` (trigger tự cập nhật), khóa c
 | Điểm trú ẩn không quá sức chứa | CHECK `shelters_not_over_capacity` | `23514` |
 | Xuất kho không quá tồn | Phiếu `supply_movements` cộng/trừ `supplies.quantity` trong cùng transaction, CHECK `quantity >= 0` | `23514` |
 | Phiếu nhập/xuất không sửa/xóa (chỉ điền `ledger_*` một lần) | Trigger `supply_movements_immutable` | `23001` restrict_violation |
+
+Tầng API (#66) kiểm thêm trước khi ghi và trả lỗi tiếng Việt theo trường: mục "Tiếp nhận tin kêu cứu" bên dưới.
 
 Vì sao trigger mà không phải exclusion constraint: điều kiện "trong 6 giờ" và "tin cũ còn mở" phụ thuộc thời điểm và trạng thái, exclusion constraint (GiST) chỉ so được giá trị cố định của hai dòng.
 
@@ -247,6 +249,7 @@ Luồng trạng thái tin hợp lệ (`logic.CHUYEN_TRANG_THAI`): `tiep_nhan →
 | Phương thức, đường dẫn | Vai trò | Kết quả |
 |---|---|---|
 | `POST /workflow/hello` body `{"ten": "…"}` (tùy chọn) | mọi vai trò | `200 {"workflow_id", "ket_qua", "nguoi_goi"}` |
+| `POST /workflow/keu-cuu` (#66) | `dieu-phoi`, `tinh-nguyen` | Tạo tin kêu cứu (tự phân công): `201` · `409` trùng kèm mã tin đang mở · `422` lỗi theo trường. Mục "Tiếp nhận tin kêu cứu" |
 | `POST /workflow/phan-cong/{incident_id}` | `dieu-phoi` | Khởi chạy tay (tin mới đã tự chạy; dùng khi luồng tự động đã dừng và báo điều phối). `202 {"workflow_id": "phan-cong-<incident_id>", "run_id", "incident_id"}` · `404` tin không có · `409` tin không ở `tiep_nhan` hoặc luồng đang chạy |
 | `GET /workflow/{workflow_id}` | `dieu-phoi`; `cuu-ho` của đội được giao | `200 {"workflow_id", "trang_thai": "RUNNING\|COMPLETED\|…", "chi_tiet": {buoc, urgency, han_nhan_giay, doi_id, doi_ten, khoang_cach_m, so_lan_tim, giao: [{lan, doi_id, doi_ten, ket_qua, …}], da_bao_dieu_phoi, xac_nhan, ket_qua, lich_su}}` |
 | `POST /workflow/{workflow_id}/nhan` body `{"ghi_chu": "…"}` (tùy chọn) | `dieu-phoi`; `cuu-ho` của đội được giao | `202` · `409` không ở bước `cho_nhan` hoặc nhiệm vụ đã giao cho đội khác |
@@ -278,6 +281,53 @@ uv lock && uv export --frozen --no-dev --no-emit-project -o requirements.txt
 ```
 
 Test: logic thuần (chọn đội, chuyển trạng thái), workflow trên máy chủ test của `temporalio` (tự tua thời gian: quá hạn nhận → phân công lại, hạn theo urgency, hết lần giao → báo điều phối, tin khẩn cấp được đội trước, từ chối, hủy, tự khởi chạy không trùng; activity thay bằng bản giả trong bộ nhớ), API nhận/từ chối/hủy với Hasura và Temporal giả, kiểm JWT/vai trò của API bằng khóa RSA sinh tại chỗ. Luật SQL (outbox, `urgency_rank`, nhường đội, lịch sử giao, quyền `cuu_tro_app`): `db/tests/0007_phan_cong_tu_dong.sql` (`make test-db`). Lần chạy đầu `temporalio` tải máy chủ test về thư mục tạm. Kiểm thử thật qua gateway: `scripts/smoke-workflow.sh` (trong `make smoke`).
+
+## Tiếp nhận tin kêu cứu (`workflow/cuu_tro_workflow/keu_cuu.py`, #66)
+
+`POST /workflow/keu-cuu` là đường tạo tin kêu cứu có Poka-yoke ở tầng API, bổ sung cho ràng buộc ở tầng dữ liệu (#25). Tin tạo xong đi đúng luồng hiện có: trigger outbox xếp vào hàng phân công tự động (#67), bản đồ thấy ngay qua subscription (#60).
+
+| Lớp | Đã có trước #66 | #66 thêm |
+|---|---|---|
+| CSDL (#25) | `location NOT NULL`; domain `phone_vn` (`0` + 9 số); `urgency` 4 giá trị, `people_count` 1..10000; trigger `incidents_no_duplicate` (cùng SĐT, tin chưa `da_cuu`/`dong`, `ST_DWithin` trên geography ≤ `radius_m`, trong `window_minutes`, khóa advisory theo SĐT); tham số trong bảng `incident_dedup_config` (200 m, 360 phút) | Migration `0008`: role `cuu_tro_app` được `INSERT` đúng các cột người báo nhập + `created_by` (không `status`, `assigned_team_id`), đọc lại `created_at`, **không** đọc SĐT/tên; trigger chặn trùng chạy `SECURITY DEFINER` (role chỉ có quyền INSERT theo cột vẫn được kiểm đủ) |
+| API | Hasura mutation `insert_incidents_one` (dieu-phoi, tinh-nguyen) trả lỗi CSDL thô | Kiểm đủ mọi trường rồi trả **một** lỗi `422` liệt kê từng trường sai (tiếng Việt); chuẩn hóa SĐT (`+84`, dấu cách/chấm/gạch); vùng phục vụ; mô tả ≤ 500 ký tự; lỗi trùng của trigger → `409` kèm mã tin đang mở |
+| Gateway | Route `/workflow/*` (JWT, WAF, 300 request/60 s/IP) | Route riêng `/workflow/keu-cuu` giới hạn chặt `GW_KEU_CUU_RATE_LIMIT_COUNT` (20)/60 s/IP, WAF đọc body |
+
+**Vai trò:** `dieu-phoi`, `tinh-nguyen` (giống quyền tạo tin ở Hasura); `cuu-ho` → `403`; không token → `401` ở APISIX. **Không có đường gửi ẩn danh:** repo chưa có quyết định mở kênh công khai; kênh người dân (Telegram bot, việc sau) sẽ gọi API bằng tài khoản dịch vụ của bot. `created_by` = `sub` trong JWT (API gán, client không gửi được).
+
+**Body JSON** (`Content-Type: application/json`, ≤ 16 KiB):
+
+| Trường | Bắt buộc | Kiểm |
+|---|---|---|
+| `lat`, `lon` | có | Số (không nhận chuỗi, `true`, NaN), vĩ độ −90..90, kinh độ −180..180, trong vùng phục vụ `KEU_CUU_VUNG_PHUC_VU` (mặc định Việt Nam kể cả Hoàng Sa, Trường Sa: `102.1,6.0,117.9,23.4`) |
+| `reporter_phone` | có | Di động Việt Nam 10 số đầu `03/05/07/08/09`; nhận `+84…`, `84…`, dấu cách, chấm, gạch, ngoặc rồi chuẩn hóa về `0…` |
+| `description` | có | Chuỗi, bỏ khoảng trắng đầu cuối, 1..500 ký tự, không ký tự điều khiển |
+| `urgency` | không (`trung_binh`) | `khan_cap`, `cao`, `trung_binh`, `thap` |
+| `people_count` | không (1) | Số nguyên 1..10000 |
+| `address_text`, `reporter_name` | không | ≤ 300, ≤ 100 ký tự |
+| `source` | không (`app`) | `app`, `web`, `dien_thoai`, `telegram`, `mang_xa_hoi`, `khac` |
+
+Trường lạ (vd `latitude`) cũng là lỗi, để client gõ sai tên không âm thầm mất vị trí.
+
+| Kết quả | Body |
+|---|---|
+| `201` | `{"id", "status": "tiep_nhan", "urgency", "people_count", "lat", "lon", "created_at", "phan_cong": "tu_dong"}`, `Cache-Control: no-store`; không trả lại SĐT |
+| `409` trùng | `{"detail": {"ma": "tin_trung", "thong_bao": "Số điện thoại này đã báo một tin kêu cứu còn mở cách vị trí này khoảng 150 m. Không tạo tin mới; …", "incident_id": "<tin đang mở>", "khoang_cach_m": 150, "ban_kinh_m": 200, "trong_vong_phut": 360}}` |
+| `422` | `{"detail": {"ma": "du_lieu_khong_hop_le", "thong_bao": "Chưa gửi được tin kêu cứu: …", "loi": [{"truong": "lat", "thong_bao": "Thiếu vĩ độ: tin kêu cứu bắt buộc có vị trí."}, …]}}` |
+| `401` / `403` / `413` / `429` | Không token (APISIX) / vai không được tạo tin hoặc WAF chặn / body > 16 KiB / vượt giới hạn tần suất |
+
+**Gửi đồng thời.** Chặn trùng nằm trong CSDL, không ở API: trigger `BEFORE INSERT` lấy `pg_advisory_xact_lock` theo SĐT trước khi tìm tin trùng, nên yêu cầu thứ hai cùng SĐT phải chờ transaction thứ nhất commit rồi mới kiểm (READ COMMITTED: câu `SELECT` trong trigger lấy snapshot mới, thấy tin vừa commit) → `23505` → API trả `409`. Nhiều bản `cuu-tro-api` hay Hasura cùng ghi cũng không lọt. Kiểm thật: `scripts/smoke-keu-cuu.sh` (5 request cùng lúc qua gateway → 1 × `201` + 4 × `409`; hai phiên PostgreSQL, phiên sau phải chờ phiên trước rồi bị chặn).
+
+**Đổi bán kính / khoảng thời gian chặn trùng** (áp cho mọi đường tạo tin, không cần khởi động lại): `UPDATE cuu_tro.incident_dedup_config SET radius_m = 300, window_minutes = 240;` bằng role chủ (`cuu_tro_owner`) hoặc superuser.
+
+**Không ghi SĐT ra log:** API không bật access log, chỉ ghi mã tin đang mở khi trùng, lỗi CSDL bất thường chỉ ghi loại lỗi + tên ràng buộc (thông điệp của PostgreSQL có thể chứa giá trị); thông báo lỗi không lặp lại số người dùng nhập.
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"lat": 15.8502, "lon": 108.1035, "reporter_phone": "0900 000 099", "description": "Nước ngập tới mái, 3 người", "urgency": "khan_cap", "people_count": 3}' \
+  http://localhost:9080/workflow/keu-cuu
+```
+
+Kiểm thử: `tests/test_cuu_tro_keu_cuu.py` (kiểm dữ liệu, chuẩn hóa SĐT, ánh xạ 409/422, quyền theo vai, gửi đồng thời trên CSDL giả, không có SĐT trong log); `db/tests/0008_api_keu_cuu.sql` (INSERT thật bằng `cuu_tro_app`: thiếu tọa độ, SĐT sai, trùng trong 200 m, khác SĐT cùng chỗ, cùng SĐT ngoài 200 m, DETAIL đúng dạng API đọc, quyền theo cột); `scripts/smoke-keu-cuu.sh` (trong `make smoke`, chạy cuối vì ca 429 khóa route trong `GW_RATE_LIMIT_WINDOW` giây).
 
 ## Ảnh hiện trường (`workflow/cuu_tro_workflow/anh.py`, `s3.py`, #27)
 

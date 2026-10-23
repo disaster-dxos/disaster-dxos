@@ -117,7 +117,8 @@ services:
     # Kiểm JWT bằng JWKS công khai của Keycloak, hỏi Hasura bằng JWT người dùng. Ảnh hiện trường (#27):
     # APP_DB_URL (ghi incident_media) + khóa S3 của ứng dụng, volume riêng secrets-cuu-tro-api (không có
     # mật khẩu NATS/MQTT). Sổ cái (#28): LEDGER_WRITE_TOKEN để lập phiếu nhập/xuất rồi ghi lá lên
-    # core/ledger. Realtime (#68): REALTIME_TOKEN_SECRET để cấp token kết nối Centrifugo.
+    # core/ledger. Realtime (#68): REALTIME_TOKEN_SECRET để cấp token kết nối Centrifugo. Kêu cứu (#66):
+    # APP_DB_URL để tạo tin (trigger CSDL chặn trùng, ghi outbox phân công). Không bật access log.
     # env-from-files.sh export rồi exec uvicorn.
     entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos"]
     command: ["uvicorn", "cuu_tro_workflow.api:app", "--host", "0.0.0.0", "--port", "8000",
@@ -155,6 +156,9 @@ services:
       ANH_MAX_BYTES: ${ANH_MAX_BYTES:-10485760}
       ANH_LINK_HAN_GIAY: ${ANH_LINK_HAN_GIAY:-300}
       GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL:-http://localhost:9080}
+      # Tiếp nhận tin kêu cứu (#66): vùng phục vụ kinh_do_min,vi_do_min,kinh_do_max,vi_do_max (trống = Việt Nam).
+      # INSERT bằng APP_DB_URL (role cuu_tro_app, migration 0008)
+      KEU_CUU_VUNG_PHUC_VU: ${KEU_CUU_VUNG_PHUC_VU:-}
       # Sổ cái (#28): ghi và lấy proof trong mạng nội bộ (APISIX chặn mọi phương thức ghi /ledger/*).
       # Khóa công khai để tự kiểm chữ ký checkpoint; trống = lấy một lần từ ledger lúc chạy.
       LEDGER_URL: http://ledger:8090
