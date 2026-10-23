@@ -2,7 +2,7 @@
 // Thông báo realtime cho người điều phối (#68): hàm thuần, có test (tests/thong-bao.test.ts).
 // Sự kiện đến từ Centrifugo (kênh server-side "dieu-phoi"), do cầu nối NATS → Centrifugo của backend
 // đẩy lên (apps/cuu-tro/workflow/cuu_tro_workflow/thong_bao.py). Payload không có SĐT hay tên.
-import { MUC_KHAN, type MucKhan } from './tin-gia'
+import { MUC_KHAN, maNgan, type MucKhan } from './tin'
 
 export type LoaiThongBao = 'can_xu_ly' | 'tin_moi' | 'canh_bao'
 export type MucDo = 'khan' | 'canh-bao' | 'thong-tin'
@@ -51,11 +51,6 @@ function chuoi(v: unknown): string | undefined {
 
 function soNgan(v: unknown): string | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? String(Math.round(v * 100) / 100) : undefined
-}
-
-/** Mã ngắn của tin để người điều phối đọc: 8 ký tự đầu của UUID */
-export function maNgan(id: string): string {
-  return id.slice(0, 8)
 }
 
 function nhanMucKhan(u: unknown): string {

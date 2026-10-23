@@ -3,9 +3,9 @@
 
 Ứng dụng Tầng 2 cho người điều phối của xã: bản đồ lớn + danh sách tin kêu cứu bên cạnh. Nuxt 3 + TypeScript + Tailwind CSS 4, bản đồ MapLibre GL JS. Chạy thuần phía trình duyệt (`ssr: false`), không có bí mật nào trong mã web.
 
-![Web điều phối: bản đồ và danh sách tin kêu cứu (dữ liệu giả)](../../../docs/images/web-dieu-phoi.png)
+![Web điều phối: bản đồ và danh sách tin kêu cứu thời gian thực](../../../docs/images/web-dieu-phoi.png)
 
-> Trạng thái (#59): khung web, đăng nhập Keycloak, bố cục, logo. Danh sách và bản đồ đang dùng **dữ liệu giả** (`utils/tin-gia.ts`). Việc tiếp theo: #60 (subscription GraphQL), #61 (phân công), #62 (trạm đo), #63 (trang minh bạch), #64 (đưa web vào compose + smoke: đã có, xem mục Chạy). Thông báo realtime (#68) đã có: dữ liệu **thật** từ NATS qua Centrifugo, xem mục dưới.
+> Trạng thái: khung web, đăng nhập Keycloak, bố cục, logo (#59); chạy trong stack qua gateway (#64); thông báo realtime qua Centrifugo (#68); bản đồ và danh sách tin kêu cứu **dữ liệu thật, thời gian thực** qua GraphQL subscription (#60). Việc tiếp theo: #61 (phân công), #62 (trạm đo), #63 (trang minh bạch).
 
 ## Đăng nhập: OIDC Authorization Code + PKCE
 
@@ -39,6 +39,23 @@ npm run build && node .output/server/index.mjs   # bản build, cổng PORT (m�
 
 Biến môi trường `NUXT_PUBLIC_*`: xem `.env.example` ở gốc repo (mục "Web điều phối").
 
+## Bản đồ tin kêu cứu thời gian thực (#60)
+
+| Phần | Cách làm | Ở đâu |
+|---|---|---|
+| Nguồn dữ liệu | GraphQL subscription (live query) của Hasura trên bảng `cuu_tro.incidents`, qua API Gateway: WebSocket `ws(s)://<gateway>/graphql`, giao thức `graphql-transport-ws` (thư viện graphql-ws 6.3.0, MIT). Bảng đổi → Hasura gửi lại kết quả trong khoảng 1 giây, không tải lại trang | `composables/useTinKeuCuu.ts`, `utils/tin-graphql.ts` |
+| Xác thực | Trình duyệt không gửi được header khi mở WebSocket: JWT Keycloak của người dùng nằm trong `connection_init` (`{"headers": {"Authorization": "Bearer …", "X-Hasura-Role": …}}`). Hasura kiểm chữ ký, hạn và áp quyền theo vai như với HTTP. APISIX có route riêng `graphql-ws` cho bắt tay WebSocket (WAF kiểm bắt tay, không kiểm JWT ở bước này; `docs/architecture.md` mục 3.3) | `core/apisix/apisix.yaml` |
+| Dữ liệu tối thiểu | Subscription chỉ lấy `id`, `location`, `urgency`, `status`, `created_at`: không SĐT, tên người gọi, mô tả. Bấm một tin → query HTTP lấy chi tiết (mô tả, địa chỉ, số người, nguồn); SĐT, tên người gọi, đội phụ trách chỉ có trong query của vai `dieu-phoi`/`cuu-ho` (Hasura cho đọc), SĐT che giữa tới khi bấm "Hiện số". Vai `tinh-nguyen` chỉ thấy tin mình tạo | `components/ChiTietTin.vue` |
+| Bản đồ | Màu điểm theo mức khẩn, màu viền theo trạng thái, tin đã cứu/đóng mờ đi; gom cụm khi nhiều điểm gần nhau (cụm đỏ nếu có tin khẩn cấp, bấm cụm → phóng to); tin vừa đến có vòng nhấp nháy 60 giây (tĩnh nếu người dùng chọn giảm chuyển động) | `components/BanDo.vue`, `utils/ban-do.ts` |
+| Danh sách | Cùng bộ lọc với bản đồ (trạng thái, mức khẩn; mặc định ẩn tin đã đóng), tin mới nổi lên đầu với nhãn "Mới"; chọn dòng ↔ chọn điểm (bay tới, tách khỏi cụm) | `components/DanhSachTin.vue`, `components/BoLocTin.vue`, `utils/tin.ts` |
+| Kết nối ổn định | Mất mạng, gateway/Hasura khởi động lại → tự kết nối lại (chờ 0,5 → 20 giây, có nhiễu) và đăng ký lại; ping 20 giây giữ kết nối. Token làm mới (60 giây trước hạn) → kết nối lại ngay bằng token mới. Hasura đóng vì JWT hết hạn/sai → làm mới token rồi nối lại; không làm mới được → "Phiên đăng nhập đã hết" kèm nút đăng nhập lại. Trạng thái luôn hiện ở đầu danh sách (Trực tiếp · giờ cập nhật); mất kết nối → băng đỏ trên bản đồ, nút "Thử lại", dữ liệu cũ vẫn hiện kèm giờ cập nhật cuối | `composables/useTinKeuCuu.ts`, `pages/index.vue` |
+
+![Bấm một tin: ô chi tiết bên cạnh, bản đồ bay tới điểm](../../../docs/images/web-ban-do-chi-tiet.png)
+
+![Mất kết nối: băng cảnh báo, nút Thử lại, dữ liệu cũ kèm giờ cập nhật cuối](../../../docs/images/web-mat-ket-noi.png)
+
+CSP `connect-src` đã có origin `ws(s)://` của gateway (#68), dùng chung cho `/graphql`. Kiểm trên stack thật: `bash scripts/smoke-ban-do.sh` (trong `make smoke`).
+
 ## Thông báo realtime (#68)
 
 Người dùng vai `dieu-phoi` được kết nối Centrifugo khi mở trang (`composables/useThongBao.ts`, client centrifuge-js): xin token qua `GET <gateway>/workflow/realtime/token` kèm JWT, mở WebSocket `ws(s)://<gateway>/realtime/websocket`, nhận publication của kênh server-side `dieu-phoi` (không tự subscribe). Nút **Thông báo** (`components/ThongBaoRealtime.vue`) hiện trạng thái kết nối, số tin chưa đọc và 30 tin gần nhất. SDK tự kết nối lại và xin token mới; API trả 401/403 thì dừng hẳn. `utils/thong-bao.ts` dựng URL và chuyển dữ liệu sự kiện thành thông báo (hàm thuần, có test). CSP `connect-src` có thêm origin `ws(s)://` của gateway.
@@ -46,7 +63,7 @@ Người dùng vai `dieu-phoi` được kết nối Centrifugo khi mở trang (`
 ## Kiểm thử
 
 ```bash
-npm test              # Vitest: PKCE (vector RFC 7636), URL OIDC, state/nonce, hạn token, dữ liệu bản đồ, CSP, thông báo realtime
+npm test              # Vitest: PKCE (vector RFC 7636), URL OIDC, state/nonce, hạn token, GraphQL → tin → GeoJSON, bộ lọc, tin mới, CSP, thông báo realtime
 npm run typecheck     # vue-tsc
 npm run licenses      # giấy phép mọi gói npm trong package-lock.json
 ```
@@ -59,9 +76,9 @@ CI chạy cả bốn lệnh, `npm run build`, rồi build image Docker và chạ
 |---|---|
 | `pages/` | `index.vue` (trang điều phối), `auth/callback.vue` |
 | `server/` | Nitro: `plugins/bao-mat.ts` (header bảo mật), `utils/csp.ts` (dựng CSP, hàm thuần có test) |
-| `components/` | `AppHeader.vue` (logo, người dùng, đăng xuất), `BanDo.vue` (MapLibre), `DanhSachTin.vue`, `ThongBaoRealtime.vue` (#68) |
-| `composables/` | `useAuth.ts` (phiên đăng nhập), `useThongBao.ts` (kết nối Centrifugo, #68), `useNow.ts` |
-| `utils/` | Hàm thuần, có test: `pkce.ts`, `oidc.ts`, `session.ts`, `ban-do.ts`, `tin-gia.ts`, `thong-bao.ts` |
+| `components/` | `AppHeader.vue` (logo, người dùng, đăng xuất), `BanDo.vue` (MapLibre, #60), `DanhSachTin.vue`, `BoLocTin.vue`, `ChiTietTin.vue` (#60), `ThongBaoRealtime.vue` (#68) |
+| `composables/` | `useAuth.ts` (phiên đăng nhập), `useTinKeuCuu.ts` (subscription tin kêu cứu, #60), `useThongBao.ts` (kết nối Centrifugo, #68), `useNow.ts` |
+| `utils/` | Hàm thuần, có test: `pkce.ts`, `oidc.ts`, `session.ts`, `tin.ts`, `tin-graphql.ts`, `ban-do.ts`, `thong-bao.ts` |
 | `tests/` | Vitest |
 | `scripts/check-licenses.mjs` | Kiểm giấy phép npm |
 

@@ -1,54 +1,62 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { StyleSpecification } from 'maplibre-gl'
 import { describe, expect, it } from 'vitest'
-import { NHAN_TIENG_VIET, bieuThucMauKhan, kieuDuPhongOsm, nhanTiengViet, tinSangGeoJson, toaDoHopLe } from '~/utils/ban-do'
-import { MUC_KHAN, cheSdt, demTheoTrangThai, sapXepTin, thoiGianTruoc, tinGia } from '~/utils/tin-gia'
+import {
+  CUM_ZOOM_TOI_DA, NHAN_TIENG_VIET, THUOC_TINH_CUM, bieuThucMauCum, bieuThucMauKhan, bieuThucMauTrangThai, kieuDuPhongOsm,
+  nhanTiengViet, tinSangGeoJson, toaDoHopLe, zoomChon,
+} from '~/utils/ban-do'
+import { MAU_TRANG_THAI, MUC_KHAN, type TinKeuCuu } from '~/utils/tin'
 
-const NOW = Date.parse('2026-10-29T08:00:00Z')
-
-describe('dữ liệu giả', () => {
-  const ds = tinGia(NOW)
-  it('mọi tin có tọa độ hợp lệ trong vùng mẫu và SĐT dạng 0 + 9 số', () => {
-    for (const t of ds) {
-      expect(toaDoHopLe(t.location)).toBe(true)
-      expect(t.location[0]).toBeGreaterThan(107.5)
-      expect(t.location[1]).toBeGreaterThan(15.5)
-      expect(t.reporter_phone).toMatch(/^0\d{9}$/)
-    }
-    expect(new Set(ds.map((t) => t.id)).size).toBe(ds.length)
-  })
-  it('sắp xếp: chưa xong trước, khẩn hơn trước, cũ hơn trước', () => {
-    const s = sapXepTin(ds)
-    expect(s[0]!.urgency).toBe('khan_cap')
-    expect(s.at(-1)!.status).toBe('da_cuu')
-    const khan = s.filter((t) => t.urgency === 'khan_cap')
-    expect(khan[0]!.created_at < khan[1]!.created_at).toBe(true)
-  })
-  it('đếm theo trạng thái', () => {
-    const d = demTheoTrangThai(ds)
-    expect(Object.values(d).reduce((a, b) => a + b, 0)).toBe(ds.length)
-    expect(d.tiep_nhan).toBe(4)
-  })
-  it('thời gian tương đối và che SĐT', () => {
-    expect(thoiGianTruoc(new Date(NOW - 20_000).toISOString(), NOW)).toBe('vừa xong')
-    expect(thoiGianTruoc(new Date(NOW - 5 * 60_000).toISOString(), NOW)).toBe('5 phút trước')
-    expect(thoiGianTruoc(new Date(NOW - 3 * 3_600_000).toISOString(), NOW)).toBe('3 giờ trước')
-    expect(thoiGianTruoc(new Date(NOW - 50 * 3_600_000).toISOString(), NOW)).toBe('2 ngày trước')
-    expect(cheSdt('0900000001')).toBe('0900***001')
-  })
-})
+const T1: TinKeuCuu = {
+  id: 'd0000000-0000-4000-8000-000000000001', location: [108.2212, 15.9785], urgency: 'khan_cap', status: 'tiep_nhan',
+  created_at: '2026-10-29T07:56:00Z',
+}
+const T2: TinKeuCuu = { ...T1, id: 'd0000000-0000-4000-8000-000000000002', location: [108.19, 15.94], urgency: 'cao', status: 'dang_cuu' }
 
 describe('bản đồ', () => {
-  it('GeoJSON giữ id và thuộc tính để tô màu', () => {
-    const g = tinSangGeoJson(tinGia(NOW).slice(0, 2))
+  it('GeoJSON giữ id, tọa độ và thuộc tính để tô màu, gom cụm', () => {
+    const g = tinSangGeoJson([T1, T2])
+    expect(g.type).toBe('FeatureCollection')
     expect(g.features).toHaveLength(2)
-    expect(g.features[0]!.geometry.coordinates).toEqual([108.2212, 15.9785])
-    expect(g.features[0]!.properties).toMatchObject({ urgency: 'khan_cap', status: 'tiep_nhan' })
+    expect(g.features[0]!.id).toBe(T1.id)
+    expect(g.features[0]!.geometry).toEqual({ type: 'Point', coordinates: [108.2212, 15.9785] })
+    expect(g.features[0]!.properties).toEqual({ id: T1.id, urgency: 'khan_cap', status: 'tiep_nhan', khan: 1, moi: false })
+    expect(g.features[1]!.properties).toMatchObject({ urgency: 'cao', status: 'dang_cuu', khan: 0 })
   })
-  it('biểu thức màu có đủ 4 mức khẩn', () => {
+  it('GeoJSON chỉ mang id, mức khẩn, trạng thái: không có SĐT, tên, mô tả dù đầu vào có', () => {
+    const lo = { ...T1, reporter_phone: '0900000001', reporter_name: 'Người Mẫu', description: 'x' } as TinKeuCuu
+    const p = tinSangGeoJson([lo]).features[0]!.properties
+    expect(Object.keys(p).sort()).toEqual(['id', 'khan', 'moi', 'status', 'urgency'])
+    expect(JSON.stringify(p)).not.toContain('0900000001')
+  })
+  it('đánh dấu tin mới theo Map hoặc Set id', () => {
+    expect(tinSangGeoJson([T1, T2], new Map([[T2.id, 1]])).features.map((f) => f.properties.moi)).toEqual([false, true])
+    expect(tinSangGeoJson([T1, T2], new Set([T1.id])).features.map((f) => f.properties.moi)).toEqual([true, false])
+    expect(tinSangGeoJson([]).features).toEqual([])
+  })
+  it('biểu thức màu có đủ 4 mức khẩn và 5 trạng thái, có màu mặc định', () => {
     const e = bieuThucMauKhan()
     expect(e.slice(0, 2)).toEqual(['match', ['get', 'urgency']])
     for (const [k, v] of Object.entries(MUC_KHAN)) expect(e[e.indexOf(k) + 1]).toBe(v.mau)
+    expect(e).toHaveLength(2 + 4 * 2 + 1)
+    const s = bieuThucMauTrangThai()
+    expect(s.slice(0, 2)).toEqual(['match', ['get', 'status']])
+    for (const [k, v] of Object.entries(MAU_TRANG_THAI)) expect(s[s.indexOf(k) + 1]).toBe(v)
+    expect(s).toHaveLength(2 + 5 * 2 + 1)
+  })
+  it('màu nhận diện Team 1 cho mức cao và trạng thái phân công', () => {
+    expect(MUC_KHAN.cao.mau).toBe('#F07B1D')
+    expect(MUC_KHAN.trung_binh.mau).toBe('#1FA2C9')
+    expect(MAU_TRANG_THAI.phan_cong).toBe('#12355B')
+  })
+  it('gom cụm: cộng dồn số tin khẩn cấp, cụm có tin khẩn tô đỏ, chọn tin thì zoom đủ để tách cụm', () => {
+    expect(THUOC_TINH_CUM.khan).toEqual(['+', ['get', 'khan']])
+    const c = bieuThucMauCum()
+    expect(c[0]).toBe('case')
+    expect(c[1]).toEqual(['>', ['get', 'khan'], 0])
+    expect(c[2]).toBe(MUC_KHAN.khan_cap.mau)
+    expect(zoomChon(8)).toBe(CUM_ZOOM_TOI_DA + 1)
+    expect(zoomChon(16)).toBe(16)
   })
   it('nhãn tên đổi sang tiếng Việt, nhãn khác và lớp không phải symbol giữ nguyên', () => {
     const style = {

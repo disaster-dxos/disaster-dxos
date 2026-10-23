@@ -36,7 +36,7 @@ export function hashScriptInline(html: string): string[] {
   return [...new Set(ds)]
 }
 
-/** Origin WebSocket tương ứng (ws:// hoặc wss://) của một URL http(s): đường /realtime/websocket (#68). */
+/** Origin WebSocket tương ứng (ws:// hoặc wss://) của một URL http(s): /realtime/websocket (#68), /graphql (#60). */
 export function wsOrigin(url: string): string | null {
   const o = origin(url)
   return o ? o.replace(/^http/, 'ws') : null

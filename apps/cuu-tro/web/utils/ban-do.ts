@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-// Hàm thuần cho bản đồ MapLibre: chuyển tin kêu cứu sang GeoJSON, nhãn tiếng Việt, kiểu dự phòng.
+// Hàm thuần cho bản đồ MapLibre: chuyển tin kêu cứu sang GeoJSON, biểu thức màu, gom cụm, nhãn tiếng
+// Việt, kiểu dự phòng. Có test (tests/ban-do.test.ts).
 import type { FeatureCollection, Point } from 'geojson'
 import type { StyleSpecification } from 'maplibre-gl'
-import { MUC_KHAN, type TinKeuCuu } from './tin-gia'
+import { MAU_TRANG_THAI, MUC_KHAN, type MucKhan, type TinKeuCuu, type TrangThai } from './tin'
 
 /** Trung tâm mặc định: vùng dữ liệu mẫu (Đà Nẵng – Quảng Nam), [kinh độ, vĩ độ] */
 export const TAM_MAC_DINH: [number, number] = [108.2, 15.92]
@@ -17,13 +18,24 @@ export const QUAN_DAO: FeatureCollection<Point> = {
   ],
 }
 
-export function tinSangGeoJson(ds: TinKeuCuu[]): FeatureCollection<Point> {
+export interface ThuocTinhDiem {
+  id: string
+  urgency: MucKhan
+  status: TrangThai
+  /** 1 nếu khẩn cấp: cụm cộng dồn để tô cụm màu đỏ khi có tin khẩn cấp bên trong */
+  khan: 0 | 1
+  /** Tin vừa đến (nhấp nháy) */
+  moi: boolean
+}
+
+/** Tin → GeoJSON cho nguồn MapLibre. Chỉ mang id, mức khẩn, trạng thái: không có dữ liệu cá nhân. */
+export function tinSangGeoJson(ds: TinKeuCuu[], moi: ReadonlyMap<string, number> | ReadonlySet<string> = new Set()): FeatureCollection<Point, ThuocTinhDiem> {
   return {
     type: 'FeatureCollection',
     features: ds.map((t) => ({
       type: 'Feature',
       id: t.id,
-      properties: { id: t.id, urgency: t.urgency, status: t.status, people_count: t.people_count },
+      properties: { id: t.id, urgency: t.urgency, status: t.status, khan: t.urgency === 'khan_cap' ? 1 : 0, moi: moi.has(t.id) },
       geometry: { type: 'Point', coordinates: t.location },
     })),
   }
@@ -34,6 +46,30 @@ export function bieuThucMauKhan(): unknown[] {
   const cap: unknown[] = []
   for (const [k, v] of Object.entries(MUC_KHAN)) cap.push(k, v.mau)
   return ['match', ['get', 'urgency'], ...cap, '#64748B']
+}
+
+/** Biểu thức màu viền điểm theo trạng thái. */
+export function bieuThucMauTrangThai(): unknown[] {
+  const cap: unknown[] = []
+  for (const [k, v] of Object.entries(MAU_TRANG_THAI)) cap.push(k, v)
+  return ['match', ['get', 'status'], ...cap, '#FFFFFF']
+}
+
+/** Gom cụm: tách cụm từ mức zoom này trở lên; bán kính gom (px). */
+export const CUM_ZOOM_TOI_DA = 13
+export const CUM_BAN_KINH = 50
+
+/** Thuộc tính cộng dồn cho cụm (clusterProperties của nguồn GeoJSON). */
+export const THUOC_TINH_CUM = { khan: ['+', ['get', 'khan']] }
+
+/** Màu cụm: đỏ nếu có tin khẩn cấp, cam cứu hộ nếu ≥ 10 tin, navy nếu ít. */
+export function bieuThucMauCum(): unknown[] {
+  return ['case', ['>', ['get', 'khan'], 0], MUC_KHAN.khan_cap.mau, ['>=', ['get', 'point_count'], 10], '#F07B1D', '#12355B']
+}
+
+/** Zoom để tách một điểm ra khỏi cụm khi chọn từ danh sách. */
+export function zoomChon(zoomHienTai: number): number {
+  return Math.max(zoomHienTai, CUM_ZOOM_TOI_DA + 1)
 }
 
 /** Nhãn bản đồ ưu tiên tên tiếng Việt, rồi tên Latin, rồi tên gốc (lược đồ OpenMapTiles). */
