@@ -3,7 +3,7 @@
 // Trang điều phối: bản đồ lớn + danh sách tin kêu cứu thời gian thực (#60). Dữ liệu thật từ Hasura qua
 // GraphQL subscription ở API Gateway (composables/useTinKeuCuu.ts); bộ lọc dùng chung cho bản đồ và danh
 // sách; bấm điểm hoặc dòng → ô chi tiết.
-import { laDieuPhoi } from '~/utils/session'
+import { laCuuHo, laDieuPhoi } from '~/utils/session'
 import {
   DS_MUC_KHAN, DS_TRANG_THAI, MAU_TRANG_THAI, MUC_KHAN, TRANG_THAI, boLocMacDinh, demTheoTrangThai, locTin, noiTinMoi,
   type BoLoc,
@@ -24,7 +24,9 @@ onBeforeUnmount(() => {
 })
 
 const loc = ref<BoLoc>(boLocMacDinh())
-const chon = ref<string | null>(null)
+// /?tin=<id>: mở sẵn tin (từ màn phân công, #61)
+const route = useRoute()
+const chon = ref<string | null>(typeof route.query.tin === 'string' ? route.query.tin : null)
 const daLoc = computed(() => locTin(ds.value, loc.value))
 const dsHienThi = computed(() => noiTinMoi(daLoc.value, moi.value))
 const tinChon = computed(() => ds.value.find((t) => t.id === chon.value) ?? null)
@@ -48,7 +50,11 @@ const gioCapNhat = computed(() => capNhatLuc.value
 <template>
   <div class="flex h-full flex-col">
     <AppHeader />
-    <p v-if="user && !laDieuPhoi(user)" class="bg-amber-100 px-4 py-2 text-sm text-amber-900" role="alert">
+    <p v-if="user && laCuuHo(user) && !laDieuPhoi(user)" class="bg-sky-50 px-4 py-2 text-sm text-navy" role="status">
+      Bản đồ chỉ hiện tin đang giao cho đội của bạn.
+      <NuxtLink to="/phan-cong" class="font-bold text-nuoc underline">Mở nhiệm vụ của đội</NuxtLink> để nhận, từ chối, xác nhận đã cứu.
+    </p>
+    <p v-else-if="user && !laDieuPhoi(user)" class="bg-amber-100 px-4 py-2 text-sm text-amber-900" role="alert">
       Tài khoản này không có vai trò Điều phối: chỉ thấy tin được phép xem, không phân công được.
     </p>
     <div class="flex min-h-0 flex-1 flex-col lg:flex-row">

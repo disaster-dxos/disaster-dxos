@@ -1,11 +1,11 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Web điều phối cứu trợ (`apps/cuu-tro/web`)
 
-Ứng dụng Tầng 2 cho người điều phối của xã: bản đồ lớn + danh sách tin kêu cứu bên cạnh. Nuxt 3 + TypeScript + Tailwind CSS 4, bản đồ MapLibre GL JS. Chạy thuần phía trình duyệt (`ssr: false`), không có bí mật nào trong mã web.
+Ứng dụng Tầng 2 cho người điều phối của xã (bản đồ lớn + danh sách tin kêu cứu bên cạnh, màn phân công cứu hộ) và cho đội cứu hộ ngoài hiện trường (nhận nhiệm vụ, xác nhận đã cứu trên điện thoại). Nuxt 3 + TypeScript + Tailwind CSS 4, bản đồ MapLibre GL JS. Chạy thuần phía trình duyệt (`ssr: false`), không có bí mật nào trong mã web.
 
 ![Web điều phối: bản đồ và danh sách tin kêu cứu thời gian thực](../../../docs/images/web-dieu-phoi.png)
 
-> Trạng thái: khung web, đăng nhập Keycloak, bố cục, logo (#59); chạy trong stack qua gateway (#64); thông báo realtime qua Centrifugo (#68); bản đồ và danh sách tin kêu cứu **dữ liệu thật, thời gian thực** qua GraphQL subscription (#60). Việc tiếp theo: #61 (phân công), #62 (trạm đo), #63 (trang minh bạch).
+> Trạng thái: khung web, đăng nhập Keycloak, bố cục, logo (#59); chạy trong stack qua gateway (#64); thông báo realtime qua Centrifugo (#68); bản đồ và danh sách tin kêu cứu **dữ liệu thật, thời gian thực** qua GraphQL subscription (#60); màn phân công cứu hộ cho 2 vai điều phối, cứu hộ (#61). Việc tiếp theo: #62 (trạm đo), #63 (trang minh bạch).
 
 ## Đăng nhập: OIDC Authorization Code + PKCE
 
@@ -60,10 +60,31 @@ CSP `connect-src` đã có origin `ws(s)://` của gateway (#68), dùng chung ch
 
 Người dùng vai `dieu-phoi` được kết nối Centrifugo khi mở trang (`composables/useThongBao.ts`, client centrifuge-js): xin token qua `GET <gateway>/workflow/realtime/token` kèm JWT, mở WebSocket `ws(s)://<gateway>/realtime/websocket`, nhận publication của kênh server-side `dieu-phoi` (không tự subscribe). Nút **Thông báo** (`components/ThongBaoRealtime.vue`) hiện trạng thái kết nối, số tin chưa đọc và 30 tin gần nhất. SDK tự kết nối lại và xin token mới; API trả 401/403 thì dừng hẳn. `utils/thong-bao.ts` dựng URL và chuyển dữ liệu sự kiện thành thông báo (hàm thuần, có test). CSP `connect-src` có thêm origin `ws(s)://` của gateway.
 
+## Màn phân công cứu hộ (#61)
+
+Hai đường mới, chỉ gọi lõi qua API Gateway bằng JWT của người dùng: query GraphQL HTTP `/graphql` (Hasura lọc theo vai) và REST `/workflow/*` của `cuu-tro-api` (workflow Temporal `PhanCongCuuHo`, `apps/cuu-tro/README.md` mục "Workflow"). Không thêm endpoint nào.
+
+| Vai | `/phan-cong` (hàng đợi) | `/phan-cong/<id>` (chi tiết) |
+|---|---|---|
+| `dieu-phoi` | 4 nhóm: **Cần xử lý** (tin có thông báo `can_xu_ly` từ Centrifugo #68: hết lần giao, không có đội, quá hạn xác nhận) · **Chờ phân công** (`tiep_nhan`) · **Đang phân công** (`phan_cong`, chờ đội nhận) · **Đang cứu** (`dang_cuu`) | **Phân công tự động** (`POST /workflow/phan-cong/{id}`, tin `tiep_nhan` không có luồng đang chạy) · **Đổi đội** (`POST /workflow/phan-cong-<id>/tu-choi` do điều phối gửi: workflow gỡ đội, giao đội gần nhất kế tiếp) · **Hủy phân công** (`/huy`, trước khi đội nhận) · **Xác nhận đã cứu** (`/xac-nhan`) |
+| `cuu-ho` | Nhiệm vụ đang giao cho đội mình: **Chờ đội bạn nhận**, **Đội bạn đang thực hiện** | **Nhận nhiệm vụ** (`/nhan`, tin → `dang_cuu`: đang đến / đang cứu) · **Từ chối** kèm ghi chú (`/tu-choi`) · **Xác nhận đã cứu** kèm ghi chú (`/xac-nhan`, tin → `dong`) |
+
+- Mỗi tin có đội hiện tại, khoảng cách, đồng hồ đếm ngược hạn nhận (`incident_assignments.deadline_at`), lịch sử giao (đội, lần, kết quả, người, ghi chú) và nhật ký của workflow (`GET /workflow/phan-cong-<id>`). Bấm điểm trên bản đồ → "Mở phân công"; "Xem trên bản đồ" mở `/?tin=<id>`.
+- Signal Temporal là bất đồng bộ (API trả `202`): sau thao tác, web chờ workflow sang bước mới (tối đa ~10 giây) rồi tải lại. Hàng đợi tải lại khi subscription bản đồ báo tin đổi trạng thái, và mỗi 15 giây (đội đổi, hạn nhận).
+- **Quyền:** nút ẩn/hiện theo vai và bước (`utils/phan-cong.ts` `hanhDongDuoc`) chỉ để giao diện gọn. Kiểm quyền thật ở API (`cuu_tro_workflow/api.py`: đúng vai, cuu-ho chỉ của đội đang được giao, đúng bước) và Hasura (cuu-ho chỉ đọc tin, lịch sử giao của đội mình). Hàng đợi không hỏi SĐT; chi tiết chỉ hỏi SĐT/tên người báo với vai được Hasura cho đọc, SĐT che giữa tới khi bấm "Hiện số".
+- **Lỗi** đổi thành câu tiếng Việt (`utils/workflow-api.ts` `thongBaoLoi`): đội cũ bấm nhận muộn / đã quá hạn (403 với cuu-ho, 409 "đã được giao cho đội khác"), nhiệm vụ đã sang bước khác (409), luồng đang chạy, hủy khi đội đã nhận, hết phiên (401), không có luồng (404), ghi chú quá 500 ký tự (422), 429, lỗi máy chủ, mất mạng.
+- Điện thoại: thanh nút cố định cuối màn hình, nút cao ≥ 48 px, ô ghi chú cỡ chữ 16 px (không tự phóng to trên iOS).
+
+| Điều phối: hàng đợi | Điều phối: đổi đội | Cứu hộ (điện thoại): chi tiết | Cứu hộ: đội cũ nhận muộn |
+|---|---|---|---|
+| ![Hàng đợi phân công của điều phối](../../../docs/images/web-phan-cong-dieu-phoi.png) | ![Đổi đội kèm lý do](../../../docs/images/web-phan-cong-doi-doi.png) | ![Chi tiết nhiệm vụ trên điện thoại](../../../docs/images/web-phan-cong-cuu-ho.png) | ![Đội cũ nhận muộn: 403](../../../docs/images/web-phan-cong-nhan-muon.png) |
+
+Ảnh chụp từ bản build web với gateway giả lập trả dữ liệu giả (`docs/images/README.md`). Kiểm trên stack thật: `bash scripts/smoke-phan-cong.sh` (trong `make smoke`), chạy nguyên văn query GraphQL của web.
+
 ## Kiểm thử
 
 ```bash
-npm test              # Vitest: PKCE (vector RFC 7636), URL OIDC, state/nonce, hạn token, GraphQL → tin → GeoJSON, bộ lọc, tin mới, CSP, thông báo realtime
+npm test              # Vitest: PKCE (vector RFC 7636), URL OIDC, state/nonce, hạn token, GraphQL → tin → GeoJSON, bộ lọc, tin mới, CSP, thông báo realtime, phân công (nút theo vai, gọi /workflow, mã lỗi)
 npm run typecheck     # vue-tsc
 npm run licenses      # giấy phép mọi gói npm trong package-lock.json
 ```
@@ -74,11 +95,11 @@ CI chạy cả bốn lệnh, `npm run build`, rồi build image Docker và chạ
 
 | Thư mục | Nội dung |
 |---|---|
-| `pages/` | `index.vue` (trang điều phối), `auth/callback.vue` |
+| `pages/` | `index.vue` (trang điều phối), `phan-cong/index.vue`, `phan-cong/[id].vue` (màn phân công, #61), `auth/callback.vue` |
 | `server/` | Nitro: `plugins/bao-mat.ts` (header bảo mật), `utils/csp.ts` (dựng CSP, hàm thuần có test) |
-| `components/` | `AppHeader.vue` (logo, người dùng, đăng xuất), `BanDo.vue` (MapLibre, #60), `DanhSachTin.vue`, `BoLocTin.vue`, `ChiTietTin.vue` (#60), `ThongBaoRealtime.vue` (#68) |
-| `composables/` | `useAuth.ts` (phiên đăng nhập), `useTinKeuCuu.ts` (subscription tin kêu cứu, #60), `useThongBao.ts` (kết nối Centrifugo, #68), `useNow.ts` |
-| `utils/` | Hàm thuần, có test: `pkce.ts`, `oidc.ts`, `session.ts`, `tin.ts`, `tin-graphql.ts`, `ban-do.ts`, `thong-bao.ts` |
+| `components/` | `AppHeader.vue` (logo, người dùng, đăng xuất), `BanDo.vue` (MapLibre, #60), `DanhSachTin.vue`, `BoLocTin.vue`, `ChiTietTin.vue` (#60), `ThongBaoRealtime.vue` (#68), `TheTinPhanCong.vue` (#61) |
+| `composables/` | `useAuth.ts` (phiên đăng nhập), `useTinKeuCuu.ts` (subscription tin kêu cứu, #60), `useThongBao.ts` (kết nối Centrifugo, #68), `usePhanCong.ts` (hàng đợi, workflow, thao tác, #61), `useNow.ts` |
+| `utils/` | Hàm thuần, có test: `pkce.ts`, `oidc.ts`, `session.ts`, `tin.ts`, `tin-graphql.ts`, `ban-do.ts`, `thong-bao.ts`, `phan-cong.ts`, `workflow-api.ts` |
 | `tests/` | Vitest |
 | `scripts/check-licenses.mjs` | Kiểm giấy phép npm |
 

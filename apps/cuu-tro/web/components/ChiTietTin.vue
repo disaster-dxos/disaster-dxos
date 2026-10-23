@@ -5,10 +5,14 @@
 // SĐT, tên người gọi, đội phụ trách chỉ có với vai được Hasura cho đọc (dieu-phoi, cuu-ho); SĐT che
 // giữa, bấm "Hiện số" mới hiện đủ.
 import { MUC_KHAN, NGUON, TRANG_THAI, cheSdt, maNgan, thoiGianTruoc, type ChiTietTin, type TinKeuCuu } from '~/utils/tin'
+import { vaiPhanCong } from '~/utils/phan-cong'
 
 const props = defineProps<{ tin: TinKeuCuu }>()
 const emit = defineEmits<{ dong: [] }>()
 const { layChiTiet } = useTinKeuCuu()
+const { user } = useAuth()
+// Màn phân công (#61) chỉ cho vai điều phối, cứu hộ
+const coPhanCong = computed(() => vaiPhanCong(user.value) !== null)
 const ct = ref<ChiTietTin | null>(null)
 const dangTai = ref(false)
 const loi = ref('')
@@ -69,5 +73,12 @@ watch(() => props.tin.status, () => { void tai() })
         </template>
       </dl>
     </template>
+    <NuxtLink
+      v-if="coPhanCong"
+      :to="`/phan-cong/${tin.id}`"
+      class="mt-3 flex min-h-11 items-center justify-center rounded-lg bg-cam px-4 text-sm font-bold text-white hover:bg-cam-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy"
+    >
+      Mở phân công →
+    </NuxtLink>
   </section>
 </template>

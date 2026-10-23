@@ -14,6 +14,10 @@
 | `web-dieu-phoi.png` | Ảnh chụp web điều phối (#60): bản đồ + danh sách tin kêu cứu thời gian thực qua GraphQL subscription, cụm điểm, tin vừa đến nhấp nháy và nổi lên đầu danh sách; tin mẫu (dữ liệu giả) trong stack thật, đăng nhập bằng tài khoản mẫu (1440×900) | Mô tả PR #60, `apps/cuu-tro/web/README.md` | Đội chụp bằng Chrome headless từ bản build. Bản đồ nền: OpenFreeMap, dữ liệu © những người đóng góp OpenStreetMap (ODbL-1.0), ghi công ở góc ảnh |
 | `web-ban-do-chi-tiet.png` | Ảnh chụp (#60): bấm một tin vừa đến → ô chi tiết (mô tả, đội được phân công tự động, SĐT che giữa), bản đồ bay tới điểm (1440×900) | Mô tả PR #60, `apps/cuu-tro/web/README.md` | Như trên |
 | `web-mat-ket-noi.png` | Ảnh chụp (#60): Hasura dừng → băng "Mất kết nối tới máy chủ", nút Thử lại, dữ liệu cũ kèm giờ cập nhật cuối (1440×900) | Mô tả PR #60, `apps/cuu-tro/web/README.md` | Như trên |
+| `web-phan-cong-dieu-phoi.png` | Ảnh chụp màn phân công (#61), vai điều phối: 4 nhóm Cần xử lý · Chờ phân công · Đang phân công · Đang cứu, đội đang giao, đếm ngược hạn nhận (1440×900) | Mô tả PR #61, `apps/cuu-tro/web/README.md` | Đội chụp bằng Chrome headless từ bản build web, **gateway giả lập trả dữ liệu giả** (máy không đủ ổ chạy stack thật lúc chụp); giao diện và luồng giống stack thật |
+| `web-phan-cong-doi-doi.png` | Ảnh chụp (#61): điều phối bấm Đổi đội kèm lý do → thông báo thành công, đội mới + hạn nhận mới, lịch sử ghi lần từ chối do điều phối (1440×900) | Như trên | Như trên |
+| `web-phan-cong-cuu-ho.png` | Ảnh chụp (#61), vai cứu hộ trên điện thoại: chi tiết nhiệm vụ, SĐT che giữa, hạn nhận còn lại, nút Nhận nhiệm vụ / Từ chối cố định cuối màn hình (390×844, @2x) | Như trên | Như trên |
+| `web-phan-cong-nhan-muon.png` | Ảnh chụp (#61): đội cũ bấm Nhận sau khi điều phối đã đổi đội → API 403, thông báo tiếng Việt (390×844, @2x) | Như trên | Như trên |
 
 Mọi tệp trong thư mục này do đội DTU_DZ_1 tạo và cấp phép cùng repo: [Apache-2.0](../../LICENSE), trừ phần bản đồ nền trong các ảnh chụp `web-*.png` (dữ liệu OpenStreetMap, ODbL-1.0). Ảnh `.webp` là tranh minh họa, không phải ảnh chụp sự kiện hay người thật.
 
