@@ -14,6 +14,9 @@
 #     secret/app/cuu-tro/ledger; trang công khai qua route /workflow/minh-bach/* (không JWT).
 #   - Web điều phối (#64): route APISIX /* (ưu tiên thấp nhất) → <DXOS_APP>-web:3000
 #     (GW_WEB_UPSTREAM_HOST/PORT); client Keycloak dxos-web nhận redirect ${GATEWAY_PUBLIC_URL}/*.
+#   - Thông báo realtime (#68): Centrifugo của lõi kiểm token HS256 iss "cuu-tro-api"; cuu-tro-api cấp
+#     token (GET /workflow/realtime/token), cuu-tro-thong-bao đẩy sự kiện NATS lên kênh dieu-phoi;
+#     bí mật secret/app/cuu-tro/realtime. Web mở WebSocket qua APISIX /realtime/websocket.
 # Không mở cổng nào ra máy host: client gọi API và mở web qua gateway, worker chỉ kéo việc từ Temporal,
 # consumer cảm biến chỉ kéo bản tin từ NATS. Thiết bị gửi MQTT vào cổng của lõi (nats:1883).
 
@@ -50,8 +53,14 @@ services:
       - secrets-cuu-tro:/out/cuu-tro
       - secrets-cuu-tro-thiet-bi:/out/cuu-tro-thiet-bi
       - secrets-cuu-tro-api:/out/cuu-tro-api
+      - secrets-cuu-tro-thong-bao:/out/cuu-tro-thong-bao
     healthcheck:
-      test: ["CMD-SHELL", "for f in cuu-tro/APP_DB_URL cuu-tro/NATS_URL cuu-tro-thiet-bi/MQTT_PASSWORD cuu-tro-api/S3_SECRET_KEY cuu-tro-api/LEDGER_WRITE_TOKEN; do test -s /out/$$f || exit 1; done"]
+      test:
+        - CMD-SHELL
+        - >-
+          for f in cuu-tro/APP_DB_URL cuu-tro/NATS_URL cuu-tro-thiet-bi/MQTT_PASSWORD cuu-tro-api/S3_SECRET_KEY
+          cuu-tro-api/LEDGER_WRITE_TOKEN cuu-tro-api/REALTIME_TOKEN_SECRET cuu-tro-thong-bao/CENTRIFUGO_API_KEY
+          cuu-tro-thong-bao/NATS_URL; do test -s /out/$$f || exit 1; done
       interval: 5s
       timeout: 3s
       retries: 24
@@ -108,7 +117,8 @@ services:
     # Kiểm JWT bằng JWKS công khai của Keycloak, hỏi Hasura bằng JWT người dùng. Ảnh hiện trường (#27):
     # APP_DB_URL (ghi incident_media) + khóa S3 của ứng dụng, volume riêng secrets-cuu-tro-api (không có
     # mật khẩu NATS/MQTT). Sổ cái (#28): LEDGER_WRITE_TOKEN để lập phiếu nhập/xuất rồi ghi lá lên
-    # core/ledger. env-from-files.sh export rồi exec uvicorn.
+    # core/ledger. Realtime (#68): REALTIME_TOKEN_SECRET để cấp token kết nối Centrifugo.
+    # env-from-files.sh export rồi exec uvicorn.
     entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos"]
     command: ["uvicorn", "cuu_tro_workflow.api:app", "--host", "0.0.0.0", "--port", "8000",
               "--root-path", "/workflow", "--no-server-header", "--no-access-log"]
@@ -132,7 +142,7 @@ services:
         condition: service_started
     environment:
       <<: *cuu-tro-env
-      SECRETS_REQUIRED: APP_DB_URL S3_ACCESS_KEY S3_SECRET_KEY LEDGER_WRITE_TOKEN
+      SECRETS_REQUIRED: APP_DB_URL S3_ACCESS_KEY S3_SECRET_KEY LEDGER_WRITE_TOKEN REALTIME_TOKEN_SECRET
       KEYCLOAK_INTERNAL_URL: http://keycloak:8080
       KEYCLOAK_PUBLIC_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-disaster}
@@ -149,6 +159,8 @@ services:
       # Khóa công khai để tự kiểm chữ ký checkpoint; trống = lấy một lần từ ledger lúc chạy.
       LEDGER_URL: http://ledger:8090
       LEDGER_VERIFIER_KEY: ${LEDGER_VERIFIER_KEY:-}
+      # Hạn token kết nối Centrifugo (#68), 30-3600 giây; web tự xin token mới trước khi hết hạn
+      REALTIME_TOKEN_HAN_GIAY: ${REALTIME_TOKEN_HAN_GIAY:-300}
     volumes:
       - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
       - secrets-cuu-tro-api:/run/secrets/dxos:ro
@@ -194,6 +206,42 @@ services:
       retries: 8
       start_period: 20s
     mem_limit: 128m
+
+  cuu-tro-thong-bao:
+    # Cầu nối thông báo realtime (#68): kéo từ consumer bền realtime-* (stream CUU_TRO_DIEU_PHOI:
+    # cần xử lý + tin mới; CUU_TRO_CANH_BAO: vượt ngưỡng), chỉ chép trường không định danh, POST
+    # /api/publish của Centrifugo (idempotency_key = Nats-Msg-Id), Centrifugo nhận mới ack.
+    # Bí mật: NATS_URL + CENTRIFUGO_API_KEY (volume riêng), không có mật khẩu DB.
+    image: disaster-dxos/cuu-tro-workflow:0.1.0
+    pull_policy: never
+    restart: unless-stopped
+    profiles: [app]
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos"]
+    command: ["python", "-m", "cuu_tro_workflow.thong_bao_cau_noi"]
+    depends_on:
+      nats:
+        condition: service_healthy
+      centrifugo:
+        condition: service_healthy
+      bao-agent-cuu-tro:
+        condition: service_healthy
+      cuu-tro-worker:
+        condition: service_started
+    environment:
+      SECRETS_REQUIRED: NATS_URL CENTRIFUGO_API_KEY
+      NATS_STREAMS_FILE: /app/nats/streams.json
+      CENTRIFUGO_API_URL: http://centrifugo:8000
+    volumes:
+      - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - ./apps/cuu-tro/nats/streams.json:/app/nats/streams.json:ro
+      - secrets-cuu-tro-thong-bao:/run/secrets/dxos:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,sys,time; sys.exit(time.time() - os.path.getmtime('/tmp/thong-bao-alive') > 30)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+    mem_limit: 96m
 
   cuu-tro-gia-lap:
     # Bộ giả lập trạm cảm biến (#30), profile riêng "gia-lap": make up KHÔNG bật. Gửi một lần:
@@ -263,6 +311,12 @@ volumes:
       device: tmpfs
       o: "uid=100,gid=1000,mode=0755,size=1m"
   secrets-cuu-tro-thiet-bi:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "uid=100,gid=1000,mode=0755,size=1m"
+  secrets-cuu-tro-thong-bao:
     driver: local
     driver_opts:
       type: tmpfs

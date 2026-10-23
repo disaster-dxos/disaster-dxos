@@ -6,7 +6,8 @@
 #
 # Profile:
 #   core   OpenBao, PostgreSQL+PostGIS, Keycloak, APISIX, Hasura CE, SeaweedFS, Temporal, NATS
-#          (JetStream + MQTT có xác thực, #30), sổ cái minh bạch ledger (Tessera, #28)
+#          (JetStream + MQTT có xác thực, #30), sổ cái minh bạch ledger (Tessera, #28),
+#          Centrifugo OSS đẩy thông báo realtime qua WebSocket (#68)
 #          (chạy được trên laptop 16 GB, RAM đo được: docs/architecture.md mục 4)
 #   app    backend và web của ứng dụng Tầng 2 đang chọn (apps/${DXOS_APP}/compose.yaml, nạp bằng include
 #          bên dưới), vd cuu-tro-worker, cuu-tro-api (#29), cuu-tro-web (#64). make up bật cả core và app.
@@ -346,6 +347,8 @@ services:
       GW_WEB_UPSTREAM_HOST: ${GW_WEB_UPSTREAM_HOST:-${DXOS_APP:-cuu-tro}-web}
       GW_WEB_UPSTREAM_PORT: ${GW_WEB_UPSTREAM_PORT:-3000}
       GW_WEB_RATE_LIMIT_COUNT: ${GW_WEB_RATE_LIMIT_COUNT:-600}
+      # Route /realtime/websocket (#68): số lần mở WebSocket / GW_RATE_LIMIT_WINDOW giây / IP
+      GW_REALTIME_RATE_LIMIT_COUNT: ${GW_REALTIME_RATE_LIMIT_COUNT:-60}
     volumes:
       - ./core/apisix/config.yaml:/usr/local/apisix/conf/config.yaml:ro
       - ./core/apisix/apisix.yaml:/usr/local/apisix/conf/apisix.yaml:ro
@@ -623,6 +626,64 @@ services:
       start_period: 10s
     mem_limit: 256m
 
+  bao-agent-centrifugo:
+    <<: *bao-agent
+    command: ["agent", "-config=/openbao/config/agent.hcl"]
+    environment:
+      # Chọn secret/app/<DXOS_APP>/realtime (khóa ký token kết nối + API key) trong config.json
+      DXOS_APP: ${DXOS_APP:-cuu-tro}
+    volumes:
+      - ./core/openbao/agent-centrifugo.hcl:/openbao/config/agent.hcl:ro
+      - ${OPENBAO_LOCAL_DIR:-./.data/openbao}/approle/centrifugo:/openbao/approle:ro
+      - secrets-centrifugo:/out/centrifugo
+    healthcheck:
+      test: ["CMD-SHELL", "grep -q hmac_secret_key /out/centrifugo/config.json"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
+  centrifugo:
+    <<: *restart
+    # Thông báo realtime qua WebSocket (#68). BẢN OSS (Apache-2.0), KHÔNG dùng Centrifugo PRO (D-004).
+    # Client kết nối qua APISIX /realtime/websocket (WAF, rate limit); không mở cổng ra host. HTTP API
+    # (/api/publish) chỉ trong mạng nội bộ, kèm X-API-Key: backend ứng dụng đẩy sự kiện lên kênh.
+    # Xác thực kết nối: token HS256 ngắn hạn do <DXOS_APP>-api cấp sau khi kiểm JWT Keycloak + vai trò
+    # (iss <DXOS_APP>-api, aud centrifugo, claim channels = kênh server-side). Không token, token sai
+    # chữ ký/iss/aud hay hết hạn → Centrifugo đóng kết nối (3500). Client không tự đăng ký kênh nào
+    # được (mặc định của Centrifugo). Lý do không kiểm thẳng JWT Keycloak: docs/architecture.md mục 3.5.
+    # Bí mật (khóa ký, API key) trong file do bao-agent-centrifugo render; tùy chọn khác qua biến
+    # CENTRIFUGO_* bên dưới. Engine memory: một nút, lịch sử kênh ngắn để client kết nối lại không mất tin.
+    image: centrifugo/centrifugo:v6.9.7
+    profiles: [core]
+    command: ["centrifugo", "--config", "/run/secrets/dxos/config.json"]
+    depends_on:
+      bao-agent-centrifugo:
+        condition: service_healthy
+    environment:
+      GOMEMLIMIT: 80MiB
+      CENTRIFUGO_LOG_LEVEL: info
+      CENTRIFUGO_HEALTH_ENABLED: "true"
+      CENTRIFUGO_CLIENT_TOKEN_ISSUER: ${DXOS_APP:-cuu-tro}-api
+      CENTRIFUGO_CLIENT_TOKEN_AUDIENCE: centrifugo
+      # Origin được mở WebSocket (cách nhau bởi dấu cách): web mở qua gateway. Origin khác → 403
+      CENTRIFUGO_CLIENT_ALLOWED_ORIGINS: ${CENTRIFUGO_ALLOWED_ORIGINS:-${GATEWAY_PUBLIC_URL:-http://localhost:9080}}
+      # Mọi kênh (không namespace): giữ 50 tin / 10 phút, client kết nối lại tự lấy bù (recovery)
+      CENTRIFUGO_CHANNEL_WITHOUT_NAMESPACE_HISTORY_SIZE: "50"
+      CENTRIFUGO_CHANNEL_WITHOUT_NAMESPACE_HISTORY_TTL: 10m
+      CENTRIFUGO_CHANNEL_WITHOUT_NAMESPACE_FORCE_RECOVERY: "true"
+    volumes:
+      - secrets-centrifugo:/run/secrets/dxos:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    mem_limit: 128m
+
   # ===================== TODO các profile sau =====================
   # gis (tuần 4): Scorpio Broker (BSD-3-Clause) dùng chung postgis/postgis + mô phỏng cảm biến MQTT
   # sec (tuần 2-4): ClamAV (GPL-2.0, dịch vụ riêng). Sổ cái Tessera đã vào core (#28, dịch vụ ledger)
@@ -643,3 +704,4 @@ volumes:
   secrets-seaweedfs: *secrets-tmpfs
   secrets-nats: *secrets-tmpfs
   secrets-ledger: *secrets-tmpfs
+  secrets-centrifugo: *secrets-tmpfs

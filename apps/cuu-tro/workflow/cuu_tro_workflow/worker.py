@@ -4,7 +4,7 @@
 Kết nối Temporal (gRPC, mạng nội bộ) và PostgreSQL bằng role dịch vụ cuu_tro_app; APP_DB_URL do
 bao agent render từ OpenBao. NATS (NATS_URL, user cuu-tro-app) để báo điều phối: khai báo stream theo
 apps/cuu-tro/nats/streams.json khi khởi động. Cùng tiến trình chạy bộ khởi chạy tự động (#67,
-khoi_chay.py) trừ khi PHAN_CONG_TU_DONG=0.
+khoi_chay.py) trừ khi PHAN_CONG_TU_DONG=0; bộ khởi chạy phát thông báo tin mới lên NATS (#68).
 Healthcheck: file HEALTH_FILE được ghi lại mỗi 10 giây khi worker chạy.
 """
 
@@ -68,7 +68,7 @@ async def main() -> None:
     log.info("worker chạy: task queue %s, Temporal %s", cfg.task_queue, cfg.temporal_address)
     async with worker:
         nhip = asyncio.create_task(_nhip_tim())
-        tu_dong = asyncio.create_task(BoKhoiChay(pool, client, cfg).chay(dung)) if cfg.tu_dong else None
+        tu_dong = asyncio.create_task(BoKhoiChay(pool, client, cfg, js).chay(dung)) if cfg.tu_dong else None
         await dung.wait()
         nhip.cancel()
         if tu_dong is not None:

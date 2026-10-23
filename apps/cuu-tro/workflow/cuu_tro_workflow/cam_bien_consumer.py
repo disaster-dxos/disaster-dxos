@@ -27,13 +27,14 @@ from datetime import datetime, timezone
 import asyncpg
 import nats
 from nats.errors import TimeoutError as NatsTimeout
-from nats.js.api import ConsumerConfig, StreamConfig, StorageType
+from nats.js.api import ConsumerConfig, DeliverPolicy, StreamConfig, StorageType
 from nats.js.errors import NotFoundError
 
 from . import cam_bien, config
 
 HEALTH_FILE = os.environ.get("HEALTH_FILE", "/tmp/cam-bien-alive")
 LO_KEO = 50
+CONSUMER_GHI = "ghi-csdl"
 log = logging.getLogger("cuu-tro-cam-bien")
 
 
@@ -65,6 +66,8 @@ def doc_khai_bao(duong_dan: str) -> tuple[list[StreamConfig], list[tuple[str, Co
                 ack_wait=c.get("ack_wait", 30),
                 max_deliver=c.get("max_deliver", 5),
                 max_ack_pending=c.get("max_ack_pending", 200),
+                # "new": consumer tạo lần đầu chỉ nhận bản tin từ lúc đó (cầu nối realtime, #68)
+                deliver_policy=DeliverPolicy(c.get("deliver_policy", "all")),
             ),
         )
         for c in kb["consumers"]
@@ -175,6 +178,10 @@ async def main() -> None:
     if not cfg.db_url or not cfg.nats_url:
         raise SystemExit("Thiếu APP_DB_URL hoặc NATS_URL (bao agent chưa render bí mật?)")
     streams, consumers = doc_khai_bao(cfg.nats_streams_file)
+    # Consumer realtime-* do cầu nối thông báo (#68, thong_bao_cau_noi.py) khai báo và dùng
+    consumers = [(s, c) for s, c in consumers if c.durable_name == CONSUMER_GHI]
+    if not consumers:
+        raise SystemExit(f"streams.json không có consumer {CONSUMER_GHI}")
     nc = await _ket_noi_nats(cfg.nats_url)
     js = nc.jetstream()
     await khai_bao_jetstream(js, streams, consumers)

@@ -6,6 +6,10 @@ import { laDieuPhoi } from '~/utils/session'
 import { MUC_KHAN, TRANG_THAI, demTheoTrangThai, sapXepTin, tinGia, type MucKhan, type TrangThai } from '~/utils/tin-gia'
 
 const { user } = useAuth()
+// Thông báo realtime (#68) chỉ cho người điều phối: tin mới, cần xử lý, cảnh báo mực nước
+const thongBao = useThongBao()
+onMounted(() => { if (laDieuPhoi(user.value)) thongBao.batDau() })
+onBeforeUnmount(() => thongBao.dung())
 const ds = ref(sapXepTin(tinGia()))
 const chon = ref<string | null>(null)
 const dem = computed(() => demTheoTrangThai(ds.value))

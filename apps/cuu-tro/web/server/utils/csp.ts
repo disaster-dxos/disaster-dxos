@@ -36,10 +36,17 @@ export function hashScriptInline(html: string): string[] {
   return [...new Set(ds)]
 }
 
+/** Origin WebSocket tương ứng (ws:// hoặc wss://) của một URL http(s): đường /realtime/websocket (#68). */
+export function wsOrigin(url: string): string | null {
+  const o = origin(url)
+  return o ? o.replace(/^http/, 'ws') : null
+}
+
 export function buildCsp(nguon: CspNguon, scriptHashes: string[]): string {
   const ban = origin(nguon.mapStyleUrl)
   const ketNoi = [...new Set(
-    ["'self'", origin(nguon.keycloakUrl), origin(nguon.gatewayUrl), ban, OSM_TILE].filter((x): x is string => !!x),
+    ["'self'", origin(nguon.keycloakUrl), origin(nguon.gatewayUrl), wsOrigin(nguon.gatewayUrl), ban, OSM_TILE]
+      .filter((x): x is string => !!x),
   )]
   const anh = [...new Set(["'self'", 'data:', 'blob:', ban, OSM_TILE].filter((x): x is string => !!x))]
   return [
