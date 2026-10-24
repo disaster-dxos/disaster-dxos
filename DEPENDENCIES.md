@@ -92,6 +92,8 @@ Công cụ chỉ dùng trong CI, không vào image: `github.com/google/go-licens
 
 Giấy phép mọi gói (kể cả gián tiếp) kiểm bằng `npm run licenses` (`apps/cuu-tro/web/scripts/check-licenses.mjs`, đọc `package-lock.json`, không cần mạng); thoát mã 1 nếu gặp giấy phép ngoài danh sách OSI MIT, ISC, Apache-2.0, BSD-2/3-Clause, 0BSD, MPL-2.0, BlueOak-1.0.0, Python-2.0. Kết quả ngày 23/10/2026 sau #77 (Nuxt 4 + Nuxt UI), 913 gói: MIT 768, ISC 46, MPL-2.0 24 (lightningcss, chỉ lúc build, dùng nguyên dạng), Apache-2.0 23, BSD-3-Clause 23 (gồm protobufjs của centrifuge-js), BlueOak-1.0.0 13, BSD-2-Clause 7, `MIT OR Apache-2.0` 2, CC0-1.0 2 và CC-BY-4.0 1 (ngoại lệ dưới đây), 0BSD 1, `MIT OR CC0-1.0` 1 (type-fest, dùng theo MIT), `BSD-3-Clause OR GPL-2.0` 1 (node-forge của máy chủ dev `nuxt dev`, dùng theo BSD-3-Clause), không ghi giấy phép 1 (vaul-vue, ngoại lệ dưới đây). Không có gói GPL/AGPL/LGPL bắt buộc.
 
+**Công cụ chụp ảnh README `scripts/chup-anh`** (#65), chỉ chạy trên máy của đội, không vào image hay bản build: Playwright 1.64.0 (Apache-2.0, kèm `playwright-core` cùng phiên bản) điều khiển Chromium headless do Playwright tải về (BSD-3-Clause, không lưu trong repo). Ghép GIF và đổi WebP bằng ffmpeg và ImageMagick cài sẵn trên máy (không phân phối).
+
 Ngoại lệ đã duyệt (không phải giấy phép OSI nhưng tương thích Apache-2.0, chỉ là dữ liệu/công cụ lúc build hoặc dev, không nằm trong `.output`):
 
 | Gói | Giấy phép | Kéo vào bởi | Lý do chấp nhận |
