@@ -120,4 +120,4 @@ docker compose logs centrifugo cuu-tro-thong-bao
 
 Khóa ký token và API key nằm trong OpenBao `secret/app/<DXOS_APP>/realtime`; `make bao-init` tạo nếu còn thiếu (máy đã chạy bản trước #68: chạy `make up` như thường, script tự thêm). Thiết kế và lý do chọn token riêng thay vì JWT Keycloak: [`architecture.md`](architecture.md) mục 3.5.
 
-Build riêng image web: `docker compose --profile '*' build cuu-tro-web`, hoặc `docker build --build-context logo=docs/images/logo -t disaster-dxos/cuu-tro-web:0.2.0 apps/cuu-tro/web`.
+Build riêng image web: `docker compose --profile '*' build cuu-tro-web`, hoặc `docker build --build-context logo=docs/images/logo -t disaster-dxos/cuu-tro-web:0.3.0 apps/cuu-tro/web`.

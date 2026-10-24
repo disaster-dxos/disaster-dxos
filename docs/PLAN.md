@@ -38,23 +38,24 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [x] [V1] CI: lint/test cho từng thành phần (shellcheck, yamllint, pytest khi có mã Python)
 - [ ] [V1] README song ngữ: hướng dẫn chạy từ máy sạch · Release v0.1.0
 
-## Tuần 3 · 29/10–04/11 · Luồng nghiệp vụ chính
-- [ ] [V2] API kêu cứu + Poka-yoke (bắt buộc tọa độ, chặn trùng SĐT trong bán kính 200 m)
+## Tuần 3 · 29/10–04/11 · Luồng nghiệp vụ chính → v0.2.0 (phát hành 23/10/2026)
+- [x] [V2] API kêu cứu + Poka-yoke (bắt buộc tọa độ, chặn trùng SĐT trong bán kính 200 m) (#66, PR #75)
 - [x] [V1] Temporal workflow: tiếp nhận → phân công đội gần nhất → xác nhận đã cứu → đóng (khung #29; #67: tự khởi chạy khi có tin mới qua outbox PostgreSQL, quá hạn nhận / từ chối → phân công lại, hết lần → báo điều phối qua NATS, ưu tiên theo `urgency`)
-- [ ] [V3] Web Nuxt: đăng nhập Keycloak (PKCE), bản đồ MapLibre hiển thị sự cố realtime (subscription)
-- [ ] [V3] Màn hình phân công + cập nhật trạng thái
-- [ ] [V1] Centrifugo OSS: đẩy thông báo realtime
+- [x] [V3] Web Nuxt: đăng nhập Keycloak (PKCE), bản đồ MapLibre hiển thị sự cố realtime (subscription) (#59, #60, #77, #78: PR #69, #74, #79, #80)
+- [x] [V3] Màn hình phân công + cập nhật trạng thái (#61, PR #76)
+- [x] [V1] Centrifugo OSS: đẩy thông báo realtime (#68, PR #73)
 
-## Tuần 4 · 05–11/11 · Tầng [D] + lên mạng → v0.2.0
+## Tuần 4 · 05–11/11 · Tầng [D] + lên mạng → v0.3.0 (chốt 24/10/2026)
 - [x] [V2] Mô phỏng cảm biến mực nước (Python → MQTT) (khung có từ #30; #84: 9 trạm ở Quảng Nam, Đà Nẵng, kịch bản `tran-lu` 48 giờ trong `du_lieu/tran_lu_mau.json`, `--phat-lai`, `--seed`)
 - [x] [V2] NATS → Scorpio: thực thể trạm đo NGSI-LD (bản sao số) (#85: consumer `ban-sao-so` trên `CUU_TRO_CAM_BIEN`, Scorpio trong `core`, đọc qua `/ngsi-ld/v1/*`)
 - [x] [V1] Cảnh báo vượt ngưỡng → Temporal → thông báo Telegram (#87: workflow `CanhBaoVuotNguong` mỗi đợt, báo 1 lần mỗi bước; kênh `gia-lap` mặc định, `telegram` khi đặt token trong OpenBao)
 - [x] [V2] Sổ cái minh bạch: niêm phong nhập/xuất hàng, tiền cứu trợ + endpoint xác minh (#89: bút toán thu/chi, outbox + worker niêm phong bù, `/workflow/minh-bach/xac-minh/{mã}`, `so-cai`, `quy`; trang web là #63)
 - [x] [V2] Xuất dữ liệu cũ ra Parquet + truy vấn DuckDB (#91: `make luu-tru`, `make luu-tru-truy-van`, bucket `cuu-tro-lakehouse`, phân vùng theo tháng, khử định danh, idempotent)
 - [x] [V2] Grafana dashboard điều hành (#92: Grafana OSS profile `bi`, provisioning từ tệp, role chỉ đọc `cuu_tro_bi`, `/grafana/` qua APISIX; SSO Keycloak để sau)
-- [ ] [V1] Thuê VPS + tên miền, HTTPS, CI tự triển khai từ `main`
-- [ ] [V3] Cuối tuần: mời 3–5 người dùng thật thử, ghi phản hồi thành issue `user-feedback`
-- [ ] [V1] Release v0.2.0
+- [ ] [V1] Thuê VPS + tên miền, HTTPS, CI tự triển khai từ `main` — **còn mở**: chờ người hướng dẫn (VPS, tên miền)
+- [ ] [V3] Cuối tuần: mời 3–5 người dùng thật thử, ghi phản hồi thành issue `user-feedback` — **còn mở**: chờ người hướng dẫn (cần bản chạy trên VPS)
+- [ ] [V1] Grafana đăng nhập SSO Keycloak (generic OAuth) thay tài khoản admin — **còn mở**, để sau #92 (realm chỉ import lần đầu: cần hướng dẫn thêm client cho máy đã chạy)
+- [ ] [V1] Release v0.3.0 (#94: PR chốt CHANGELOG + phiên bản về `develop`, rồi `develop` → `main`, tag, Release)
 
 ## Tuần 5 · 12–18/11 · Tầng [I] + demo công khai
 - [ ] [V3] AI bóc tách tin kêu cứu tự do → JSON (địa chỉ, số người, mức khẩn cấp); `LLM_PROVIDER` chọn Ollama + Qwen2.5 7B hoặc API ngoài
@@ -62,13 +63,13 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [ ] [V3] App Flutter: gửi kêu cứu/cập nhật hiện trường, hàng đợi offline
 - [ ] [V1] Demo công khai trên tên miền, bật GitHub Discussions
 
-## Tuần 6 · 19–25/11 · Tuần UX + cộng đồng → v0.3.0
+## Tuần 6 · 19–25/11 · Tuần UX + cộng đồng → v0.4.0
 - [ ] [V3] Sửa theo phản hồi người dùng (mỗi phản hồi một issue `user-feedback`)
 - [ ] [V3] Rà soát UX hiện trường: thao tác một tay, mạng yếu, chữ lớn, tương phản
 - [ ] [V2] Công bố bộ mô phỏng cảm biến + mô hình dữ liệu NGSI-LD trạm đo cho cộng đồng (tài liệu + ví dụ)
 - [ ] [V1] README song ngữ đầy đủ, hướng dẫn viết module cắm–rút trong `apps/` + 1 module mẫu
 - [ ] [V1][V2][V3] **Tập trình bày lần 1** (15 phút, có giám khảo thử)
-- [ ] [V1] Release v0.3.0
+- [ ] [V1] Release v0.4.0
 
 ## Tuần 7 · 26/11–06/12 · Nộp bài → v1.0.0
 - [ ] [V1] Rà 6 tiêu chí PoF đạt toàn bộ · đóng băng tính năng · release v1.0.0

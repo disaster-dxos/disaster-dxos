@@ -6,7 +6,7 @@
 #   uv lock && uv export --frozen --no-dev --no-emit-project -o requirements.txt
 [project]
 name = "cuu-tro-workflow"
-version = "0.2.0"
+version = "0.3.0"
 description = "Workflow phân công cứu hộ (Temporal) và API khởi chạy qua API Gateway"
 license = "Apache-2.0"
 requires-python = ">=3.12,<3.13"
