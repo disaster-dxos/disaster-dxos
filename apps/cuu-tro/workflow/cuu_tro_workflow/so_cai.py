@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Phiếu nhập/xuất → sổ cái minh bạch của lõi (core/ledger, Tessera) → xác minh công khai (#28, D-007).
+"""Phiếu nhập/xuất hàng (#28) và bút toán tiền cứu trợ thu/chi (#89) → sổ cái minh bạch của lõi
+(core/ledger, Tessera) → xác minh công khai (D-007).
+
+Hai loại lá, cùng một cách băm và xác minh:
+  cuu-tro.phieu-kho    bản ghi cuu-tro.phieu-kho/v1  (supply_movements: nhập, xuất, xuất tới điểm nhận = phân phát)
+  cuu-tro.khoan-tien   bản ghi cuu-tro.khoan-tien/v1 (relief_fund_entries: thu, chi; số tiền VND)
 
 Luồng:
   1. API lập phiếu supply_movements (role cuu_tro_app), lấy dòng vừa ghi.
@@ -32,6 +37,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 LOAI_LA = "cuu-tro.phieu-kho"
 PHIEN_BAN_BAN_GHI = "cuu-tro.phieu-kho/v1"
+LOAI_LA_TIEN = "cuu-tro.khoan-tien"
+PHIEN_BAN_BAN_GHI_TIEN = "cuu-tro.khoan-tien/v1"
 
 # Trạng thái xác minh trả cho trang công khai
 DA_XAC_MINH = "da_xac_minh"
@@ -79,6 +86,33 @@ def ban_ghi_chuan_hoa(dong: dict[str, Any]) -> dict[str, str | None]:
         "note": dong.get("note"),
         "shelter_id": str(dong["shelter_id"]) if dong.get("shelter_id") else None,
         "created_at": _thoi_diem(dong["created_at"]),
+    }
+
+
+def ban_ghi_khoan_tien(dong: dict[str, Any]) -> dict[str, str | None]:
+    """Bản ghi công khai của một bút toán tiền (#89): không có người lập, không dữ liệu cá nhân."""
+    return {
+        "loai": PHIEN_BAN_BAN_GHI_TIEN,
+        "id": str(dong["id"]),
+        "direction": str(dong["direction"]),
+        "amount": f"{Decimal(str(dong['amount'])):.0f}",
+        "currency": str(dong.get("currency") or "VND"),
+        "category": str(dong["category"]),
+        "purpose": dong.get("purpose"),
+        "shelter_id": str(dong["shelter_id"]) if dong.get("shelter_id") else None,
+        "supply_movement_id": str(dong["supply_movement_id"]) if dong.get("supply_movement_id") else None,
+        "created_at": _thoi_diem(dong["created_at"]),
+    }
+
+
+def la_cho_khoan_tien(ban_ghi: dict[str, str | None]) -> dict[str, Any]:
+    """Thân request POST /ledger/entries cho bút toán tiền: mã, chiều, số tiền, đơn vị, thời điểm."""
+    return {
+        "type": LOAI_LA_TIEN,
+        "ref": ban_ghi["id"],
+        "sha256": sha256_ban_ghi(ban_ghi),
+        "attrs": {"direction": ban_ghi["direction"], "amount": ban_ghi["amount"], "currency": ban_ghi["currency"],
+                  "at": ban_ghi["created_at"]},
     }
 
 
@@ -245,13 +279,16 @@ class SoCai:
 
 
 async def xac_minh(so_cai: SoCai, ban_ghi: dict[str, str | None], ledger_index: int | None,
-                   ledger_leaf_hash: bytes | None) -> dict[str, Any]:
-    """Băm lại bản ghi trong CSDL và đối chiếu với sổ cái. Trả trạng thái + chi tiết từng bước."""
+                   ledger_leaf_hash: bytes | None, loai_la: str = LOAI_LA) -> dict[str, Any]:
+    """Băm lại bản ghi trong CSDL và đối chiếu với sổ cái. Trả trạng thái + chi tiết từng bước.
+
+    Kết quả kèm đủ dữ liệu để client tự kiểm lại (bằng_chung: lá, leaf hash, inclusion proof, checkpoint
+    đã ký nguyên văn) mà không cần tin kết luận của máy chủ."""
     sha = sha256_ban_ghi(ban_ghi)
     kq: dict[str, Any] = {"sha256_ban_ghi": sha, "chi_tiet": []}
     if ledger_index is None or ledger_leaf_hash is None:
         kq["trang_thai"] = CHUA_GHI_SO
-        kq["chi_tiet"].append("Phiếu chưa được ghi lên sổ cái")
+        kq["chi_tiet"].append("Chưa được ghi lên sổ cái (đang chờ niêm phong)")
         return kq
     try:
         khoa = await so_cai.khoa()
@@ -274,8 +311,8 @@ async def xac_minh(so_cai: SoCai, ban_ghi: dict[str, str | None], ledger_index: 
         noi_dung = json.loads(la)
     except ValueError:
         noi_dung = {}
-    if noi_dung.get("type") != LOAI_LA or noi_dung.get("ref") != ban_ghi["id"]:
-        loi.append("Lá trên sổ cái không phải của phiếu này")
+    if noi_dung.get("type") != loai_la or noi_dung.get("ref") != ban_ghi["id"]:
+        loi.append("Lá trên sổ cái không phải của mã này")
     if noi_dung.get("sha256") != sha:
         loi.append("SHA-256 của bản ghi hiện tại KHÁC với SHA-256 đã ghi trên sổ cái: bản ghi đã bị sửa sau khi ghi sổ")
     if lh != bytes(ledger_leaf_hash):
@@ -287,6 +324,8 @@ async def xac_minh(so_cai: SoCai, ban_ghi: dict[str, str | None], ledger_index: 
         "trang_thai": KHONG_KHOP if loi else DA_XAC_MINH,
         "checkpoint": {"origin": cp.origin, "tree_size": cp.size, "root_hash": cp.root.hex()},
         "la": p["leaf"],
+        "bang_chung": {"leaf_index": ledger_index, "leaf_hash": lh.hex(), "tree_size": cp.size,
+                       "inclusion_proof": [h.hex() for h in proof], "checkpoint": p["checkpoint"]},
     })
     kq["chi_tiet"] = loi or ["Bản ghi khớp lá trên sổ cái; lá nằm trong checkpoint đã ký (inclusion proof hợp lệ)"]
     return kq

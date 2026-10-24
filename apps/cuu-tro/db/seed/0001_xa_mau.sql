@@ -66,6 +66,15 @@ INSERT INTO supply_movements (id, supply_id, direction, quantity, note, shelter_
   ('e0000000-0000-4000-8000-000000000005', 'd0000000-0000-4000-8000-000000000004', 'nhap', 100, 'Ủng hộ của hội chữ thập đỏ (giả định)', NULL)
 ON CONFLICT (id) DO NOTHING;
 
+-- Bút toán tiền cứu trợ (#89), số liệu giả định; worker tự niêm phong lên sổ cái sau khi nạp seed
+INSERT INTO relief_fund_entries (id, direction, amount, category, purpose, shelter_id) VALUES
+  ('e1000000-0000-4000-8000-000000000001', 'thu', 50000000, 'ung_ho', 'Ủng hộ của doanh nghiệp (giả định)', NULL),
+  ('e1000000-0000-4000-8000-000000000002', 'thu', 20000000, 'ngan_sach', 'Tạm ứng ngân sách xã (giả định)', NULL),
+  ('e1000000-0000-4000-8000-000000000003', 'chi', 12000000, 'mua_hang', 'Mua nước uống, mì gói (giả định)', NULL),
+  ('e1000000-0000-4000-8000-000000000004', 'chi', 3000000, 'van_chuyen', 'Thuê ca nô chở hàng (giả định)',
+   'c0000000-0000-4000-8000-000000000001')
+ON CONFLICT (id) DO NOTHING;
+
 INSERT INTO sensors (id, code, name, kind, unit, location, warning_threshold, danger_threshold,
                      last_value, last_observed_at, ngsi_ld_id) VALUES
   ('f0000000-0000-4000-8000-000000000001', 'AL-MN-01', 'Mực nước cầu An Lạc (giả định)', 'muc_nuoc', 'cm',

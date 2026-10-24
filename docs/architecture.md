@@ -1,6 +1,6 @@
 # Kiến trúc Disaster DX-OS
 
-> Phiên bản tài liệu: v0.2.0 (cập nhật 24/10/2026, thêm Scorpio NGSI-LD #85, cảnh báo vượt ngưỡng qua Temporal #87). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
+> Phiên bản tài liệu: v0.2.0 (cập nhật 24/10/2026, thêm Scorpio NGSI-LD #85, cảnh báo vượt ngưỡng qua Temporal #87, tiền cứu trợ trên sổ cái #89). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
 
 Disaster DX-OS gồm hai tầng, đúng mô hình Open-Core của đề:
 
@@ -420,6 +420,26 @@ sequenceDiagram
 1. Trang công khai `GET /workflow/minh-bach/phieu/{mã}`: API băm lại bản ghi trong CSDL, kiểm chữ ký checkpoint, nội dung lá, leaf hash và inclusion proof (RFC 9162). Sửa tay một phiếu trong CSDL → `khong_khop`.
 2. `ledger-verify` (`core/ledger/cmd/ledger-verify`, có sẵn trong image `ledger`): chỉ dùng checkpoint + tile công khai qua gateway, tự dựng proof (không dùng `/ledger/proof`), kiểm chữ ký bằng khóa công khai do người dùng đưa vào, băm lại bản ghi đã lưu từ trang công khai.
 3. Tự viết: định dạng là chuẩn mở (tlog-tiles, tlog-checkpoint, signed note), mọi thư viện tương thích đều kiểm được.
+
+### 5.2. Tiền cứu trợ, niêm phong không sót, xác minh chung (#89)
+
+Ứng dụng niêm phong hai loại giao dịch, mỗi giao dịch một lá Merkle, cùng cách băm và cùng ba cách kiểm chứng ở trên:
+
+| Loại lá | Bảng (`apps/cuu-tro`) | Bản ghi chuẩn hóa | Thuộc tính trong lá |
+|---|---|---|---|
+| `cuu-tro.phieu-kho` (#28) | `supply_movements`: nhập, xuất; xuất kèm điểm nhận = phân phát hàng | `cuu-tro.phieu-kho/v1` | chiều, số lượng, thời điểm |
+| `cuu-tro.khoan-tien` (#89) | `relief_fund_entries` (migration 0011): thu (ủng hộ, ngân sách), chi (mua hàng, hỗ trợ hộ dân, vận chuyển); đồng Việt Nam, số nguyên | `cuu-tro.khoan-tien/v1` | chiều, số tiền, đơn vị (`VND`), thời điểm |
+
+| Quyết định | Cách làm | Vì sao |
+|---|---|---|
+| Không dữ liệu cá nhân | Không có cột tên/SĐT/số tài khoản người ủng hộ hay người nhận; chi cho hộ dân chỉ ghi hạng mục + điểm nhận; nội dung công khai bị chặn dãy số dạng SĐT/CCCD; người lập (`created_by`) không vào bản ghi, lá, trang công khai hay GraphQL | Sổ cái không xóa được: thứ gì lên sổ cái là lên mãi mãi |
+| Chi không vượt số dư | Trigger `relief_fund_entries_balance` (khóa advisory theo transaction) | Hai khoản chi đồng thời không cùng lọt; số dư công khai không âm |
+| Bất biến | Trigger chặn sửa/xóa; chỉ điền `ledger_*` một lần; sai thì lập bút toán điều chỉnh | Giống phiếu kho (#25) |
+| Outbox trong cùng transaction | Dòng có `ledger_index` NULL chính là việc "phải niêm phong", ghi cùng transaction với bút toán. API niêm phong ngay; **bộ niêm phong** trong `cuu-tro-worker` (`so_cai_niem_phong.py`) quét mỗi `SO_CAI_QUET_GIAY` giây các dòng cũ hơn `SO_CAI_CHO_GIAY` giây, `FOR UPDATE SKIP LOCKED`, ghi bù | Sổ cái tạm dừng hay API chết giữa chừng không làm sót giao dịch; gửi lại cùng lá là an toàn vì `core/ledger` chống trùng (trả index cũ) |
+| Bằng chứng trả kèm | Mọi phản hồi công khai có `bang_chung`: chỉ số lá, leaf hash, inclusion proof, checkpoint đã ký nguyên văn | Client (#63, đối tác) tự kiểm lại mà không phải tin kết luận `hop_le` của máy chủ |
+| Một ô tra cứu | `GET /workflow/minh-bach/xac-minh/{mã}` nhận mã phiếu hoặc mã bút toán, trả `hop_le` | Người dân không cần biết đó là loại giao dịch nào |
+
+Endpoint công khai (route APISIX `/workflow/minh-bach/*`: chỉ GET, không JWT, WAF + rate limit): `xac-minh/{mã}`, `phieu/{mã}`, `khoan-tien/{mã}`, `so-cai` (danh sách đã niêm phong, mới nhất trước, phân trang theo chỉ số lá), `quy` (tổng thu, tổng chi, số dư, số mục chờ niêm phong). Lập bút toán: `POST /workflow/quy/khoan` (JWT, chỉ `dieu-phoi`). Chi tiết và ví dụ: `apps/cuu-tro/README.md` mục "Sổ cái minh bạch".
 
 Giới hạn hiện tại: khóa công khai lấy từ chính máy chủ thì chỉ chứng minh toàn vẹn so với khóa đang công bố; triển khai thật cần công bố khóa ở nơi độc lập (tài liệu phát hành) và đặt `LEDGER_VERIFIER_KEY`. Consistency proof (log không bị viết lại) và witness công khai của transparency.dev để tuần 6.
 

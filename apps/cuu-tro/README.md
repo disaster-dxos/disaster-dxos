@@ -375,7 +375,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "$URL" -o anh-tai-ve.jpg
 
 Kiểm thử: `tests/test_cuu_tro_anh.py` (ký SigV4 khớp ví dụ chính thức của AWS, magic bytes, luật quyền, endpoint với Hasura/S3/CSDL giả); `scripts/smoke-anh.sh` (trong `make smoke`) gọi thật qua APISIX. Luồng dữ liệu: `docs/architecture.md` mục 7.5.
 
-## Sổ cái minh bạch: phiếu nhập/xuất → sổ cái → trang công khai (`workflow/cuu_tro_workflow/so_cai.py`, #28)
+## Sổ cái minh bạch: phiếu nhập/xuất, tiền cứu trợ → sổ cái → xác minh công khai (`workflow/cuu_tro_workflow/so_cai*.py`, #28, #89)
 
 Mỗi phiếu nhập/xuất hàng cứu trợ được ghi thành một lá của sổ cái minh bạch của lõi (`core/ledger`, Tessera, D-007). Người dân, nhà tài trợ tra mã phiếu trên trang công khai, hoặc tự tải checkpoint + tile để kiểm, không cần tin hệ thống. Kiến trúc lõi: `docs/architecture.md` mục 5.1.
 
@@ -422,6 +422,30 @@ Kết quả `ĐÃ XÁC MINH` (mã 0) hoặc `KHÔNG KHỚP` kèm lý do (mã 1).
 
 Kiểm thử: `tests/test_cuu_tro_so_cai.py` (14 test: vector JSON chuẩn tắc chung với Go, inclusion proof mọi kích thước cây 1–17, chữ ký checkpoint, endpoint với CSDL + sổ cái giả, sửa CSDL → không khớp, sổ cái tắt → ghi lại); `db/tests/0006_so_cai_phieu_kho.sql` (16 ca quyền); `scripts/smoke-ledger.sh` (47 ca qua APISIX, trong `make smoke`).
 
+
+### Tiền cứu trợ, niêm phong bù, xác minh chung (#89)
+
+**Bút toán tiền** (`relief_fund_entries`, migration `0011`): thu (`ung_ho`, `ngan_sach`, `khac`) và chi (`mua_hang`, `ho_tro_ho_dan`, `van_chuyen`, `khac`), số tiền là đồng nguyên, đơn vị `VND`. Chi vượt số dư quỹ → 409 (trigger, khóa advisory). Không có tên/SĐT/số tài khoản người ủng hộ hay người nhận; chi cho hộ dân chỉ ghi hạng mục + điểm nhận; khoản chi mua hàng gắn được phiếu nhập kho (`supply_movement_id`). Bản ghi chuẩn hóa `cuu-tro.khoan-tien/v1` `{id, direction, amount, currency, category, purpose, shelter_id, supply_movement_id, created_at}`, lá `{type: "cuu-tro.khoan-tien", ref, sha256, attrs: {direction, amount, currency, at}}`.
+
+**Niêm phong không sót.** Dòng chưa có `ledger_index` là outbox (cùng transaction với phiếu/bút toán). API niêm phong ngay khi lập; sổ cái lỗi thì trả 202 và **worker tự ghi bù** (`so_cai_niem_phong.py`, quét mỗi `SO_CAI_QUET_GIAY` = 10 giây các dòng cũ hơn `SO_CAI_CHO_GIAY` = 5 giây). Bút toán mẫu trong seed cũng được niêm phong theo cách này. Endpoint `.../ghi-so` vẫn dùng được để ghi ngay.
+
+| Phương thức, đường dẫn | Quyền | Kết quả |
+|---|---|---|
+| `POST /workflow/quy/khoan` body `{direction: thu\|chi, amount (đồng, > 0), category, purpose?, shelter_id?, supply_movement_id?}` | `dieu-phoi` | `201 {ban_ghi_chuan_hoa, sha256, so_cai}` · `202` chờ niêm phong · `409` chi vượt số dư · `422` hạng mục sai chiều / nội dung có số dạng SĐT · `404` điểm nhận/phiếu không có |
+| `POST /workflow/quy/khoan/{mã}/ghi-so` | `dieu-phoi` | như `kho/phieu/{mã}/ghi-so` |
+| `GET /workflow/minh-bach/xac-minh/{mã}` | Công khai | Mã phiếu **hoặc** mã bút toán → `{hop_le, loai: phieu_kho\|khoan_tien, trang_thai, chi_tiet, ban_ghi_chuan_hoa, sha256, hien_thi, so_cai, bang_chung}` · `404` |
+| `GET /workflow/minh-bach/khoan-tien/{mã}` | Công khai | như trên, chỉ bút toán tiền (`hien_thi`: hạng mục, đơn vị, điểm nhận) |
+| `GET /workflow/minh-bach/so-cai?loai=phieu_kho\|khoan_tien&truoc=<chỉ số lá>&gioi_han=1..100` | Công khai | `{muc: [{loai, ma, chieu, so_luong, don_vi, noi_dung, diem_nhan, thoi_diem, ledger_index}], truoc_tiep}`: đã niêm phong, mới nhất trước; trang sau truyền `truoc=truoc_tiep` |
+| `GET /workflow/minh-bach/quy` | Công khai | `{don_vi: VND, tong_thu, tong_chi, so_du, khoan_tien_da_niem_phong, khoan_tien_cho_niem_phong, phieu_kho_cho_niem_phong}` |
+
+`bang_chung` = `{leaf_index, leaf_hash, tree_size, inclusion_proof: [hex…], checkpoint: <văn bản checkpoint đã ký>}`: đủ để client tự kiểm (băm `ban_ghi_chuan_hoa` theo JSON chuẩn tắc → so `sha256` trong lá `so_cai.la` → leaf hash `SHA-256(0x00 ‖ lá)` → dựng root từ proof theo RFC 9162 → so root trong checkpoint → kiểm chữ ký checkpoint bằng khóa công khai `/ledger/verifier`). `ledger-verify` ở trên kiểm được cả bút toán tiền: lưu phản hồi `xac-minh/{mã}` rồi chạy như với phiếu.
+
+```bash
+curl -s http://localhost:9080/workflow/minh-bach/xac-minh/e1000000-0000-4000-8000-000000000001 | python3 -m json.tool
+curl -s http://localhost:9080/workflow/minh-bach/quy
+```
+
+Kiểm thử: `tests/test_cuu_tro_so_cai_tien.py` (bản ghi chuẩn hóa ổn định, sửa bất kỳ trường công khai đổi SHA-256, endpoint, bằng chứng tự kiểm, sửa CSDL → không hợp lệ, lá khác loại bị từ chối, bộ niêm phong bù), `db/tests/0011`, `scripts/smoke-so-cai.sh` (trong `make smoke`).
 ## Cảm biến mực nước (`workflow/cuu_tro_workflow/cam_bien*.py`, `gia_lap.py`, #30, #84)
 
 Luồng IT/OT của ứng dụng: thiết bị (ở đây là bộ giả lập) gửi MQTT vào NATS của lõi, consumer của ứng dụng ghi chuỗi đo vào PostgreSQL và phát cảnh báo khi nước vượt ngưỡng. Lõi chỉ cung cấp NATS có xác thực (user `cuu-tro-thiet-bi` chỉ gửi được vào `cuu-tro.>`, chỉ qua MQTT), không biết topic nào. Vì sao làm vậy và ánh xạ nguyên lý B2: `docs/architecture.md` mục 7.4.
