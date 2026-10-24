@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-24
+Tuần 4: Tầng [D] và [I]. Mỗi trạm đo là một bản sao số NGSI-LD trên Scorpio (lõi, CSDL riêng trên PostGIS, không MongoDB), bộ giả lập có 9 trạm ở Quảng Nam, Đà Nẵng với trận lũ mẫu 48 giờ (giả lập); cảnh báo vượt ngưỡng chạy qua Temporal, mỗi đợt báo đúng một lần mỗi bước (vượt ngưỡng, lên nguy hiểm, về dưới ngưỡng) vào hộp thư nội bộ, web điều phối hoặc Telegram; tiền cứu trợ thu/chi lên sổ cái minh bạch, worker niêm phong bù và API xác minh chung theo mã kèm bằng chứng; dữ liệu cũ xuất ra Parquet trên SeaweedFS, truy vấn bằng DuckDB; Grafana OSS dashboard điều hành đọc bằng role chỉ đọc (PR #86, #88, #90, #93).
+
+Kiểm chứng: `make smoke` 782/782 trên volume trống ngày 24/10/2026 (project tạm, OpenBao riêng) ở commit chốt phiên bản này. CI có 7 job bắt buộc trên `main` và `develop`: `license`, `build-from-source`, `shellcheck`, `yamllint`, `pytest`, `go-test`, `go-licenses`; job `web` (giấy phép npm, Vitest 119 ca, typecheck, build và chạy thử image) chạy trên mọi PR, chưa bắt buộc. Còn mở: VPS + tên miền + CI tự triển khai, thử với người dùng thật, đăng nhập Grafana qua SSO Keycloak.
+
 ### Added
 - Lưu trữ lịch sử Parquet + DuckDB (#91, `cuu_tro_workflow/luu_tru.py`, DuckDB 2.0.0 MIT): xuất tin kêu cứu đã xong (`su_co`: thời gian phản hồi, tọa độ làm tròn ~1 km), chuỗi đo (`so_do`), phiếu xuất kho (`phan_phoi`), bút toán tiền (`khoan_tien`) ra Parquet phân vùng theo tháng giờ Việt Nam (`<bảng>/thang=YYYY-MM/du-lieu.parquet`) trên bucket SeaweedFS mới `cuu-tro-lakehouse`, kèm `_manifest.json` (số dòng + SHA-256). Không xuất SĐT, họ tên, mô tả tự do, địa chỉ, người lập, người nhận nhiệm vụ. Idempotent: cùng dữ liệu cùng tệp, tệp không đổi không ghi lại, phân vùng mất thì xóa; dữ liệu nóng không bị xóa. `make luu-tru [DEN=YYYY-MM-DD]` (dịch vụ một lần `cuu-tro-luu-tru`, profile `luu-tru`, bí mật riêng), `make luu-tru-truy-van SQL="…"` (DuckDB offline trên view `su_co`, `so_do`, `phan_phoi`, `khoan_tien`, kiểm SHA-256 với manifest trước khi đọc).
 - Role chỉ đọc `<schema>_bi` (#91, #92): `postgres-roles` tạo (`default_transaction_read_only`, `statement_timeout 30s`, `CONNECTION LIMIT 10`), mật khẩu `secret/app/<APP>/bi-db`; migration `0012_quyen_bi.sql` cấp `SELECT` đúng các cột không định danh. Dùng chung cho Grafana và bộ xuất Parquet.
@@ -27,6 +32,7 @@
 - Kiểm thử (#84, #85): pytest 245 → 317 ca (`tests/test_cuu_tro_tran_lu.py`: tệp dữ liệu khớp seed, dạng đường lũ, đỉnh vượt ngưỡng, thứ tự thượng/hạ lưu, cùng seed cùng chuỗi, phát lại; `tests/test_cuu_tro_ban_sao_so.py`: ánh xạ thực thể, ngưỡng, UTC, chọn ghi theo `observedAt`, phân loại lỗi Scorpio, consumer với Scorpio giả, endpoint `@context`). `scripts/smoke-ngsi-ld.sh` (trong `make smoke`, 48 ca): Scorpio không lộ cổng, CSDL/role riêng, không MongoDB; gateway 401/200/403, WAF chặn XSS trong `q`, `Link`/`NGSILD-Tenant` của client bị thay; phát lại trận lũ Câu Lâu qua MQTT → 49 dòng `sensor_readings` đúng tệp, mức bình thường → cảnh báo → nguy hiểm → cảnh báo → bình thường, thực thể = giờ cuối; 9 trạm có thực thể đúng loại/tọa độ/ngưỡng, lọc `alertLevel`, `georel near` trả GeoJSON; bản tin mới tới Scorpio dưới 5 giây, gửi bù/gửi lại/bản tin sai không đổi thực thể; dừng Scorpio rồi chạy lại → bản tin đã chờ được ghi, consumer không tồn đọng. `make smoke` 549 → 602 ca trên volume trống (24/10/2026, 150 giây).
 
 ### Changed
+- Phiên bản ứng dụng `0.3.0`: `apps/cuu-tro/web/package.json`, `apps/cuu-tro/workflow/pyproject.toml`, OpenAPI của `cuu-tro-api`, image `disaster-dxos/cuu-tro-web` và `disaster-dxos/cuu-tro-workflow`. Image `disaster-dxos/ledger` giữ `0.1.0` vì `core/ledger` không đổi từ v0.1.0.
 - Trang công khai `GET /workflow/minh-bach/phieu/{mã}` trả thêm `loai` và `bang_chung`; `so_cai.xac_minh` nhận loại lá (phiếu kho / bút toán tiền) (#89).
 - Consumer ghi chuỗi đo (`cuu-tro-cam-bien`) phát thêm sự kiện `ve_duoi_nguong` khi lần đo mới nhất về bình thường sau một đợt, và mọi sự kiện cảnh báo mang mã đợt `dot` (lần đo đầu tiên trên ngưỡng của đợt) (#87).
 - Web điều phối nhận thông báo cảnh báo trạm đo đã khử trùng lặp theo đợt qua `cuu-tro.dieu-phoi.canh-bao.*` (consumer `realtime-dieu-phoi`); consumer `realtime-canh-bao` đọc sự kiện thô bị bỏ và cầu nối tự xóa trên máy nâng cấp. Thông báo "Đã về dưới ngưỡng" hiện ở mức thông tin (#87).
@@ -34,6 +40,13 @@
 - Profile `gis` dự kiến gộp vào `core` (#85), như `core-next` ở tuần 2: Scorpio là dịch vụ nền tảng dùng chung, bản native nhẹ (~130 MiB RAM). Bộ giả lập vẫn ở profile `gia-lap`.
 - `postgres-roles` tạo thêm role `scorpio` (`CONNECTION LIMIT 20`) và CSDL `scorpio`; `bao-agent-postgres` render thêm `SCORPIO_DB_PASSWORD`; `scripts/openbao-init.sh` sinh `secret/core/scorpio-db` (máy đã có OpenBao: `make up` tự thêm). Biến mới trong `.env.example`: `SCORPIO_DB`, `SCORPIO_DB_USER`, `SCORPIO_PLATFORM`, `GW_NGSI_LD_CONTEXT_URL`.
 - `apps/cuu-tro/nats/streams.json` thêm consumer `ban-sao-so`; seed `sensors` thêm 6 trạm (`ON CONFLICT DO NOTHING`, chạy lại `make seed` trên volume cũ được).
+
+### Security
+- Role CSDL chỉ đọc `<schema>_bi` cho phân tích (#91, #92): phiên mặc định read-only, `statement_timeout 30s`, chỉ có quyền `SELECT` với cột không định danh (migration 0012). Grafana và bộ xuất Parquet không đọc được SĐT, họ tên, mô tả, địa chỉ, người lập, kể cả khi viết SQL sai; tọa độ tin kêu cứu xuất ra Parquet làm tròn ~1 km.
+- Không dữ liệu cá nhân trên sổ cái (#89): bút toán tiền không có tên/SĐT/số tài khoản người ủng hộ hay người nhận, nội dung công khai chặn dãy số dạng SĐT/CCCD, người lập không vào bản ghi, lá, trang công khai hay GraphQL.
+- Gateway `/ngsi-ld/v1/*` chỉ đọc, bắt buộc JWT, gateway đặt header `Link` và bỏ `Link`/`NGSILD-Tenant` của client để Scorpio không bị dùng tải URL tùy ý (SSRF); ghi, `subscriptions`, `jsonldContexts` → 403; Scorpio không mở cổng, không có xác thực riêng nên chỉ trong mạng nội bộ (#85).
+- Token bot Telegram (#87) chỉ trong OpenBao và volume bí mật riêng của worker, không trong `.env`, image hay log (URL chứa token không được ghi ra log).
+- Grafana (#92): không mở cổng ra host, tắt đăng ký và truy cập ẩn danh, cookie SameSite strict, không tải plugin/tin tức hay kiểm cập nhật qua Internet; mật khẩu admin và datasource trong OpenBao.
 
 ## [0.2.0] - 2026-10-23
 Tuần 3: ứng dụng Tầng 2 có giao diện. Web điều phối Nuxt 4 + Nuxt UI chạy trong stack qua API Gateway (đăng nhập Keycloak PKCE, bản đồ tin kêu cứu realtime qua GraphQL subscription, màn phân công cho vai điều phối và đội cứu hộ, trang Minh bạch cứu trợ công khai, chế độ tối); phân công cứu hộ tự động bằng Temporal (hạn nhận theo mức khẩn, quá hạn thì giao đội kế tiếp); API kêu cứu có Poka-yoke chặn trùng SĐT trong 200 m; thông báo realtime qua Centrifugo OSS; logo và bộ nhận diện (PR #58–#80).
@@ -193,7 +206,8 @@ Kiểm chứng: `make smoke` 339/339 trên máy sạch ngày 22/10/2026 (clone t
 - Tách `core/` (Tầng 1, không chứa nghiệp vụ) và `apps/cuu-tro/` (Tầng 2): `deploy/apisix`, `deploy/nats`, `deploy/postgres` → `core/`; realm Keycloak → `apps/cuu-tro/keycloak/realm.json`; chọn ứng dụng bằng biến `DXOS_APP`; `docs/architecture.md` thêm mục 7 giải thích vì sao lõi độc lập với nghiệp vụ (#3).
 - `docs/PLAN.md` theo lộ trình mới: VPS + tên miền tuần 4, tuần UX tuần 6, 2 lần tập trình bày, công bố bộ mô phỏng cảm biến và mô hình NGSI-LD; gán vai V1/V2/V3 cho từng việc (#5).
 
-[Unreleased]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.0.1
