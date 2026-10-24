@@ -26,6 +26,8 @@ APP="${DXOS_APP:-cuu-tro}"
 # Policy riêng của ứng dụng (vd backend worker đọc mật khẩu role DB của ứng dụng): policy và AppRole
 # tên app-<ứng dụng>-<dịch vụ>, để nhiều ứng dụng dùng chung một OpenBao không đụng tên nhau
 APP_POLICY_DIR="apps/$APP/openbao/policies"
+# Bí mật riêng của ứng dụng (#87): mỗi dòng "<đường dẫn> <khóa>=<nguồn> ..." → secret/app/<APP>/<đường dẫn>
+APP_SECRETS_FILE="apps/$APP/openbao/secrets.conf"
 umask 077
 
 log() { echo "openbao-init: $*"; }
@@ -200,6 +202,20 @@ do_setup() {
   # Thông báo realtime (#68): khóa HS256 ký/kiểm token kết nối Centrifugo (backend ứng dụng ký,
   # Centrifugo kiểm) và API key HTTP API của Centrifugo (cầu nối NATS → Centrifugo gọi publish).
   kv_seed "app/$APP/realtime" token_hmac_secret=@rand:32 api_key=@rand:32
+  # Bí mật mà chỉ ứng dụng biết ý nghĩa (vd token bot Telegram của apps/cuu-tro, #87): lõi chỉ tạo chỗ
+  # theo khai báo của ứng dụng, chỉ nhận nguồn @empty/@rand (không đọc biến môi trường tùy ý)
+  if [ -f "$APP_SECRETS_FILE" ]; then
+    local duong spec s
+    while read -r duong spec; do
+      case $duong in ''|'#'*) continue ;; esac
+      [[ $duong =~ ^[a-z0-9][a-z0-9_-]*$ ]] || die "$APP_SECRETS_FILE: đường dẫn sai: $duong"
+      for s in $spec; do
+        [[ $s =~ ^[a-z0-9_]+=@(empty|rand(:[0-9]+)?)$ ]] || die "$APP_SECRETS_FILE: khai báo sai: $s"
+      done
+      # shellcheck disable=SC2086 # spec là danh sách khóa=nguồn đã kiểm ở trên
+      kv_seed "app/$APP/$duong" $spec
+    done < "$APP_SECRETS_FILE"
+  fi
 
   # AppRole
   api_ok GET sys/auth

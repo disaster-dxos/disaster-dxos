@@ -1,6 +1,6 @@
 # Kiến trúc Disaster DX-OS
 
-> Phiên bản tài liệu: v0.2.0 (cập nhật 24/10/2026, thêm Scorpio NGSI-LD #85). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
+> Phiên bản tài liệu: v0.2.0 (cập nhật 24/10/2026, thêm Scorpio NGSI-LD #85, cảnh báo vượt ngưỡng qua Temporal #87). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
 
 Disaster DX-OS gồm hai tầng, đúng mô hình Open-Core của đề:
 
@@ -268,7 +268,7 @@ sequenceDiagram
   GW->>CF: /connection/websocket
   W->>CF: connect {token}
   CF->>CF: kiểm chữ ký, iss, aud, exp, Origin → đăng ký server-side kênh dieu-phoi
-  JS-->>BR: consumer bền realtime-dieu-phoi / realtime-canh-bao
+  JS-->>BR: consumer bền realtime-dieu-phoi (cả thông báo cảnh báo trạm đo của #87)
   BR->>BR: danh sách trắng trường (không SĐT/tên)
   BR->>CF: POST /api/publish (X-API-Key, idempotency_key = Nats-Msg-Id)
   CF-->>W: publication
@@ -282,7 +282,7 @@ sequenceDiagram
 | Đường WebSocket | APISIX `/realtime/websocket` → `centrifugo:8000/connection/websocket`, Coraza WAF bật cho bắt tay, rate limit riêng; Centrifugo không mở cổng ra host; HTTP API chỉ mạng nội bộ | Một cửa vào duy nhất như mọi route khác. Khung WebSocket sau bắt tay không đi qua WAF (Coraza không phân tích); nội dung client gửi chỉ là lệnh giao thức, client không publish được |
 | Origin | `CENTRIFUGO_CLIENT_ALLOWED_ORIGINS` = `GATEWAY_PUBLIC_URL` | Chặn trang lạ mở WebSocket bằng token bị lộ (bắt tay 403) |
 | Bí mật | `secret/app/<DXOS_APP>/realtime` (`token_hmac_secret`, `api_key`): `bao-agent-centrifugo` render file cấu hình chỉ chứa 2 bí mật (tmpfs); `bao-agent-cuu-tro` render khóa ký cho `cuu-tro-api`, API key + `NATS_URL` cho cầu nối (volume riêng). Tùy chọn khác đặt bằng biến `CENTRIFUGO_*` | Không có bí mật trong `.env`, image hay web |
-| Nguồn sự kiện | JetStream: `cuu-tro.dieu-phoi.can-xu-ly.<id>` (#67), `cuu-tro.dieu-phoi.tin-moi.<id>` (bộ khởi chạy phát sau khi khởi chạy phân công, cùng stream `CUU_TRO_DIEU_PHOI`), `cuu-tro.canh-bao.cam-bien.<trạm>` (#30) | Không thêm stream; tin mới đi theo outbox của #67 nên không phát cho tin bị rollback. Tắt phân công tự động (`PHAN_CONG_TU_DONG=0`) thì không có thông báo tin mới |
+| Nguồn sự kiện | JetStream: `cuu-tro.dieu-phoi.can-xu-ly.<id>` (#67), `cuu-tro.dieu-phoi.tin-moi.<id>` (bộ khởi chạy phát sau khi khởi chạy phân công), `cuu-tro.dieu-phoi.canh-bao.<trạm>` (workflow cảnh báo đã gửi một bước của đợt, #87), cùng stream `CUU_TRO_DIEU_PHOI`. Trước #87 cầu nối đọc thẳng sự kiện thô `cuu-tro.canh-bao.cam-bien.<trạm>` (consumer `realtime-canh-bao`, nay đã bỏ và tự xóa trên máy nâng cấp): web nhận bản đã khử trùng lặp theo đợt (mục 6.3) | Không thêm stream; tin mới đi theo outbox của #67 nên không phát cho tin bị rollback. Tắt phân công tự động (`PHAN_CONG_TU_DONG=0`) thì không có thông báo tin mới |
 | Giao đúng một lần (với người xem) | Consumer bền `realtime-*` (`deliver_policy: new`, ack sau khi Centrifugo nhận, nak 5 s khi lỗi); `Nats-Msg-Id` chống trùng ở JetStream, `idempotency_key` chống trùng ở Centrifugo (5 phút); web bỏ trùng theo `id` | Cầu nối khởi động lại không mất tin, không đẩy lại sự kiện cũ lúc tạo consumer lần đầu |
 | Dữ liệu cá nhân | Cầu nối chỉ chép trường trong danh sách trắng theo loại (id tin, mức khẩn, lý do, số lần giao; mã/tên trạm, giá trị, ngưỡng); chuỗi có dãy số dạng SĐT/CCCD bị bỏ | Web điều phối xem chi tiết tin qua `/graphql` theo quyền Hasura, không qua kênh đẩy |
 | Kết nối lại | centrifuge-js tự kết nối lại (backoff 0,5–20 s), tự xin token mới; kênh giữ 50 tin / 10 phút (`force_recovery`) để lấy bù tin lỡ khi mất kết nối ngắn | Engine `memory` một nút: Centrifugo khởi động lại thì mất lịch sử kênh (chấp nhận được với thông báo; dữ liệu gốc vẫn ở PostgreSQL/JetStream) |
@@ -438,7 +438,8 @@ flowchart LR
   B -->|"hợp lệ"| C["Temporal: tiếp nhận"]
   A2["Tin nhắn tự do"] --> AI["AI bóc tách (Qwen2.5 7B)"] --> H["Người điều phối duyệt (HITL)"] --> C
   C --> D["Phân công đội gần nhất (PostGIS)"] --> E["Đội cứu hộ xác nhận"] --> F["Đóng sự cố"]
-  S["Cảm biến mực nước"] -->|"MQTT → NATS"| N["Scorpio: bản sao số trạm đo"] -->|"vượt ngưỡng"| W["Temporal: cảnh báo"] --> T["Telegram / Centrifugo"]
+  S["Cảm biến mực nước"] -->|"MQTT → NATS"| N["Scorpio: bản sao số trạm đo"]
+  S -->|"vượt ngưỡng (NATS)"| W["Temporal: một workflow mỗi đợt (#87)"] --> T["Hộp thư nội bộ / Telegram + Centrifugo"]
   F --> L["Ghi nhận hàng/tiền đã cấp → core/ledger (Tessera)"]
 ```
 
@@ -518,6 +519,51 @@ sequenceDiagram
 | Chặn trùng khi gửi đồng thời | Trong CSDL: trigger `BEFORE INSERT` + `pg_advisory_xact_lock` theo SĐT (có từ #25), nay `SECURITY DEFINER` | Kiểm ở API (đọc rồi ghi) sẽ lọt khi hai request chạy song song hoặc nhiều bản API. Khóa theo SĐT tuần tự hóa đúng các request có thể trùng nhau, request khác SĐT không chờ nhau. Exclusion constraint không dùng được vì điều kiện phụ thuộc thời điểm và trạng thái |
 | Gửi ẩn danh | **Không mở** | Repo chưa có quyết định về kênh công khai. Endpoint ẩn danh + `409` kèm mã tin cho phép dò "số X có đang báo tin quanh chỗ Y không", và chỉ còn giới hạn theo IP để chống spam. Kênh người dân (Telegram bot, việc sau) gọi API bằng tài khoản dịch vụ riêng của bot |
 | Vùng phục vụ | Hình chữ nhật cấu hình bằng `KEU_CUU_VUNG_PHUC_VU` (mặc định Việt Nam) | Bắt lỗi đổi chỗ vĩ độ/kinh độ và tọa độ (0, 0) của GPS chưa bắt được vị trí; xã triển khai thu hẹp về địa bàn của mình |
+
+### 6.3. Cảnh báo vượt ngưỡng → Temporal → thông báo (#87)
+
+Consumer ghi chuỗi đo (`ghi-csdl`, #30) đã phát sự kiện lên `CUU_TRO_CANH_BAO` khi mức **tăng**; từ #87 nó phát thêm sự kiện `ve_duoi_nguong` khi lần đo mới nhất về `binh_thuong` sau một đợt, và mọi sự kiện mang **mã đợt** `dot` = thời điểm lần đo đầu tiên trên ngưỡng của đợt (SQL `SQL_DAU_DOT`, cùng transaction với dòng vừa ghi).
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant D as Trạm đo / bộ giả lập
+  participant G as cuu-tro-cam-bien (ghi-csdl)
+  participant JS as NATS JetStream
+  participant K as worker: bộ khởi chạy cảnh báo
+  participant WF as Temporal: CanhBaoVuotNguong<br/>id canh-bao-<trạm>-<đợt>
+  participant A as activity gui_canh_bao
+  participant H as Hộp thư sensor_alert_notifications
+  participant TG as Telegram Bot API
+  participant BR as cầu nối → Centrifugo → web
+  D->>G: MQTT mực nước
+  G->>JS: cuu-tro.canh-bao.cam-bien.<trạm> {loai, muc, dot}
+  JS-->>K: consumer bền canh-bao-temporal (deliver_policy new)
+  K->>WF: signal-with-start "su_kien" (REJECT_DUPLICATE: đợt đã xong thì từ chối)
+  WF->>WF: quyet_dinh: bước đã báo? (canh_bao < nguy_hiem; ve_duoi_nguong kết thúc)
+  WF->>A: một lần cho mỗi bước mới (retry 2 s → 60 s, 10 lần)
+  A->>H: INSERT … ON CONFLICT (trạm, đợt, bước): chạy lại chỉ tăng attempts
+  opt CANH_BAO_KENH=telegram
+    A->>TG: sendMessage (token từ OpenBao)
+  end
+  A->>JS: cuu-tro.dieu-phoi.canh-bao.<trạm> (Nats-Msg-Id trạm:đợt:bước)
+  JS-->>BR: realtime-dieu-phoi → kênh dieu-phoi
+  A->>H: status da_gui
+```
+
+| Quyết định | Cách làm | Vì sao |
+|---|---|---|
+| Một đợt = một workflow | Id tất định `canh-bao-<ma_tram>-<dot>`; consumer signal-with-start; `REJECT_DUPLICATE` | Temporal giữ trạng thái đợt bền (đã báo bước nào), không cần bảng trạng thái riêng. Sự kiện giao lại/gửi bù đến sau khi đợt kết thúc bị Temporal từ chối, không mở đợt thứ hai |
+| Báo theo bước, không theo lần đo | `canh_bao.quyet_dinh`: vượt ngưỡng (`canh_bao` hoặc thẳng `nguy_hiem`), lên cấp (`nguy_hiem`), về dưới ngưỡng (`ve_duoi_nguong`, kết thúc). Đo lại vẫn trên ngưỡng, xuống `canh_bao` rồi lên lại `nguy_hiem`: không báo thêm | Người trực không bị dội tin mỗi chu kỳ đo; mỗi tin mang thông tin mới |
+| Khử trùng lặp hai tầng | Trong workflow (danh sách bước đã báo) và trong hộp thư (`UNIQUE (sensor_code, episode_at, step)`); `Nats-Msg-Id` cho tin lên web | Activity chạy lại (worker chết, timeout) không tạo dòng hay thông báo web thứ hai |
+| Kênh chọn bằng biến môi trường | `CANH_BAO_KENH=gia-lap` (mặc định): hộp thư nội bộ (đọc qua `/graphql`, vai `dieu-phoi`) + web điều phối. `telegram`: thêm Telegram Bot API | Chạy, demo, smoke, CI không cần tài khoản ngoài; bật kênh thật chỉ là đổi cấu hình |
+| Token bot | `secret/app/cuu-tro/telegram` (`bot_token`, `chat_id`) do `openbao-init.sh` tạo trống theo `apps/cuu-tro/openbao/secrets.conf`; `bao-agent-cuu-tro` render chỉ vào volume riêng của worker (`secrets-cuu-tro-worker`) | Không có token trong repo, `.env`, image hay log (URL chứa token không bị ghi). Lõi chỉ tạo chỗ theo khai báo của ứng dụng, không biết "Telegram" (D-005) |
+| Thử lại | Retry policy của activity: 2 s, nhân 2, tối đa 60 s, 10 lần; 429 của Telegram dùng `retry_after` (`next_retry_delay`); 400/401/403/404 và thiếu token → ghi `loi` + lý do, không thử lại; bước lỗi không chặn các bước sau | Lỗi mạng tạm thời tự khỏi; lỗi cấu hình không bị gửi lại vô ích, người vận hành thấy lý do trong hộp thư |
+| Nội dung | Văn bản thuần tiếng Việt: trạm (tên + mã), giá trị + ngưỡng, cấp báo động (và cấp trước), thời điểm đo giờ Việt Nam, liên kết OpenStreetMap tới tọa độ trạm, liên kết web điều phối (`GATEWAY_PUBLIC_URL`) | Đọc được trên mọi kênh (Telegram, hộp thư, sau này SMS); bản đồ công khai mở được cả khi không đăng nhập web |
+| Đợt treo | Không có sự kiện về dưới ngưỡng trong `CANH_BAO_HAN_DOT_GIAY` (7 ngày) → workflow kết thúc `het_han`; về dưới ngưỡng khi chưa báo bước nào → kết thúc `khong_bao` | Không để workflow chạy mãi khi trạm mất tín hiệu |
+| Chạy ở đâu | Trong tiến trình `cuu-tro-worker` (như bộ khởi chạy phân công #67) | Đã có Temporal client, NATS, CSDL; không thêm container |
+
+Gửi Telegram là "ít nhất một lần": worker chết sau khi Telegram nhận mà trước khi ghi `da_gui` thì lần thử lại gửi thêm một tin; hộp thư vẫn một dòng. Kiểm thử: `tests/test_cuu_tro_canh_bao.py` (workflow trên máy chủ test của Temporal, khử trùng lặp, Telegram giả), `db/tests/0010`, `scripts/smoke-canh-bao.sh`.
 
 ## 7. Vì sao lõi độc lập với nghiệp vụ (`core/` và `apps/`)
 
@@ -649,7 +695,7 @@ flowchart LR
     db[("PostgreSQL<br/>sensors.last_*, sensor_readings")]
     gql["Hasura /graphql<br/>qua APISIX"]
     twin["Scorpio NGSI-LD<br/>bản sao số trạm đo (#85, mục 7.4a)"]
-    later["tuần 4–5: agent cảnh báo → Temporal"]
+    later["Temporal: CanhBaoVuotNguong (#87, mục 6.3)<br/>hộp thư / Telegram / web"]
   end
   dev -->|"cuu-tro/cam-bien/&lt;trạm&gt;/muc-nuoc"| mq
   js --- st --> cs -->|"role cuu_tro_app"| db --> gql
@@ -664,7 +710,7 @@ flowchart LR
 | Phạm vi subject theo ứng dụng | Thiết bị chỉ `publish` vào `<DXOS_APP>.>`, không `subscribe`; backend pub/sub `<DXOS_APP>.>`, gọi `$JS.API.>` | Lõi chỉ biết tên ứng dụng (như role `<schema>_app`, mục 7.3), không biết "cảm biến" hay "mực nước" |
 | Ứng dụng tự khai báo stream | `apps/cuu-tro/nats/streams.json`, consumer tạo/cập nhật khi khởi động | Đổi giới hạn lưu trữ, thêm stream không cần sửa lõi |
 | Ghi dữ liệu nghiệp vụ một chiều | Consumer dùng role `cuu_tro_app`: `INSERT` chuỗi đo, `UPDATE` đúng 2 cột `last_*` (migration 0004); người dùng chỉ đọc qua `/graphql` | Dữ liệu đo không đi qua quyền người dùng; điều phối chỉnh ngưỡng, không sửa số đo |
-| Cảnh báo là sự kiện | Mức tăng lên `canh_bao`/`nguy_hiem` → subject `cuu-tro.canh-bao.cam-bien.<trạm>` (stream lưu 30 ngày, `Nats-Msg-Id` chống trùng) | Tách nguồn phát hiện khỏi kênh thông báo: agent cảnh báo (tuần 4–5) và Temporal tiêu thụ sau, không chặn đường ghi |
+| Cảnh báo là sự kiện | Mức tăng lên `canh_bao`/`nguy_hiem` → subject `cuu-tro.canh-bao.cam-bien.<trạm>`; về `binh_thuong` sau một đợt → sự kiện `ve_duoi_nguong` (#87); mỗi sự kiện có mã đợt `dot` (stream lưu 30 ngày, `Nats-Msg-Id` chống trùng) | Tách nguồn phát hiện khỏi kênh thông báo: workflow cảnh báo (#87, mục 6.3) tiêu thụ sau, không chặn đường ghi |
 | Chưa TLS | Cổng MQTT mặc định chỉ `127.0.0.1` (`NATS_MQTT_BIND`) | Thiết bị thật qua Internet cần TLS + chứng chỉ (việc sau); mật khẩu NATS đang ở dạng rõ trong file tmpfs, bcrypt/nkey là việc sau |
 
 Bản sao số NGSI-LD trên Scorpio (D-004) nối vào ở #85 bằng consumer thứ hai trên cùng stream `CUU_TRO_CAM_BIEN` (mục 7.4a); thiết bị, topic và consumer ghi CSDL giữ nguyên. Bộ giả lập có thêm 6 trạm có tọa độ thật ở Quảng Nam, Đà Nẵng và kịch bản trận lũ mẫu 48 giờ (`tran-lu`, #84). Chi tiết topic, payload, cách chạy bộ giả lập: `apps/cuu-tro/README.md` mục "Cảm biến mực nước".
@@ -777,6 +823,7 @@ OpenBao 2.7.1 (MPL-2.0, nhánh nguồn mở của Vault) chạy như dịch vụ
 | `secret/app/<DXOS_APP>/ledger` | `write_token` | `core/ledger` (file `writers`: dịch vụ được ghi) và `cuu-tro-api` (`LEDGER_WRITE_TOKEN`) | ✔ (#28) |
 | `secret/app/<DXOS_APP>/s3` | `access_key`, `secret_key` | SeaweedFS (định danh `<DXOS_APP>-app`, chỉ bucket `<DXOS_APP>-*`, không Admin); `bao-agent-cuu-tro` render `S3_ACCESS_KEY`, `S3_SECRET_KEY` chỉ cho `cuu-tro-api` | ✔ (#27) |
 | `secret/app/<DXOS_APP>/nats` | `app_password`, `device_password` | NATS (`auth.conf` do `bao-agent-nats` render): user `<DXOS_APP>-app` (backend, cổng NATS thường) và `<DXOS_APP>-thiet-bi` (thiết bị, chỉ MQTT); `bao-agent-cuu-tro` render `NATS_URL`, `MQTT_PASSWORD` cho ứng dụng | ✔ (#30) |
+| `secret/app/cuu-tro/telegram` | `bot_token`, `chat_id` | `cuu-tro-worker` (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, volume riêng `secrets-cuu-tro-worker`) khi `CANH_BAO_KENH=telegram`. Tạo trống theo `apps/cuu-tro/openbao/secrets.conf` (bí mật riêng của ứng dụng, `openbao-init.sh` chỉ tạo chỗ, không ghi đè) | ✔ (#87, trống tới khi đội đặt token thật) |
 | `secret/app/<DXOS_APP>/realtime` | `token_hmac_secret`, `api_key` | Centrifugo (`client.token.hmac_secret_key`, `http_api.key` trong file cấu hình do `bao-agent-centrifugo` render); `bao-agent-cuu-tro` render `REALTIME_TOKEN_SECRET` cho `cuu-tro-api` (ký token kết nối) và `CENTRIFUGO_API_KEY` cho cầu nối `cuu-tro-thong-bao` | ✔ (#68) |
 
 `.env` không còn bí mật của dịch vụ lõi. `KC_DEMO_USER_PASSWORD` là mật khẩu của user mẫu (dữ liệu giả của `apps/cuu-tro`, dùng cho `make smoke`), không phải bí mật của dịch vụ lõi.
@@ -813,7 +860,7 @@ Mỗi dịch vụ một AppRole, mỗi AppRole một policy **chỉ đọc** đ�
 | `ledger` | `core-ledger` | `core/ledger`, `app/+/ledger` (#28) |
 | `nats` | `core-nats` | `app/+/nats` (#30) |
 | `centrifugo` | `core-centrifugo` | `app/+/realtime` (#68) |
-| `app-cuu-tro-workflow` | `app-cuu-tro-workflow` (`apps/cuu-tro/openbao/policies/workflow.hcl`) | `app/cuu-tro/db` (#29), `app/cuu-tro/nats` (#30), `app/cuu-tro/s3` (#27), `app/cuu-tro/ledger` (#28), `app/cuu-tro/realtime` (#68). Không đọc được `core/ledger` (khóa ký) |
+| `app-cuu-tro-workflow` | `app-cuu-tro-workflow` (`apps/cuu-tro/openbao/policies/workflow.hcl`) | `app/cuu-tro/db` (#29), `app/cuu-tro/nats` (#30), `app/cuu-tro/s3` (#27), `app/cuu-tro/ledger` (#28), `app/cuu-tro/realtime` (#68), `app/cuu-tro/telegram` (#87). Không đọc được `core/ledger` (khóa ký) |
 
 `core-postgres` đọc thêm `app/+/db` (một đoạn đường dẫn bất kỳ) để `postgres-roles` đồng bộ mật khẩu role `<schema>_app` của ứng dụng đang chọn.
 

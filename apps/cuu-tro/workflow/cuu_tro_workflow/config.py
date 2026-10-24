@@ -76,6 +76,14 @@ class Config:
     # người dùng đọc qua APISIX /ngsi-ld/v1/*) và @context của ứng dụng (mount từ apps/cuu-tro/ngsi-ld)
     ngsi_ld_url: str = "http://scorpio:9090"
     ngsi_ld_context_file: str = "/app/ngsi-ld/context.jsonld"
+    # Thông báo cảnh báo vượt ngưỡng (#87): kênh ngoài "gia-lap" (chỉ hộp thư nội bộ + web) | "telegram".
+    # Token bot + chat id do bao agent render từ OpenBao secret/app/cuu-tro/telegram (không ở .env).
+    canh_bao_kenh: str = "gia-lap"
+    telegram_api_url: str = "https://api.telegram.org"
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+    # Đợt không có sự kiện về dưới ngưỡng thì workflow tự kết thúc sau hạn này (giây)
+    canh_bao_han_dot_giay: int = 7 * 24 * 3600
 
 
 def load() -> Config:
@@ -116,6 +124,11 @@ def load() -> Config:
         keu_cuu_vung=vung_tu_chuoi(os.environ.get("KEU_CUU_VUNG_PHUC_VU") or VUNG_VIET_NAM),
         ngsi_ld_url=os.environ.get("NGSI_LD_URL", "http://scorpio:9090"),
         ngsi_ld_context_file=os.environ.get("NGSI_LD_CONTEXT_FILE", "/app/ngsi-ld/context.jsonld"),
+        canh_bao_kenh=os.environ.get("CANH_BAO_KENH", "gia-lap").strip().lower() or "gia-lap",
+        telegram_api_url=os.environ.get("TELEGRAM_API_URL", "https://api.telegram.org"),
+        telegram_bot_token=os.environ.get("TELEGRAM_BOT_TOKEN", "").strip(),
+        telegram_chat_id=os.environ.get("TELEGRAM_CHAT_ID", "").strip(),
+        canh_bao_han_dot_giay=max(60, _int("CANH_BAO_HAN_DOT_GIAY", 7 * 24 * 3600)),
     )
 
 

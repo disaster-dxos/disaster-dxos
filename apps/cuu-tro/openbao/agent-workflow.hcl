@@ -93,3 +93,29 @@ template {
   perms       = "0444"
   contents    = "{{ with secret \"secret/data/app/cuu-tro/realtime\" }}{{ .Data.data.api_key }}{{ end }}"
 }
+
+# Worker (#87): như /out/cuu-tro (DB + NATS) và thêm token bot Telegram, volume riêng để consumer cảm biến,
+# bản sao số (cùng dùng /out/cuu-tro) không có token
+template {
+  destination = "/out/cuu-tro-worker/APP_DB_URL"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/db\" }}postgres://{{ env \"APP_DB_USER\" }}:{{ .Data.data.password | urlquery }}@postgres:5432/{{ env \"POSTGRES_DB\" }}{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro-worker/NATS_URL"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/nats\" }}nats://cuu-tro-app:{{ .Data.data.app_password | urlquery }}@nats:4222{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro-worker/TELEGRAM_BOT_TOKEN"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/telegram\" }}{{ .Data.data.bot_token }}{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro-worker/TELEGRAM_CHAT_ID"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/telegram\" }}{{ .Data.data.chat_id }}{{ end }}"
+}

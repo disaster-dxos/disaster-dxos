@@ -7,7 +7,10 @@ nội bộ) → kênh "dieu-phoi" → web điều phối (WebSocket qua APISIX /
 Sự kiện nguồn (đều KHÔNG có SĐT hay tên người báo; cầu nối chỉ chép các trường trong danh sách trắng):
   cuu-tro.dieu-phoi.can-xu-ly.<incident_id>   workflow cần điều phối xử lý (#67, activity bao_dieu_phoi)
   cuu-tro.dieu-phoi.tin-moi.<incident_id>     tin kêu cứu mới vào hàng đợi phân công (khoi_chay.py)
-  cuu-tro.canh-bao.cam-bien.<ma_tram>         trạm đo vượt ngưỡng (#30, cam_bien.su_kien_canh_bao)
+  cuu-tro.dieu-phoi.canh-bao.<ma_tram>        thông báo cảnh báo trạm đo đã gửi (#87, workflow CanhBaoVuotNguong:
+                                              đúng 1 lần mỗi bước canh_bao / nguy_hiem / ve_duoi_nguong của một đợt)
+  cuu-tro.canh-bao.cam-bien.<ma_tram>         sự kiện thô của trạm đo (#30). Từ #87 cầu nối không còn consumer trên
+                                              stream này (realtime-canh-bao); web nhận bản đã khử trùng lặp ở trên
 
 Kết nối Centrifugo dùng token RIÊNG do cuu-tro-api ký (HS256, khóa trong OpenBao), không dùng thẳng
 JWT Keycloak: API kiểm JWT Keycloak + vai trò rồi cấp token ngắn hạn chỉ mang `sub` và danh sách kênh
@@ -33,6 +36,7 @@ TOKEN_AUDIENCE = "centrifugo"
 TIEN_TO_CAN_XU_LY = f"{APP}.dieu-phoi.can-xu-ly."
 TIEN_TO_TIN_MOI = f"{APP}.dieu-phoi.tin-moi."
 TIEN_TO_CANH_BAO = f"{APP}.canh-bao.cam-bien."
+TIEN_TO_CANH_BAO_DA_GUI = f"{APP}.dieu-phoi.canh-bao."
 
 LOAI_CAN_XU_LY, LOAI_TIN_MOI, LOAI_CANH_BAO = "can_xu_ly", "tin_moi", "canh_bao"
 
@@ -40,8 +44,8 @@ LOAI_CAN_XU_LY, LOAI_TIN_MOI, LOAI_CANH_BAO = "can_xu_ly", "tin_moi", "canh_bao"
 _TRUONG = {
     LOAI_CAN_XU_LY: ("incident_id", "ly_do", "urgency", "so_lan_giao", "mo_ta", "luc"),
     LOAI_TIN_MOI: ("incident_id", "urgency", "luc"),
-    LOAI_CANH_BAO: ("ma_tram", "ten_tram", "dai_luong", "muc", "muc_truoc", "gia_tri", "nguong", "don_vi",
-                    "thoi_diem"),
+    LOAI_CANH_BAO: ("ma_tram", "ten_tram", "dai_luong", "buoc", "muc", "muc_truoc", "gia_tri", "nguong", "don_vi",
+                    "thoi_diem", "dot"),
 }
 _MAX_CHUOI = 300
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -70,7 +74,7 @@ def tin_moi(incident_id: str, urgency: str, luc: str) -> tuple[str, bytes, str]:
 
 def _loai(subject: str) -> tuple[str, str]:
     for tien_to, loai in ((TIEN_TO_CAN_XU_LY, LOAI_CAN_XU_LY), (TIEN_TO_TIN_MOI, LOAI_TIN_MOI),
-                          (TIEN_TO_CANH_BAO, LOAI_CANH_BAO)):
+                          (TIEN_TO_CANH_BAO_DA_GUI, LOAI_CANH_BAO), (TIEN_TO_CANH_BAO, LOAI_CANH_BAO)):
         if subject.startswith(tien_to):
             return loai, subject[len(tien_to):]
     raise SuKienKhongHopLe(f"subject không thuộc thông báo điều phối: {subject}")

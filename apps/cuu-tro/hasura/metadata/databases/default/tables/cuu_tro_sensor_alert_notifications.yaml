@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+# Hộp thư nội bộ của thông báo cảnh báo vượt ngưỡng (#87). Chỉ activity gui_canh_bao (role DB cuu_tro_app,
+# workflow CanhBaoVuotNguong) ghi; không vai trò người dùng nào thêm/sửa/xóa qua GraphQL.
+#   dieu-phoi   chỉ đọc (người nhận cảnh báo; ở kênh gia-lap đây là nơi đọc tin)
+table:
+  name: sensor_alert_notifications
+  schema: cuu_tro
+configuration:
+  custom_name: sensor_alert_notifications
+  column_config: {}
+  custom_column_names: {}
+  custom_root_fields: {}
+object_relationships:
+  - name: sensor
+    using:
+      manual_configuration:
+        remote_table:
+          name: sensors
+          schema: cuu_tro
+        column_mapping:
+          sensor_code: code
+select_permissions:
+  - role: dieu-phoi
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true

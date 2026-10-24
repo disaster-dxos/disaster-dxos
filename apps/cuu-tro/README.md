@@ -189,9 +189,9 @@ Backend nghiệp vụ của ứng dụng (D-008), không thuộc lõi. Hai dịc
 
 | Dịch vụ | Lệnh | Gọi tới |
 |---|---|---|
-| `cuu-tro-worker` | `python -m cuu_tro_workflow.worker` | Temporal (task queue `cuu-tro`), PostgreSQL bằng role `cuu_tro_app` (`APP_DB_URL` từ OpenBao qua `bao-agent-cuu-tro`), NATS (báo điều phối, #67). Cùng tiến trình: bộ khởi chạy tự động `khoi_chay.py` (#67) |
+| `cuu-tro-worker` | `python -m cuu_tro_workflow.worker` | Temporal (task queue `cuu-tro`), PostgreSQL bằng role `cuu_tro_app` (`APP_DB_URL` từ OpenBao qua `bao-agent-cuu-tro`), NATS (báo điều phối, #67). Cùng tiến trình: bộ khởi chạy tự động `khoi_chay.py` (#67), bộ khởi chạy cảnh báo `canh_bao_khoi_chay.py` (#87) |
 | `cuu-tro-api` | `uvicorn cuu_tro_workflow.api:app --root-path /workflow` | Temporal (start/signal/query), Hasura qua gateway `/graphql` bằng JWT người dùng. Không mở cổng ra host. Cấp token kết nối Centrifugo (#68) |
-| `cuu-tro-thong-bao` | `python -m cuu_tro_workflow.thong_bao_cau_noi` | Cầu nối thông báo realtime (#68): consumer JetStream `realtime-dieu-phoi`, `realtime-canh-bao` → HTTP API Centrifugo (mạng nội bộ) → kênh `dieu-phoi`. Không đọc CSDL |
+| `cuu-tro-thong-bao` | `python -m cuu_tro_workflow.thong_bao_cau_noi` | Cầu nối thông báo realtime (#68): consumer JetStream `realtime-dieu-phoi` (gồm thông báo cảnh báo trạm đo đã khử trùng lặp, #87) → HTTP API Centrifugo (mạng nội bộ) → kênh `dieu-phoi`. Không đọc CSDL |
 
 Cách backend gọi lõi và vì sao: `docs/architecture.md` mục 7.3.
 
@@ -433,7 +433,7 @@ flowchart LR
   st -->|"consumer bền ghi-csdl<br/>pull, ack thủ công"| cs["cuu-tro-cam-bien<br/>kiểm payload, so ngưỡng"]
   cs -->|"role cuu_tro_app, 1 transaction"| db[("sensor_readings<br/>sensors.last_*")]
   cs -->|"mức tăng lên canh_bao / nguy_hiem<br/>Nats-Msg-Id chống trùng"| cb[("Stream CUU_TRO_CANH_BAO<br/>cuu-tro.canh-bao.cam-bien.&lt;ma_tram&gt;")]
-  cb -.->|"tuần 4–5"| ag["agent cảnh báo<br/>Temporal → Telegram / Centrifugo"]
+  cb -->|"consumer canh-bao-temporal (#87)"| ag["workflow CanhBaoVuotNguong<br/>hộp thư / Telegram / web"]
   st -->|"consumer bền ban-sao-so (#85)"| bs["cuu-tro-ban-sao-so"] -->|"upsert NGSI-LD"| sc[("Scorpio (lõi)<br/>thực thể trạm đo")]
   db -->|"/graphql qua APISIX"| ui["dieu-phoi · cuu-ho · tinh-nguyen"]
 ```
@@ -517,4 +517,56 @@ query ChuoiDo { sensors { code last_value last_observed_at
   readings(order_by: {observed_at: desc}, limit: 10) { observed_at value level } } }
 ```
 
-Kiểm thử thật: `scripts/smoke-cam-bien.sh` (luồng ghi CSDL, cảnh báo) và `scripts/smoke-ngsi-ld.sh` (trận lũ mẫu, bản sao số NGSI-LD), cả hai trong `make smoke`.
+Kiểm thử thật: `scripts/smoke-cam-bien.sh` (luồng ghi CSDL, cảnh báo), `scripts/smoke-canh-bao.sh` (thông báo cảnh báo) và `scripts/smoke-ngsi-ld.sh` (trận lũ mẫu, bản sao số NGSI-LD), đều trong `make smoke`.
+
+## Cảnh báo vượt ngưỡng → Temporal → thông báo (`workflow/cuu_tro_workflow/canh_bao*.py`, #87)
+
+Mỗi **đợt** vượt ngưỡng của một trạm (từ lần đo đầu tiên trên ngưỡng tới khi về dưới ngưỡng) là một workflow Temporal `CanhBaoVuotNguong`, id `canh-bao-<mã trạm>-<đợt>`. Workflow báo **đúng 1 lần** cho mỗi bước:
+
+| Bước | Khi nào | Tiêu đề tin |
+|---|---|---|
+| `canh_bao` | mức lên cảnh báo lần đầu trong đợt | 🟠 CẢNH BÁO: &lt;trạm&gt; |
+| `nguy_hiem` | mức lên nguy hiểm (lần đầu trong đợt; có thể nhảy thẳng từ bình thường) | 🔴 NGUY HIỂM: &lt;trạm&gt; |
+| `ve_duoi_nguong` | lần đo mới nhất về bình thường; kết thúc đợt | 🟢 ĐÃ VỀ DƯỚI NGƯỠNG: &lt;trạm&gt; |
+
+Đo lại vẫn trên ngưỡng, xuống cảnh báo rồi lên nguy hiểm lại, sự kiện giao lại hay gửi bù đều không tạo tin mới. Ví dụ nội dung (văn bản thuần, gửi được cả Telegram):
+
+```
+🔴 NGUY HIỂM: Mực nước sông Hoài tại Hội An (giả lập) (QN-HA-01)
+Mực nước: 210 cm (ngưỡng nguy hiểm 200 cm)
+Cấp báo động: Nguy hiểm (trước: Cảnh báo)
+Thời điểm đo: 09:15 24/10/2026 (giờ Việt Nam)
+Bản đồ: https://www.openstreetmap.org/?mlat=15.87700&mlon=108.33300#map=14/15.87700/108.33300
+Web điều phối: http://localhost:9080/
+```
+
+Kênh gửi (`CANH_BAO_KENH` trong `.env`):
+
+- `gia-lap` (mặc định, dùng cho smoke và CI): tin ghi vào **hộp thư nội bộ** `cuu_tro.sensor_alert_notifications` (vai `dieu-phoi` đọc qua `/graphql`) và hiện trên nút **Thông báo** của web điều phối (Centrifugo). Không gửi ra ngoài.
+- `telegram`: như trên, cộng thêm gọi `sendMessage` của Telegram Bot API.
+
+Bật Telegram thật (cần token bot từ [@BotFather](https://t.me/BotFather) và id nhóm/kênh mà bot đã được thêm vào; **không** ghi token vào `.env` hay repo):
+
+```bash
+# 1. Đặt token + chat id vào OpenBao (chỗ trống đã được make up tạo theo openbao/secrets.conf)
+docker compose exec -e BAO_TOKEN="$(cat .data/openbao/root.token)" openbao   bao kv put -address=http://127.0.0.1:8200 secret/app/cuu-tro/telegram bot_token='<token>' chat_id='<chat id>'
+# 2. Chọn kênh rồi chạy lại (bao agent render lại token trong ≤ 5 phút; restart để nhận ngay)
+sed -i.bak 's/^CANH_BAO_KENH=.*/CANH_BAO_KENH=telegram/' .env && make up
+docker compose restart bao-agent-cuu-tro cuu-tro-worker
+docker compose logs cuu-tro-worker | grep "kênh telegram"
+make gia-lap-vuot-nguong    # thử: mỗi trạm một tin NGUY HIỂM; make gia-lap → tin ĐÃ VỀ DƯỚI NGƯỠNG
+```
+
+Token sai, bot bị chặn hay chat không có (Telegram trả 400/401/403/404): bước đó ghi `status = loi` kèm lý do trong hộp thư, không thử lại; các bước sau của đợt vẫn được báo. Lỗi mạng, 5xx, 429 (`retry_after`): Temporal thử lại 2 s → 60 s, tối đa 10 lần.
+
+```graphql
+query HopThu { sensor_alert_notifications(order_by: {id: desc}, limit: 20) {
+  sensor_code episode_at step status channel message detail sent_at } }
+```
+
+```bash
+# Xem workflow của các đợt
+docker compose exec temporal temporal workflow list --address temporal:7233 --query "WorkflowType = 'CanhBaoVuotNguong'"
+```
+
+Thiết kế và lý do: `docs/architecture.md` mục 6.3.

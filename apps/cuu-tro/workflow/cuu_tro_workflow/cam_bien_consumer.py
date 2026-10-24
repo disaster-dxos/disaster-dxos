@@ -6,7 +6,8 @@ Sau đó kéo bản tin từ consumer bền "ghi-csdl" (stream CUU_TRO_CAM_BIEN)
   1. phân tích + kiểm (cam_bien.phan_tich); sai định dạng/không khớp trạm → bỏ hẳn (term);
   2. trong MỘT transaction (role DB cuu_tro_app): thêm dòng sensor_readings (trùng trạm + thời điểm
      thì bỏ qua), cập nhật sensors.last_* nếu là lần đo mới nhất; nếu mức tăng lên canh_bao/nguy_hiem
-     thì phát sự kiện lên cuu-tro.canh-bao.cam-bien.<ma_tram> (JetStream, Nats-Msg-Id chống trùng)
+     thì phát sự kiện lên cuu-tro.canh-bao.cam-bien.<ma_tram> (JetStream, Nats-Msg-Id chống trùng);
+     mức về binh_thuong sau một đợt thì phát sự kiện ve_duoi_nguong (#87); mỗi sự kiện có mã đợt "dot"
      TRƯỚC khi commit; lỗi bất kỳ → rollback, nak để JetStream giao lại;
   3. ack.
 Xử lý lại cùng một bản tin cho cùng kết quả (mức trước lấy từ lần đo liền trước trong chuỗi đo).
@@ -35,6 +36,15 @@ from . import cam_bien, config
 HEALTH_FILE = os.environ.get("HEALTH_FILE", "/tmp/cam-bien-alive")
 LO_KEO = 50
 CONSUMER_GHI = "ghi-csdl"
+# Đầu đợt (#87): lần đo trên ngưỡng sớm nhất sau lần đo bình thường gần nhất trước $2 (cùng transaction,
+# dòng vừa ghi đã thấy). Dùng cho cả sự kiện vượt ngưỡng (dòng hiện tại trên ngưỡng) lẫn về dưới ngưỡng.
+SQL_DAU_DOT = """
+SELECT min(observed_at) FROM cuu_tro.sensor_readings
+ WHERE sensor_id = $1 AND observed_at <= $2 AND level <> 'binh_thuong'
+   AND observed_at > coalesce((SELECT max(observed_at) FROM cuu_tro.sensor_readings
+                                WHERE sensor_id = $1 AND observed_at < $2 AND level = 'binh_thuong'),
+                              '-infinity'::timestamptz)
+"""
 log = logging.getLogger("cuu-tro-cam-bien")
 
 
@@ -151,14 +161,23 @@ class XuLy:
                 "UPDATE cuu_tro.sensors SET last_value = $2, last_observed_at = $3 WHERE id = $1",
                 tram["id"], bt.gia_tri, bt.thoi_diem,
             )
+        su_kien = None
         if cam_bien.can_phat_canh_bao(muc_truoc, muc, la_moi_nhat):
-            su_kien = cam_bien.su_kien_canh_bao(bt, tram["name"], muc_truoc, muc, nguong_cb, nguong_nh)
+            dot = await con.fetchval(SQL_DAU_DOT, tram["id"], bt.thoi_diem)
+            su_kien = cam_bien.su_kien_canh_bao(bt, tram["name"], muc_truoc, muc, nguong_cb, nguong_nh, dot)
+        elif cam_bien.can_phat_ve_duoi_nguong(muc_truoc, muc, la_moi_nhat):
+            # Đợt chỉ có trong chuỗi đo; mức trước lấy từ sensors.last_* (vd seed) thì không có đợt để đóng
+            dot = await con.fetchval(SQL_DAU_DOT, tram["id"], bt.thoi_diem)
+            if dot is not None:
+                su_kien = cam_bien.su_kien_ve_duoi_nguong(bt, tram["name"], muc_truoc, nguong_cb, dot)
+        if su_kien is not None:
             await self.js.publish(
                 cam_bien.subject_canh_bao(bt.ma_tram),
                 json.dumps(su_kien, ensure_ascii=False).encode(),
                 headers={"Nats-Msg-Id": cam_bien.ma_su_kien(bt, muc)},
             )
-            log.info("cảnh báo %s: %s → %s (%s %s)", bt.ma_tram, muc_truoc, muc, bt.gia_tri, bt.don_vi)
+            log.info("cảnh báo %s: %s → %s (%s %s), đợt %s", bt.ma_tram, muc_truoc, muc, bt.gia_tri, bt.don_vi,
+                     su_kien["dot"])
         return "ghi" if moi is not None else "trung"
 
 
