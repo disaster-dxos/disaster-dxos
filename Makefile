@@ -4,6 +4,20 @@
 # Dùng .env nếu có, nếu không thì .env.example (để CI/máy sạch vẫn kiểm được compose)
 ENV_FILE := $(if $(wildcard .env),.env,.env.example)
 
+# Scorpio theo kiến trúc máy (#99): bản native (mặc định trong compose) cần AVX/AVX2, Rosetta trong VM của
+# Mac Apple Silicon không có → trên arm64 dùng bản JVM cùng phiên bản, nhiều bộ nhớ hơn. Biến đặt trong
+# .env hoặc môi trường thì giữ nguyên (ghi đè được); make export xuống mọi lệnh docker compose và smoke.
+ifneq ($(filter arm64 aarch64,$(shell uname -m)),)
+ifeq ($(shell grep -Es '^SCORPIO_IMAGE=' $(ENV_FILE)),)
+SCORPIO_IMAGE ?= scorpiobroker/all-in-one-runner:java-6.0.2
+export SCORPIO_IMAGE
+endif
+ifeq ($(shell grep -Es '^SCORPIO_MEM_LIMIT=' $(ENV_FILE)),)
+SCORPIO_MEM_LIMIT ?= 1g
+export SCORPIO_MEM_LIMIT
+endif
+endif
+
 up:            ## Chạy lõi headless (profile core) + backend ứng dụng apps/$$DXOS_APP (profile app, #29): OpenBao trước, init/unseal, rồi các dịch vụ còn lại
 	docker compose --profile core up -d openbao
 	bash scripts/openbao-init.sh

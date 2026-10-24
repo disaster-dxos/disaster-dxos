@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 # Kiểm thử bản sao số trạm đo NGSI-LD (#85) và trận lũ mẫu (#84), chạy THẬT từ bộ giả lập MQTT tới Scorpio:
-# (1) Scorpio của lõi: không mở cổng ra host, CSDL riêng thuộc role scorpio (không superuser) có PostGIS,
-#     không có MongoDB; consumer ban-sao-so trên stream CUU_TRO_CAM_BIEN cạnh ghi-csdl;
+# (1) Scorpio của lõi: image gốc đúng kiến trúc máy (native trên amd64, JVM trên arm64, #99), không mở cổng
+#     ra host, CSDL riêng thuộc role scorpio (không superuser) có PostGIS, không có MongoDB; consumer ban-sao-so trên stream CUU_TRO_CAM_BIEN cạnh ghi-csdl;
 # (2) gateway /ngsi-ld/v1/*: không token → 401; có token → 200 (tên ngắn theo @context do gateway đặt);
 #     ghi qua gateway, jsonldContexts, subscriptions → 403; Link/NGSILD-Tenant của client bị thay/bỏ;
 #     WAF chặn XSS trong tham số q;
@@ -101,6 +101,10 @@ TOK=$(get_token dieuphoi01)
 
 # ---------- (1) Scorpio + consumer ----------
 check "Scorpio healthy" healthy "$(docker compose ps --format '{{.Health}}' scorpio)"
+# Image theo kiến trúc máy (#99): amd64 → bản native, arm64 → bản JVM (make export SCORPIO_IMAGE), ghim phiên bản
+case "$(uname -m)" in arm64 | aarch64) BAN_SCORPIO=java ;; *) BAN_SCORPIO=linux-amd64 ;; esac
+check "Scorpio dùng image gốc đúng kiến trúc máy, ghim phiên bản" True \
+  "$(i=$(docker inspect -f '{{.Config.Image}}' "$(docker compose ps -q scorpio)"); [[ $i == "${SCORPIO_IMAGE:-scorpiobroker/all-in-one-runner:$BAN_SCORPIO-}"* && $i =~ :[a-z0-9-]+-[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo True || echo "$i")"
 # Image khai báo EXPOSE 9090: "compose port" in ":0" dù không publish, nên đọc thẳng cổng đã publish
 check "Scorpio không mở cổng ra host" "" "$(docker port "$(docker compose ps -q scorpio)" 2>/dev/null || true)"
 check "CSDL ${SCORPIO_DB:-scorpio} thuộc role scorpio, có PostGIS, có bảng entity" "scorpio true true" \

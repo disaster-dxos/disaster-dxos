@@ -146,7 +146,7 @@ Theo [`docs/PLAN.md`](docs/PLAN.md):
 
 | Mục | Tối thiểu |
 |---|---|
-| Hệ điều hành | Linux, macOS (Intel hoặc Apple Silicon). Windows qua WSL 2 về lý thuyết chạy được, đội chưa kiểm thử |
+| Hệ điều hành | Linux, macOS (Intel hoặc Apple Silicon). Windows qua WSL 2 về lý thuyết chạy được, đội chưa kiểm thử. Apple Silicon (Docker Desktop hoặc Colima): `make` tự dùng Scorpio bản JVM, vì bản native cần AVX2 mà Rosetta không có (#99); chạy `docker compose up` trực tiếp thì đặt `SCORPIO_IMAGE` trong `.env` · *Apple Silicon: `make` picks the JVM build of Scorpio automatically (the native build needs AVX2, which Rosetta lacks)* |
 | Docker | Docker Engine 24+ hoặc Docker Desktop, **Docker Compose 2.20+** (cần `include`) |
 | RAM cấp cho Docker | 6 GB trở lên. Đo thật (v0.3.0, 24/10/2026): cả hệ thống khoảng 2,3 GB sau khi khởi động, khoảng 3,0 GB sau `make smoke` (gồm Grafana, profile `bi`) |
 | Ổ trống | 15 GB trở lên. Đo thật (v0.3.0): image khoảng 8,5 GB (Grafana 1,4 GB, chỉ khi bật profile `bi`), build cache khoảng 0,8 GB; lúc chạy `make smoke` trên volume trống ổ giảm thêm tới khoảng 10 GB. Chạy xong: `make down` rồi `docker image prune -a` |
