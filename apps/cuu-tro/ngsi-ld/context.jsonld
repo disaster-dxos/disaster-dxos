@@ -1,0 +1,16 @@
+{
+  "@context": {
+    "dxos": "https://github.com/disaster-dxos/disaster-dxos/blob/main/apps/cuu-tro/ngsi-ld/README.md#",
+    "WaterLevelStation": "dxos:WaterLevelStation",
+    "RainGauge": "dxos:RainGauge",
+    "WindStation": "dxos:WindStation",
+    "name": "https://schema.org/name",
+    "stationCode": "dxos:stationCode",
+    "waterLevel": "dxos:waterLevel",
+    "precipitation": "dxos:precipitation",
+    "windSpeed": "dxos:windSpeed",
+    "alertLevel": "dxos:alertLevel",
+    "warningThreshold": "dxos:warningThreshold",
+    "dangerThreshold": "dxos:dangerThreshold"
+  }
+}

@@ -50,6 +50,12 @@ template {
   contents    = "{{ with secret \"secret/data/core/temporal-db\" }}{{ .Data.data.password }}{{ end }}"
 }
 
+template {
+  destination = "/out/postgres/SCORPIO_DB_PASSWORD"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/core/scorpio-db\" }}{{ .Data.data.password }}{{ end }}"
+}
+
 # Mật khẩu role <schema>_app của ứng dụng đang chọn (#29); DXOS_APP là biến môi trường của agent
 template {
   destination = "/out/postgres/APP_DB_PASSWORD"

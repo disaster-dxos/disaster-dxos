@@ -1,5 +1,5 @@
 {
-  "_mo_ta": "Stream + consumer NATS JetStream của apps/cuu-tro (#30). cuu-tro-cam-bien tạo/cập nhật stream + consumer khi khởi động (cuu_tro_workflow/cam_bien_consumer.py); cuu-tro-worker tạo/cập nhật stream (báo điều phối, #67). cuu-tro-thong-bao (#68) khai báo các consumer realtime-* (deliver_policy new: lần đầu không đẩy lại sự kiện cũ) và đẩy sự kiện lên Centrifugo. Thời gian tính bằng giây, dung lượng bằng byte. Tổng max_bytes phải nhỏ hơn NATS_JS_MAX_FILE của lõi.",
+  "_mo_ta": "Stream + consumer NATS JetStream của apps/cuu-tro (#30). cuu-tro-cam-bien tạo/cập nhật stream + consumer ghi-csdl khi khởi động (cuu_tro_workflow/cam_bien_consumer.py); cuu-tro-ban-sao-so (#85) khai báo consumer ban-sao-so (cuu_tro_workflow/ban_sao_so.py); cuu-tro-worker tạo/cập nhật stream (báo điều phối, #67). cuu-tro-thong-bao (#68) khai báo các consumer realtime-* (deliver_policy new: lần đầu không đẩy lại sự kiện cũ) và đẩy sự kiện lên Centrifugo. Thời gian tính bằng giây, dung lượng bằng byte. Tổng max_bytes phải nhỏ hơn NATS_JS_MAX_FILE của lõi.",
   "streams": [
     {
       "name": "CUU_TRO_CAM_BIEN",
@@ -46,6 +46,15 @@
       "filter_subject": "cuu-tro.cam-bien.>",
       "ack_wait": 30,
       "max_deliver": 5,
+      "max_ack_pending": 200
+    },
+    {
+      "stream": "CUU_TRO_CAM_BIEN",
+      "durable_name": "ban-sao-so",
+      "description": "Bản sao số trạm đo (#85): cập nhật thực thể NGSI-LD của trạm trên Scorpio. Scorpio chưa sẵn sàng thì giao lại có hẹn giờ tăng dần (tối đa 60 giây)",
+      "filter_subject": "cuu-tro.cam-bien.>",
+      "ack_wait": 30,
+      "max_deliver": 20,
       "max_ack_pending": 200
     },
     {

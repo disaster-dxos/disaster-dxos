@@ -73,7 +73,21 @@ INSERT INTO sensors (id, code, name, kind, unit, location, warning_threshold, da
   ('f0000000-0000-4000-8000-000000000002', 'AL-MN-02', 'Mực nước bến đò thôn 2 (giả định)', 'muc_nuoc', 'cm',
    ST_MakePoint(108.1160, 15.8440)::geography, 300, 400, 210, now(), 'urn:ngsi-ld:WaterLevelStation:AL-MN-02'),
   ('f0000000-0000-4000-8000-000000000003', 'AL-LM-01', 'Lượng mưa UBND xã (giả định)', 'luong_mua', 'mm',
-   ST_MakePoint(108.0995, 15.8540)::geography, 100, 200, NULL, NULL, 'urn:ngsi-ld:RainGauge:AL-LM-01')
+   ST_MakePoint(108.0995, 15.8540)::geography, 100, 200, NULL, NULL, 'urn:ngsi-ld:RainGauge:AL-LM-01'),
+  -- Trạm của trận lũ mẫu (#84): địa danh và tọa độ (gần đúng) ở Quảng Nam, Đà Nẵng là thật; ngưỡng là
+  -- giả định, không phải cấp báo động chính thức. Khớp cuu_tro_workflow/du_lieu/tran_lu_mau.json (pytest kiểm).
+  ('f0000000-0000-4000-8000-000000000004', 'QN-AN-01', 'Mực nước sông Vu Gia tại Ái Nghĩa, Đại Lộc (giả lập)', 'muc_nuoc', 'cm',
+   ST_MakePoint(108.1150, 15.8860)::geography, 900, 1000, NULL, NULL, 'urn:ngsi-ld:WaterLevelStation:QN-AN-01'),
+  ('f0000000-0000-4000-8000-000000000005', 'QN-GT-01', 'Mực nước sông Thu Bồn tại Giao Thủy, Đại Lộc (giả lập)', 'muc_nuoc', 'cm',
+   ST_MakePoint(108.1260, 15.8330)::geography, 750, 850, NULL, NULL, 'urn:ngsi-ld:WaterLevelStation:QN-GT-01'),
+  ('f0000000-0000-4000-8000-000000000006', 'QN-CL-01', 'Mực nước sông Thu Bồn tại Câu Lâu, Duy Xuyên (giả lập)', 'muc_nuoc', 'cm',
+   ST_MakePoint(108.2780, 15.8660)::geography, 300, 400, NULL, NULL, 'urn:ngsi-ld:WaterLevelStation:QN-CL-01'),
+  ('f0000000-0000-4000-8000-000000000007', 'QN-HA-01', 'Mực nước sông Hoài tại Hội An (giả lập)', 'muc_nuoc', 'cm',
+   ST_MakePoint(108.3330, 15.8770)::geography, 150, 200, NULL, NULL, 'urn:ngsi-ld:WaterLevelStation:QN-HA-01'),
+  ('f0000000-0000-4000-8000-000000000008', 'DN-CLE-01', 'Mực nước sông Cẩm Lệ tại cầu Cẩm Lệ, Đà Nẵng (giả lập)', 'muc_nuoc', 'cm',
+   ST_MakePoint(108.2050, 16.0160)::geography, 180, 250, NULL, NULL, 'urn:ngsi-ld:WaterLevelStation:DN-CLE-01'),
+  ('f0000000-0000-4000-8000-000000000009', 'QN-LM-01', 'Lượng mưa 1 giờ tại Đại Lộc (giả lập)', 'luong_mua', 'mm',
+   ST_MakePoint(108.0860, 15.8780)::geography, 30, 60, NULL, NULL, 'urn:ngsi-ld:RainGauge:QN-LM-01')
 ON CONFLICT (id) DO NOTHING;
 
 -- Thành viên đội (#26): user mẫu cuuho01 thuộc "Đội ca nô Biên phòng". user_id là "sub" Keycloak,

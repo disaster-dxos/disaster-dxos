@@ -422,7 +422,7 @@ Kết quả `ĐÃ XÁC MINH` (mã 0) hoặc `KHÔNG KHỚP` kèm lý do (mã 1).
 
 Kiểm thử: `tests/test_cuu_tro_so_cai.py` (14 test: vector JSON chuẩn tắc chung với Go, inclusion proof mọi kích thước cây 1–17, chữ ký checkpoint, endpoint với CSDL + sổ cái giả, sửa CSDL → không khớp, sổ cái tắt → ghi lại); `db/tests/0006_so_cai_phieu_kho.sql` (16 ca quyền); `scripts/smoke-ledger.sh` (47 ca qua APISIX, trong `make smoke`).
 
-## Cảm biến mực nước (`workflow/cuu_tro_workflow/cam_bien*.py`, `gia_lap.py`, #30)
+## Cảm biến mực nước (`workflow/cuu_tro_workflow/cam_bien*.py`, `gia_lap.py`, #30, #84)
 
 Luồng IT/OT của ứng dụng: thiết bị (ở đây là bộ giả lập) gửi MQTT vào NATS của lõi, consumer của ứng dụng ghi chuỗi đo vào PostgreSQL và phát cảnh báo khi nước vượt ngưỡng. Lõi chỉ cung cấp NATS có xác thực (user `cuu-tro-thiet-bi` chỉ gửi được vào `cuu-tro.>`, chỉ qua MQTT), không biết topic nào. Vì sao làm vậy và ánh xạ nguyên lý B2: `docs/architecture.md` mục 7.4.
 
@@ -434,6 +434,7 @@ flowchart LR
   cs -->|"role cuu_tro_app, 1 transaction"| db[("sensor_readings<br/>sensors.last_*")]
   cs -->|"mức tăng lên canh_bao / nguy_hiem<br/>Nats-Msg-Id chống trùng"| cb[("Stream CUU_TRO_CANH_BAO<br/>cuu-tro.canh-bao.cam-bien.&lt;ma_tram&gt;")]
   cb -.->|"tuần 4–5"| ag["agent cảnh báo<br/>Temporal → Telegram / Centrifugo"]
+  st -->|"consumer bền ban-sao-so (#85)"| bs["cuu-tro-ban-sao-so"] -->|"upsert NGSI-LD"| sc[("Scorpio (lõi)<br/>thực thể trạm đo")]
   db -->|"/graphql qua APISIX"| ui["dieu-phoi · cuu-ho · tinh-nguyen"]
 ```
 
@@ -456,11 +457,43 @@ Stream và consumer khai báo ở `nats/streams.json`; `cuu-tro-cam-bien` tạo 
 
 ```bash
 make up                     # lõi + app: NATS có xác thực, consumer cuu-tro-cam-bien
-make gia-lap                # một bản tin bình thường cho mỗi trạm mẫu (AL-MN-01, AL-MN-02, AL-LM-01)
+make gia-lap                # một bản tin bình thường cho mỗi trạm mẫu (9 trạm, xem bảng dưới)
 make gia-lap-vuot-nguong    # một bản tin trên ngưỡng nguy hiểm cho mỗi trạm → sự kiện cảnh báo
+make gia-lap-tran-lu        # phát lại trận lũ mẫu 48 giờ của 9 trạm trong vài giây (#84)
+# Trận lũ chạy theo thời gian thực "tua nhanh": mỗi 10 giây một giờ của trận lũ, bắt đầu từ giờ 6
+GIA_LAP_KICH_BAN=tran-lu docker compose --profile core --profile app --profile gia-lap run --rm --no-deps \
+  cuu-tro-gia-lap python -m cuu_tro_workflow.gia_lap --lien-tuc --kich-ban tran-lu --buoc-dau 6
 # Chạy liên tục (mỗi 10 giây; kịch bản vuot-nguong: nước lên dần trong 6 chu kỳ rồi giữ)
 GIA_LAP_KICH_BAN=vuot-nguong docker compose --profile core --profile app --profile gia-lap up -d cuu-tro-gia-lap
 docker compose --profile core --profile app run --rm --no-deps cuu-tro-gia-lap python -m cuu_tro_workflow.gia_lap --help
+```
+
+### Trạm mẫu và trận lũ mẫu (#84)
+
+Trạm và chuỗi giá trị nằm trong [`workflow/cuu_tro_workflow/du_lieu/tran_lu_mau.json`](workflow/cuu_tro_workflow/du_lieu/tran_lu_mau.json). **Dữ liệu giả lập**: tên địa danh và tọa độ (gần đúng) ở Quảng Nam, Đà Nẵng là thật; mực nền, ngưỡng và giá trị là giả định, không phải cấp báo động chính thức hay số đo thật. Ngưỡng trong tệp khớp seed `db/seed/0001_xa_mau.sql` (pytest kiểm).
+
+| Mã | Trạm | Loại | Ngưỡng cảnh báo / nguy hiểm | Đỉnh trận lũ mẫu (giờ) |
+|---|---|---|---|---|
+| `AL-MN-01` | Cầu An Lạc (xã mẫu, giả định) | mực nước | 350 / 450 cm | 470 cm (giờ 20) |
+| `AL-MN-02` | Bến đò thôn 2 (xã mẫu, giả định) | mực nước | 300 / 400 cm | 380 cm (giờ 21) |
+| `AL-LM-01` | UBND xã (xã mẫu, giả định) | lượng mưa | 100 / 200 mm | 120 mm (giờ 13) |
+| `QN-AN-01` | Sông Vu Gia tại Ái Nghĩa, Đại Lộc | mực nước | 900 / 1000 cm | 1080 cm (giờ 19) |
+| `QN-GT-01` | Sông Thu Bồn tại Giao Thủy, Đại Lộc | mực nước | 750 / 850 cm | 920 cm (giờ 20) |
+| `QN-CL-01` | Sông Thu Bồn tại Câu Lâu, Duy Xuyên | mực nước | 300 / 400 cm | 450 cm (giờ 22) |
+| `QN-HA-01` | Sông Hoài tại Hội An | mực nước | 150 / 200 cm | 230 cm (giờ 24) |
+| `DN-CLE-01` | Sông Cẩm Lệ tại cầu Cẩm Lệ, Đà Nẵng | mực nước | 180 / 250 cm | 230 cm (giờ 21, chỉ tới mức cảnh báo) |
+| `QN-LM-01` | Lượng mưa 1 giờ tại Đại Lộc | lượng mưa | 30 / 60 mm | 75 mm (giờ 12) |
+
+Trận lũ mẫu dài 48 giờ, mỗi bước một giờ: mưa đạt đỉnh trước, trạm thượng nguồn (Ái Nghĩa, Giao Thủy) lên đỉnh trước trạm hạ lưu (Câu Lâu, Hội An), sau đó rút dần. Kịch bản `tran-lu`: chế độ liên tục gửi giờ kế tiếp mỗi chu kỳ (`--buoc-dau` chọn giờ bắt đầu, `--so-lan` số chu kỳ rồi dừng, hết chuỗi thì giữ giá trị cuối); `--mot-lan` gửi đúng giờ `--buoc-dau`; `--phat-lai` gửi ngay cả chuỗi với thời điểm lùi về quá khứ mỗi bước một giờ, bước cuối là bây giờ (lịch sử trận lũ trong `sensor_readings`, bản sao số ở giá trị giờ cuối). Nhiễu của kịch bản `binh-thuong` lấy từ `--seed` (hoặc `GIA_LAP_SEED`): cùng seed cho cùng chuỗi.
+
+### Bản sao số NGSI-LD (#85)
+
+Consumer bền thứ hai `ban-sao-so` trên cùng stream: dịch vụ `cuu-tro-ban-sao-so` cập nhật thực thể NGSI-LD của trạm (`WaterLevelStation`, `RainGauge`) trên Scorpio của lõi, giá trị mới nhất kèm `observedAt`, mức cảnh báo, ngưỡng, tọa độ. Bản tin cũ hơn lần đo đang có không ghi đè; Scorpio lỗi thì giao lại có hẹn giờ. Mô hình, `@context` và ví dụ truy vấn: [`ngsi-ld/README.md`](ngsi-ld/README.md). Đọc qua gateway (Bearer JWT):
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" -H 'Accept: application/geo+json' \
+  "http://localhost:9080/ngsi-ld/v1/entities?type=WaterLevelStation&options=keyValues"
+docker compose logs -f cuu-tro-ban-sao-so  # "đã cập nhật urn:ngsi-ld:WaterLevelStation:QN-CL-01: 412.50 cm lúc …"
 ```
 
 Bộ giả lập chạy trong container chỉ có mật khẩu thiết bị (`bao-agent-cuu-tro` render vào volume tmpfs riêng `secrets-cuu-tro-thiet-bi`). Chạy từ máy host thì dùng cổng `127.0.0.1:${NATS_MQTT_PORT}` (thiết bị trong LAN: `NATS_MQTT_BIND=0.0.0.0`, chưa TLS):
@@ -484,4 +517,4 @@ query ChuoiDo { sensors { code last_value last_observed_at
   readings(order_by: {observed_at: desc}, limit: 10) { observed_at value level } } }
 ```
 
-Kiểm thử thật: `scripts/smoke-cam-bien.sh` (trong `make smoke`). NGSI-LD (Scorpio, bản sao số trạm đo) nối vào luồng này ở tuần 4: consumer thứ hai trên cùng stream cập nhật thực thể `sensors.ngsi_ld_id`, không đổi thiết bị hay topic.
+Kiểm thử thật: `scripts/smoke-cam-bien.sh` (luồng ghi CSDL, cảnh báo) và `scripts/smoke-ngsi-ld.sh` (trận lũ mẫu, bản sao số NGSI-LD), cả hai trong `make smoke`.

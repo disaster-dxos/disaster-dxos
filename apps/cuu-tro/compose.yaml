@@ -17,6 +17,9 @@
 #   - Thông báo realtime (#68): Centrifugo của lõi kiểm token HS256 iss "cuu-tro-api"; cuu-tro-api cấp
 #     token (GET /workflow/realtime/token), cuu-tro-thong-bao đẩy sự kiện NATS lên kênh dieu-phoi;
 #     bí mật secret/app/cuu-tro/realtime. Web mở WebSocket qua APISIX /realtime/websocket.
+#   - Bản sao số NGSI-LD (#85): cuu-tro-ban-sao-so ghi thực thể trạm đo lên Scorpio của lõi (scorpio:9090);
+#     cuu-tro-api phục vụ @context (apps/cuu-tro/ngsi-ld/context.jsonld) cho route APISIX /ngsi-ld/v1/*
+#     (GW_NGSI_LD_CONTEXT_URL). Người dùng đọc thực thể qua gateway, không ghi được.
 # Không mở cổng nào ra máy host: client gọi API và mở web qua gateway, worker chỉ kéo việc từ Temporal,
 # consumer cảm biến chỉ kéo bản tin từ NATS. Thiết bị gửi MQTT vào cổng của lõi (nats:1883).
 
@@ -165,8 +168,11 @@ services:
       LEDGER_VERIFIER_KEY: ${LEDGER_VERIFIER_KEY:-}
       # Hạn token kết nối Centrifugo (#68), 30-3600 giây; web tự xin token mới trước khi hết hạn
       REALTIME_TOKEN_HAN_GIAY: ${REALTIME_TOKEN_HAN_GIAY:-300}
+      # Bản sao số (#85): phục vụ @context NGSI-LD ở /ngsi-ld/context.jsonld cho Scorpio tải (mạng nội bộ)
+      NGSI_LD_CONTEXT_FILE: /app/ngsi-ld/context.jsonld
     volumes:
       - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - ./apps/cuu-tro/ngsi-ld/context.jsonld:/app/ngsi-ld/context.jsonld:ro
       - secrets-cuu-tro-api:/run/secrets/dxos:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
@@ -210,6 +216,47 @@ services:
       retries: 8
       start_period: 20s
     mem_limit: 128m
+
+  cuu-tro-ban-sao-so:
+    # Bản sao số trạm đo (#85): consumer bền thứ hai "ban-sao-so" trên stream CUU_TRO_CAM_BIEN (độc lập với
+    # ghi-csdl), upsert thực thể NGSI-LD của trạm lên Scorpio của lõi (scorpio:9090, mạng nội bộ); bản tin
+    # cũ hơn lần đo đang có thì bỏ qua, Scorpio lỗi thì giao lại có hẹn giờ. Đọc tên, tọa độ, ngưỡng của
+    # trạm bằng role cuu_tro_app (migration 0009, chỉ đọc). @context: apps/cuu-tro/ngsi-ld/context.jsonld.
+    image: disaster-dxos/cuu-tro-workflow:0.2.0
+    pull_policy: never
+    restart: unless-stopped
+    profiles: [app]
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos"]
+    command: ["python", "-m", "cuu_tro_workflow.ban_sao_so"]
+    depends_on:
+      nats:
+        condition: service_healthy
+      scorpio:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      bao-agent-cuu-tro:
+        condition: service_healthy
+      # Stream CUU_TRO_CAM_BIEN do cuu-tro-cam-bien khai báo trước (consumer này cũng khai báo nếu chưa có)
+      cuu-tro-cam-bien:
+        condition: service_started
+    environment:
+      SECRETS_REQUIRED: APP_DB_URL NATS_URL
+      NATS_STREAMS_FILE: /app/nats/streams.json
+      NGSI_LD_URL: http://scorpio:9090
+      NGSI_LD_CONTEXT_FILE: /app/ngsi-ld/context.jsonld
+    volumes:
+      - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - ./apps/cuu-tro/nats/streams.json:/app/nats/streams.json:ro
+      - ./apps/cuu-tro/ngsi-ld/context.jsonld:/app/ngsi-ld/context.jsonld:ro
+      - secrets-cuu-tro:/run/secrets/dxos:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,sys,time; sys.exit(time.time() - os.path.getmtime('/tmp/ban-sao-so-alive') > 30)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+    mem_limit: 96m
 
   cuu-tro-thong-bao:
     # Cầu nối thông báo realtime (#68): kéo từ consumer bền realtime-* (stream CUU_TRO_DIEU_PHOI:
