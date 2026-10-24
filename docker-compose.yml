@@ -718,11 +718,13 @@ services:
     # Scorpio tự tạo bảng bằng Flyway). KHÔNG MongoDB. Mật khẩu (DBPASS) từ OpenBao qua bao-agent-scorpio.
     # Scorpio không có xác thực: không mở cổng ra host; backend ứng dụng ghi trong mạng nội bộ
     # (scorpio:9090), người dùng chỉ đọc qua APISIX /ngsi-ld/v1/* (JWT, WAF, chỉ GET). Image chỉ có amd64:
-    # Mac Apple Silicon chạy giả lập như postgis (SCORPIO_PLATFORM).
-    image: scorpiobroker/all-in-one-runner:linux-amd64-6.0.2
+    # Mac Apple Silicon chạy giả lập như postgis (SCORPIO_PLATFORM). Bản native cần AVX/AVX2 mà Rosetta trong
+    # VM không có (#99): trên arm64 Makefile đặt SCORPIO_IMAGE = bản JVM cùng phiên bản, SCORPIO_MEM_LIMIT = 1g;
+    # core/scorpio/chay.sh chạy đúng lệnh của từng bản. Ghi đè được bằng .env.
+    image: ${SCORPIO_IMAGE:-scorpiobroker/all-in-one-runner:linux-amd64-6.0.2}
     platform: ${SCORPIO_PLATFORM:-linux/amd64}
     profiles: [core]
-    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos", "./application", "-Dquarkus.http.host=0.0.0.0"]
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos", "bash", "/opt/dxos/scorpio-chay.sh"]
     depends_on:
       postgres-roles:
         condition: service_completed_successfully
@@ -738,12 +740,16 @@ services:
       # scorpio khi ghi dồn (Scorpio báo "too many connections" bằng HTTP 400). Hết kết nối thì request xếp hàng.
       QUARKUS_DATASOURCE_REACTIVE_MAX_SIZE: ${SCORPIO_DB_POOL:-8}
       QUARKUS_DATASOURCE_JDBC_MAX_SIZE: "2"
+      # Chỉ bản JVM đọc (bản native bỏ qua): heap theo mem_limit, GC một luồng cho container nhỏ
+      JAVA_TOOL_OPTIONS: ${SCORPIO_JAVA_OPTS:--XX:MaxRAMPercentage=60 -XX:+UseSerialGC}
     volumes:
       - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - ./core/scorpio/chay.sh:/opt/dxos/scorpio-chay.sh:ro
       - secrets-scorpio:/run/secrets/dxos:ro
     read_only: true
     tmpfs:
-      - /tmp:size=16m
+      # Bản JVM giải nén thư viện native (netty…) vào /tmp
+      - /tmp:size=64m
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     healthcheck:
@@ -759,7 +765,8 @@ services:
       timeout: 5s
       retries: 18
       start_period: 20s
-    mem_limit: 384m
+    # Bản native ~200 MB; bản JVM (arm64) cần ~1 GB, bị OOM ở 384m (#99)
+    mem_limit: ${SCORPIO_MEM_LIMIT:-384m}
 
   # ======================= profile: bi (#92) =======================
   bao-agent-grafana:
