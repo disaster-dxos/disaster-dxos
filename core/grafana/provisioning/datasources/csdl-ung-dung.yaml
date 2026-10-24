@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: Apache-2.0
+# Datasource của Grafana (#92), nạp từ tệp khi khởi động (không tạo bằng tay). PostgreSQL của lõi, đăng nhập
+# bằng role CHỈ ĐỌC <schema>_bi của ứng dụng đang chọn: phiên mặc định read-only, chỉ thấy cột không định danh
+# mà migration của ứng dụng cấp (apps/cuu-tro/db/migrations/0012). Mật khẩu đọc từ tệp do bao-agent-grafana
+# render (OpenBao secret/app/<DXOS_APP>/bi-db), không nằm trong tệp này hay biến môi trường.
+apiVersion: 1
+datasources:
+  - name: CSDL ứng dụng (chỉ đọc)
+    uid: dxos-app-pg
+    type: grafana-postgresql-datasource
+    access: proxy
+    url: ${BI_DB_HOST}
+    user: ${BI_DB_USER}
+    isDefault: true
+    editable: false
+    jsonData:
+      database: ${BI_DB_NAME}
+      sslmode: disable
+      postgresVersion: 1700
+      timescaledb: false
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+    secureJsonData:
+      password: $__file{/run/secrets/dxos/bi_db_password}

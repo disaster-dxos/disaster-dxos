@@ -594,3 +594,54 @@ docker compose exec temporal temporal workflow list --address temporal:7233 --qu
 ```
 
 Thiết kế và lý do: `docs/architecture.md` mục 6.3.
+
+## Lưu trữ lịch sử Parquet + DuckDB (`workflow/cuu_tro_workflow/luu_tru.py`, #91)
+
+Xuất dữ liệu cũ ra Parquet trên SeaweedFS (bucket `cuu-tro-lakehouse`), phân vùng theo tháng giờ Việt Nam `<bảng>/thang=YYYY-MM/du-lieu.parquet`, kèm `_manifest.json` (số dòng + SHA-256 từng tệp). Dữ liệu trong PostgreSQL không bị xóa. Đọc CSDL bằng role **chỉ đọc** `cuu_tro_bi` (migration `0012`), role này không có quyền với cột định danh. Thiết kế và lý do: `docs/architecture.md` mục 7.6.
+
+| Bảng | Nguồn | Cột |
+|---|---|---|
+| `su_co` | tin kêu cứu `da_cuu`/`dong` | `id, muc_khan, trang_thai, nguon, so_nguoi, vi_do, kinh_do` (làm tròn 2 chữ số ~1 km), `tao_luc, nhan_luc, dong_luc, phan_hoi_giay` (tiếp nhận → đội nhận), `so_lan_giao, doi_id` |
+| `so_do` | `sensor_readings` | `ma_tram, dai_luong, don_vi, thoi_diem, gia_tri, muc` |
+| `phan_phoi` | phiếu xuất kho (phân phát hàng) | `id, mat_hang, don_vi, so_luong, kho, diem_nhan, thoi_diem, chi_so_la` (chỉ số lá sổ cái) |
+| `khoan_tien` | bút toán tiền (#89) | `id, chieu, so_tien, don_vi, hang_muc, noi_dung, diem_nhan, thoi_diem, chi_so_la` |
+
+Không có SĐT, họ tên, mô tả tự do, địa chỉ, người lập phiếu, người nhận nhiệm vụ, ghi chú. Chạy lại cho cùng kết quả: tệp không đổi thì không ghi lại (`"ghi": []`).
+
+```bash
+make luu-tru                    # xuất mọi dòng trước đầu tháng này (dữ liệu "cũ")
+make luu-tru DEN=2026-12-01     # đổi mốc: xuất mọi dòng trước ngày này (giờ Việt Nam)
+make luu-tru-truy-van SQL="SELECT thang, count(*) AS so_tin, round(median(phan_hoi_giay)/60, 1) AS phan_hoi_phut FROM su_co GROUP BY 1 ORDER BY 1"
+make luu-tru-truy-van SQL="SELECT ma_tram, max(gia_tri) AS dinh FROM so_do WHERE dai_luong = 'muc_nuoc' GROUP BY 1 ORDER BY 2 DESC"
+make luu-tru-truy-van SQL="SELECT diem_nhan, mat_hang, sum(so_luong) AS da_phat, any_value(don_vi) AS don_vi FROM phan_phoi GROUP BY ALL ORDER BY 1"
+make luu-tru-truy-van SQL="SELECT thang, chieu, hang_muc, sum(so_tien) AS tong FROM khoan_tien GROUP BY ALL ORDER BY ALL"
+```
+
+Mỗi lần truy vấn, tệp được tải về thư mục tạm trong container và kiểm SHA-256 với manifest (tệp bị sửa → từ chối), rồi DuckDB tạo view `su_co`, `so_do`, `phan_phoi`, `khoan_tien` (thêm cột `thang` từ phân vùng). Thêm `--json` (gọi thẳng `python -m cuu_tro_workflow.luu_tru truy-van --json "<SQL>"`) để mỗi dòng in một object JSON.
+
+Kiểm thử: `tests/test_cuu_tro_luu_tru.py`, `db/tests/0012`, `scripts/smoke-luu-tru.sh` (trong `make smoke`).
+
+## Dashboard điều hành Grafana (`grafana/dashboards/dieu-hanh.json`, #92)
+
+Grafana OSS của lõi (profile `bi`, dịch vụ riêng, AGPL-3.0, image gốc) nạp dashboard **Điều hành cứu trợ** từ tệp JSON trong thư mục này. Datasource là PostgreSQL bằng role chỉ đọc `cuu_tro_bi`. Panel:
+
+| Panel | Dữ liệu |
+|---|---|
+| Tin kêu cứu đang mở | số tin chưa `da_cuu`/`dong` |
+| Thời gian phản hồi trung vị | tiếp nhận → đội nhận nhiệm vụ, tin tạo trong khoảng đang xem |
+| Quỹ cứu trợ | tổng thu, tổng chi, số dư (#89) |
+| Tin kêu cứu theo trạng thái | đếm theo trạng thái |
+| Mực nước các trạm | chuỗi đo theo thời gian |
+| Trạm đo: lần đo cuối và ngưỡng | mức hiện tại so với ngưỡng |
+| Tồn kho hàng cứu trợ | mặt hàng, tồn, kho |
+| Thu / chi theo ngày | bút toán tiền |
+| Cảnh báo vượt ngưỡng đã gửi | hộp thư thông báo (#87) |
+
+```bash
+make up-bi                      # sau make up; mở http://localhost:9080/grafana/  (tài khoản admin)
+curl -s -H "X-Vault-Token: $(cat .data/openbao/root.token)" http://127.0.0.1:8200/v1/secret/data/core/grafana \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["data"]["admin_password"])'   # mật khẩu admin
+```
+
+Sửa dashboard: sửa tệp JSON (Grafana nạp lại sau tối đa 60 giây); sửa trên giao diện không lưu được. Panel mới chỉ đọc được cột mà migration 0012 cấp cho `cuu_tro_bi`; cần cột khác thì thêm GRANT trong migration mới (không cấp cột định danh). Kiểm thử: `scripts/smoke-grafana.sh` (trong `make smoke`, tự bật profile `bi`).
+

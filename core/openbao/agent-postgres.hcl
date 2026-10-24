@@ -62,3 +62,10 @@ template {
   perms       = "0444"
   contents    = "{{ with secret (printf \"secret/data/app/%s/db\" (env \"DXOS_APP\")) }}{{ .Data.data.password }}{{ end }}"
 }
+
+# Role chỉ đọc <schema>_bi của ứng dụng (#91, #92): phân tích, dashboard Grafana, xuất Parquet
+template {
+  destination = "/out/postgres/APP_BI_DB_PASSWORD"
+  perms       = "0444"
+  contents    = "{{ with secret (printf \"secret/data/app/%s/bi-db\" (env \"DXOS_APP\")) }}{{ .Data.data.password }}{{ end }}"
+}

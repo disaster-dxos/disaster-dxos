@@ -22,6 +22,8 @@ dependencies = [
   "paho-mqtt==2.1.0",
   # Sổ cái (#28): kiểm chữ ký Ed25519 của checkpoint (đã có sẵn qua pyjwt[crypto], khai báo trực tiếp)
   "cryptography==50.0.2",
+  # Lưu trữ lịch sử (#91): ghi Parquet và truy vấn bằng DuckDB (MIT), không cần dịch vụ riêng
+  "duckdb==2.0.0",
 ]
 
 [dependency-groups]

@@ -28,7 +28,7 @@ Giấy phép kiểm tra ngày 17/10/2026 trên file LICENSE ở repo chính th�
 | Sổ cái `core/ledger` (nhúng Tessera, xem mục 2) | `disaster-dxos/ledger:0.1.0` build từ nguồn trong repo (`core/ledger/Dockerfile`): bước build `golang:1.26.10-alpine3.24` (BSD-3-Clause, không vào image chạy), image chạy `scratch` | Apache-2.0 | mã của đội | Dịch vụ của đội, ghi chỉ trong mạng nội bộ, đọc công khai qua APISIX `/ledger/*` (#28) | core | ✔ |
 | ClamAV | ghim ở tuần 2+ | GPL-2.0 | github.com/Cisco-Talos/clamav | Dịch vụ riêng | sec | ☐ |
 | Centrifugo **OSS** | `centrifugo/centrifugo:v6.9.7` | Apache-2.0 (LICENSE tại tag v6.9.7) | github.com/centrifugal/centrifugo | Dịch vụ riêng, image gốc không sửa, không dùng bản PRO. Chỉ đường WebSocket đi qua APISIX `/realtime/websocket`; HTTP API chỉ trong mạng nội bộ; khóa ký token + API key do bao agent render (#68) | core | ✔ |
-| Grafana | ghim ở tuần 4 | AGPL-3.0 | github.com/grafana/grafana | Dịch vụ riêng | bi | ☐ |
+| Grafana OSS | `grafana/grafana-oss:13.0.2` | AGPL-3.0 (LICENSE của repo) | github.com/grafana/grafana, hub.docker.com/r/grafana/grafana-oss | Dịch vụ riêng, image gốc không sửa mã (AGPL-3.0: không nhúng, không liên kết vào mã dự án). Cấu hình qua biến môi trường + tệp provisioning của dự án (`core/grafana/provisioning`, `apps/cuu-tro/grafana/dashboards`). Datasource PostgreSQL bằng role chỉ đọc `<schema>_bi`; mật khẩu admin và datasource qua OpenBao; không tải plugin/tin tức từ Internet; không mở cổng ra host, mở qua APISIX `/grafana/` (#92) | bi | ✔ |
 | Ollama | ghim ở tuần 5 | MIT | github.com/ollama/ollama | Dịch vụ riêng (hoặc chạy trên máy host) | ai | ☐ |
 | Qwen2.5 7B / 14B Instruct | tải qua Ollama, tuần 5 | Apache-2.0 | huggingface.co/Qwen | Trọng số model, không đưa vào repo | ai | ☐ |
 | Qdrant | ghim ở tuần 5 | Apache-2.0 | github.com/qdrant/qdrant | Dịch vụ riêng | ai | ☐ |
@@ -47,7 +47,7 @@ Giấy phép kiểm tra ngày 17/10/2026 trên file LICENSE ở repo chính th�
 | pytest | 8.3.4 | MIT | github.com/pytest-dev/pytest | Kiểm thử (nhóm `dev`, không có trong image) | ✔ |
 | nats-py | 2.16.0 | Apache-2.0 | github.com/nats-io/nats.py | Consumer JetStream `cuu-tro-cam-bien`: khai báo stream, kéo bản tin, phát cảnh báo (PyPI, #30) | ✔ |
 | Eclipse Paho MQTT Python (`paho-mqtt`) | 2.1.0 | EPL-2.0 OR BSD-3-Clause (dùng theo EDL-1.0 = BSD-3-Clause) | github.com/eclipse-paho/paho.mqtt.python | Bộ giả lập trạm cảm biến gửi MQTT (PyPI, #30) | ✔ |
-| DuckDB | tuần 4 | MIT | github.com/duckdb/duckdb | Truy vấn Parquet lịch sử (PyPI) | ☐ |
+| DuckDB | 2.0.0 | MIT | github.com/duckdb/duckdb | Ghi Parquet và truy vấn dữ liệu lịch sử trong `cuu-tro-luu-tru` (`cuu_tro_workflow/luu_tru.py`, PyPI, wheel có sẵn Parquet, không tải extension lúc chạy) (#91) | ✔ |
 | LangGraph | tuần 5 | MIT | github.com/langchain-ai/langgraph | Agent AI bóc tách tin kêu cứu (PyPI) | ☐ |
 | Vue 3 (qua Nuxt) | 3.5.44 | MIT | github.com/vuejs/core | Web điều phối `apps/cuu-tro/web` (npm, #59) | ✔ |
 | Nuxt 4 | 4.6.2 | MIT | github.com/nuxt/nuxt | Web điều phối, chạy chế độ SPA (`ssr: false`) (npm, #59; nâng từ 3.21.11 ở #77 vì Nuxt UI 4 cần Nuxt ≥ 4.1) | ✔ |

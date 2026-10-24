@@ -26,3 +26,8 @@ path "secret/data/core/scorpio-db" {
 path "secret/data/app/+/db" {
   capabilities = ["read"]
 }
+
+# Role chỉ đọc <schema>_bi của ứng dụng (secret/app/<DXOS_APP>/bi-db, #91, #92)
+path "secret/data/app/+/bi-db" {
+  capabilities = ["read"]
+}

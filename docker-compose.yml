@@ -12,7 +12,8 @@
 #          (chạy được trên laptop 16 GB, RAM đo được: docs/architecture.md mục 4)
 #   app    backend và web của ứng dụng Tầng 2 đang chọn (apps/${DXOS_APP}/compose.yaml, nạp bằng include
 #          bên dưới), vd cuu-tro-worker, cuu-tro-api (#29), cuu-tro-web (#64). make up bật cả core và app.
-#   ai, bi, sec   xem TODO cuối file
+#   bi     Grafana OSS (AGPL-3.0, dịch vụ riêng) dashboard điều hành (#92): make up-bi
+#   ai, sec   xem TODO cuối file
 #
 # Chạy: cp .env.example .env && make up   (make up tự khởi tạo/mở khóa OpenBao lần đầu)
 # Bí mật của dịch vụ lõi nằm trong OpenBao, không nằm trong .env (#14). bao agent render
@@ -130,7 +131,11 @@ services:
       # Chọn secret/app/<DXOS_APP>/db trong template APP_DB_PASSWORD (agent-postgres.hcl)
       DXOS_APP: ${DXOS_APP:-cuu-tro}
     healthcheck:
-      test: ["CMD-SHELL", "for f in POSTGRES_PASSWORD KEYCLOAK_DB_PASSWORD HASURA_DB_PASSWORD TEMPORAL_DB_PASSWORD SCORPIO_DB_PASSWORD APP_DB_PASSWORD; do test -s /out/postgres/$$f || exit 1; done"]
+      test:
+        - CMD-SHELL
+        - >-
+          for f in POSTGRES_PASSWORD KEYCLOAK_DB_PASSWORD HASURA_DB_PASSWORD TEMPORAL_DB_PASSWORD SCORPIO_DB_PASSWORD
+          APP_DB_PASSWORD APP_BI_DB_PASSWORD; do test -s /out/postgres/$$f || exit 1; done
       interval: 5s
       timeout: 3s
       retries: 24
@@ -227,7 +232,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      SECRETS_REQUIRED: POSTGRES_PASSWORD KEYCLOAK_DB_PASSWORD HASURA_DB_PASSWORD TEMPORAL_DB_PASSWORD SCORPIO_DB_PASSWORD APP_DB_PASSWORD
+      SECRETS_REQUIRED: POSTGRES_PASSWORD KEYCLOAK_DB_PASSWORD HASURA_DB_PASSWORD TEMPORAL_DB_PASSWORD SCORPIO_DB_PASSWORD APP_DB_PASSWORD APP_BI_DB_PASSWORD
       POSTGRES_USER: ${POSTGRES_USER:?Thiếu POSTGRES_USER trong .env}
       POSTGRES_DB: ${POSTGRES_DB:-disaster}
       KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER:-keycloak}
@@ -756,10 +761,80 @@ services:
       start_period: 20s
     mem_limit: 384m
 
+  # ======================= profile: bi (#92) =======================
+  bao-agent-grafana:
+    <<: *bao-agent
+    profiles: [bi]
+    command: ["agent", "-config=/openbao/config/agent.hcl"]
+    environment:
+      # Chọn secret/app/<DXOS_APP>/bi-db (role chỉ đọc của ứng dụng) trong agent-grafana.hcl
+      DXOS_APP: ${DXOS_APP:-cuu-tro}
+    volumes:
+      - ./core/openbao/agent-grafana.hcl:/openbao/config/agent.hcl:ro
+      - ${OPENBAO_LOCAL_DIR:-./.data/openbao}/approle/grafana:/openbao/approle:ro
+      - secrets-grafana:/out/grafana
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /out/grafana/admin_password && test -s /out/grafana/bi_db_password"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
+  grafana:
+    <<: *restart
+    # Dashboard điều hành (#92). Grafana OSS là AGPL-3.0: chạy như DỊCH VỤ RIÊNG bằng image gốc, không sửa mã,
+    # không nhúng vào mã dự án (NOTICE, DEPENDENCIES.md). Datasource + dashboard nạp từ tệp (provisioning):
+    # core/grafana/provisioning (datasource PostgreSQL bằng role chỉ đọc <schema>_bi), dashboard JSON của ứng
+    # dụng apps/${DXOS_APP}/grafana/dashboards. Đăng nhập: tài khoản admin, mật khẩu trong OpenBao
+    # (secret/core/grafana); không cho đăng ký, không cho vào ẩn danh. Không mở cổng ra host: mở qua APISIX
+    # ${GATEWAY_PUBLIC_URL}/grafana/. Không tải plugin hay tin tức từ Internet lúc chạy.
+    image: grafana/grafana-oss:13.0.2
+    profiles: [bi]
+    depends_on:
+      bao-agent-grafana:
+        condition: service_healthy
+      postgres-roles:
+        condition: service_completed_successfully
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/dxos/admin_password
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_SECURITY_COOKIE_SAMESITE: strict
+      GF_SERVER_ROOT_URL: ${GATEWAY_PUBLIC_URL:-http://localhost:9080}/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_DEFAULT_LOCALE: vi-VN
+      GF_DATE_FORMATS_DEFAULT_TIMEZONE: Asia/Ho_Chi_Minh
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/dxos/dashboards/dieu-hanh.json
+      # Datasource (core/grafana/provisioning/datasources): role chỉ đọc của ứng dụng đang chọn
+      # (<DXOS_APP đổi - thành _>_bi; DXOS_APP khác cuu-tro thì đặt APP_BI_DB_USER)
+      BI_DB_HOST: postgres:5432
+      BI_DB_NAME: ${POSTGRES_DB:-disaster}
+      BI_DB_USER: ${APP_BI_DB_USER:-cuu_tro_bi}
+    volumes:
+      - ./core/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./apps/${DXOS_APP:-cuu-tro}/grafana/dashboards:/etc/dxos/dashboards:ro
+      - grafanadata:/var/lib/grafana
+      - secrets-grafana:/run/secrets/dxos:ro
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      # /api/health trả 503 khi CSDL của Grafana (sqlite trong volume) chưa dùng được
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/api/health || curl -fs -o /dev/null http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 20s
+    mem_limit: 384m
+
   # ===================== TODO các profile sau =====================
   # sec (tuần 2-4): ClamAV (GPL-2.0, dịch vụ riêng). Sổ cái Tessera đã vào core (#28, dịch vụ ledger)
   # ai  (tuần 5):   Ollama + Qwen2.5 7B/14B, Qdrant, agent FastAPI + LangGraph
-  # bi  (tuần 4):   Grafana (AGPL-3.0, dịch vụ riêng)
 
 volumes:
   pgdata:
@@ -767,6 +842,7 @@ volumes:
   seaweeddata:
   natsdata:
   ledgerdata:
+  grafanadata:
   secrets-keycloak: *secrets-tmpfs
   secrets-postgres: *secrets-tmpfs
   secrets-apisix: *secrets-tmpfs
@@ -777,3 +853,4 @@ volumes:
   secrets-ledger: *secrets-tmpfs
   secrets-centrifugo: *secrets-tmpfs
   secrets-scorpio: *secrets-tmpfs
+  secrets-grafana: *secrets-tmpfs

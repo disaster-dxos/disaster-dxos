@@ -1,0 +1,420 @@
+{
+  "uid": "cuu-tro-dieu-hanh",
+  "title": "Điều hành cứu trợ",
+  "description": "Dashboard điều hành apps/cuu-tro (#92): tin kêu cứu, thời gian phản hồi, mực nước, tồn kho, quỹ cứu trợ. Dữ liệu đọc bằng role chỉ đọc cuu_tro_bi, không có SĐT hay họ tên.",
+  "tags": [
+    "cuu-tro",
+    "dieu-hanh"
+  ],
+  "timezone": "Asia/Ho_Chi_Minh",
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": false,
+  "graphTooltip": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Tin kêu cứu đang mở",
+      "description": "Tin chưa cứu xong (tiếp nhận, đã phân công, đang cứu), mọi thời điểm",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dxos-app-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dxos-app-pg"
+          },
+          "refId": "A",
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT count(*) AS \"Đang mở\" FROM cuu_tro.incidents WHERE status NOT IN ('da_cuu', 'dong')"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 20
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Thời gian phản hồi trung vị",
+      "description": "Từ lúc tiếp nhận tin tới lúc đội cứu hộ nhận nhiệm vụ, tin tạo trong khoảng thời gian đang xem",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dxos-app-pg"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dxos-app-pg"
+          },
+          "refId": "A",
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM a.nhan - i.created_at)) AS \"Trung vị\"\n  FROM cuu_tro.incidents i\n  JOIN LATERAL (SELECT min(responded_at) AS nhan FROM cuu_tro.incident_assignments\n                 WHERE incident_id = i.id AND result = 'da_nhan') a ON a.nhan IS NOT NULL\n WHERE $__timeFilter(i.created_at)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Quỹ cứu trợ",
+      "description": "Bút toán thu/chi tiền cứu trợ (#89), mọi thời điểm; mỗi bút toán là một lá trên sổ cái minh bạch",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dxos-app-pg"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dxos-app-pg"
+          },
+          "refId": "A",
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT coalesce(sum(amount) FILTER (WHERE direction = 'thu'), 0) AS \"Tổng thu\",\n       coalesce(sum(amount) FILTER (WHERE direction = 'chi'), 0) AS \"Tổng chi\",\n       coalesce(sum(CASE direction WHEN 'thu' THEN amount ELSE -amount END), 0) AS \"Số dư\"\n  FROM cuu_tro.relief_fund_entries"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyVND",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "id": 4,
+      "type": "barchart",
+      "title": "Tin kêu cứu theo trạng thái",
+      "description": "Tin tạo trong khoảng thời gian đang xem",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dxos-app-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dxos-app-pg"
+          },
+          "refId": "A",
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT CASE status WHEN 'tiep_nhan' THEN 'Tiếp nhận' WHEN 'phan_cong' THEN 'Đã phân công'\n                   WHEN 'dang_cuu' THEN 'Đang cứu' WHEN 'da_cuu' THEN 'Đã cứu' ELSE 'Đóng' END AS \"Trạng thái\",\n       count(*) AS \"Số tin\"\n  FROM cuu_tro.incidents WHERE $__timeFilter(created_at)\n GROUP BY status, 1 ORDER BY array_position(ARRAY['tiep_nhan','phan_cong','dang_cuu','da_cuu','dong'], status)"
+        }
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "showValue": "always",
+        "legend": {
+          "showLegend": false
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Mực nước các trạm",
+      "description": "Chuỗi đo mực nước (cm) theo trạm; ngưỡng cảnh báo/nguy hiểm của từng trạm ở bảng trạm đo",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dxos-app-pg"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 4,
+        "w": 16,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dxos-app-pg"
+          },
+          "refId": "A",
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "time_series",
+          "rawSql": "SELECT r.observed_at AS \"time\", s.code AS metric, r.value AS value\n  FROM cuu_tro.sensor_readings r JOIN cuu_tro.sensors s ON s.id = r.sensor_id\n WHERE s.kind = 'muc_nuoc' AND $__timeFilter(r.observed_at)\n ORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "lengthcm",
+          "custom": {
+            "lineWidth": 2,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Trạm đo: lần đo cuối và ngưỡng",
+      "description": "",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dxos-app-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dxos-app-pg"
+          },
+          "refId": "A",
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT code AS \"Mã\", name AS \"Trạm\", last_value AS \"Lần đo cuối\", unit AS \"Đơn vị\",\n       warning_threshold AS \"Ngưỡng cảnh báo\", danger_threshold AS \"Ngưỡng nguy hiểm\",\n       CASE WHEN last_value >= danger_threshold THEN 'Nguy hiểm' WHEN last_value >= warning_threshold THEN 'Cảnh báo'\n            WHEN last_value IS NULL THEN 'Chưa có số đo' ELSE 'Bình thường' END AS \"Mức\",\n       last_observed_at AS \"Thời điểm đo\"\n  FROM cuu_tro.sensors WHERE active ORDER BY code"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Tồn kho hàng cứu trợ",
+      "description": "Tồn kho chỉ đổi qua phiếu nhập/xuất (đều ghi sổ cái minh bạch)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dxos-app-pg"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dxos-app-pg"
+          },
+          "refId": "A",
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT item_name AS \"Mặt hàng\", quantity AS \"Tồn\", unit AS \"Đơn vị\", storage_name AS \"Kho\", updated_at AS \"Cập nhật\"\n  FROM cuu_tro.supplies ORDER BY storage_name, item_name"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "id": 8,
+      "type": "barchart",
+      "title": "Thu / chi theo ngày",
+      "description": "",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dxos-app-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dxos-app-pg"
+          },
+          "refId": "A",
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT to_char(date_trunc('day', created_at AT TIME ZONE 'Asia/Ho_Chi_Minh'), 'DD/MM') AS \"Ngày\",\n       coalesce(sum(amount) FILTER (WHERE direction = 'thu'), 0) AS \"Thu\",\n       coalesce(sum(amount) FILTER (WHERE direction = 'chi'), 0) AS \"Chi\"\n  FROM cuu_tro.relief_fund_entries WHERE $__timeFilter(created_at)\n GROUP BY date_trunc('day', created_at AT TIME ZONE 'Asia/Ho_Chi_Minh'), 1 ORDER BY date_trunc('day', created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyVND"
+        },
+        "overrides": []
+      },
+      "options": {
+        "showValue": "never",
+        "legend": {
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Cảnh báo vượt ngưỡng đã gửi",
+      "description": "Thông báo của workflow CanhBaoVuotNguong (#87): mỗi đợt một lần cho mỗi bước",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "dxos-app-pg"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "dxos-app-pg"
+          },
+          "refId": "A",
+          "rawQuery": true,
+          "editorMode": "code",
+          "format": "table",
+          "rawSql": "SELECT created_at AS \"Lúc\", sensor_code AS \"Trạm\",\n       CASE step WHEN 'canh_bao' THEN 'Cảnh báo' WHEN 'nguy_hiem' THEN 'Nguy hiểm' ELSE 'Về dưới ngưỡng' END AS \"Bước\",\n       value AS \"Giá trị\", unit AS \"Đơn vị\", channel AS \"Kênh\", status AS \"Trạng thái\"\n  FROM cuu_tro.sensor_alert_notifications WHERE $__timeFilter(created_at) ORDER BY created_at DESC LIMIT 50"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    }
+  ]
+}

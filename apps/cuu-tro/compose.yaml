@@ -58,13 +58,15 @@ services:
       - secrets-cuu-tro-api:/out/cuu-tro-api
       - secrets-cuu-tro-thong-bao:/out/cuu-tro-thong-bao
       - secrets-cuu-tro-worker:/out/cuu-tro-worker
+      - secrets-cuu-tro-luu-tru:/out/cuu-tro-luu-tru
     healthcheck:
       test:
         - CMD-SHELL
         - >-
           for f in cuu-tro/APP_DB_URL cuu-tro/NATS_URL cuu-tro-thiet-bi/MQTT_PASSWORD cuu-tro-api/S3_SECRET_KEY
           cuu-tro-api/LEDGER_WRITE_TOKEN cuu-tro-api/REALTIME_TOKEN_SECRET cuu-tro-thong-bao/CENTRIFUGO_API_KEY
-          cuu-tro-thong-bao/NATS_URL cuu-tro-worker/APP_DB_URL cuu-tro-worker/NATS_URL cuu-tro-worker/LEDGER_WRITE_TOKEN;
+          cuu-tro-thong-bao/NATS_URL cuu-tro-worker/APP_DB_URL cuu-tro-worker/NATS_URL cuu-tro-worker/LEDGER_WRITE_TOKEN
+          cuu-tro-luu-tru/BI_DB_URL cuu-tro-luu-tru/S3_SECRET_KEY;
           do test -s /out/$$f || exit 1; done;
           test -e /out/cuu-tro-worker/TELEGRAM_BOT_TOKEN
       interval: 5s
@@ -338,6 +340,30 @@ services:
       - secrets-cuu-tro-thiet-bi:/run/secrets/dxos:ro
     mem_limit: 64m
 
+  cuu-tro-luu-tru:
+    # Lưu trữ lịch sử (#91), profile riêng "luu-tru", chạy một lần (make luu-tru, make luu-tru-truy-van):
+    # đọc CSDL bằng role CHỈ ĐỌC cuu_tro_bi (migration 0012: không có cột định danh), ghi Parquet phân vùng
+    # theo tháng lên bucket cuu-tro-lakehouse của SeaweedFS (khóa S3 của ứng dụng), truy vấn bằng DuckDB.
+    # Bí mật riêng (volume secrets-cuu-tro-luu-tru): BI_DB_URL, S3_ACCESS_KEY, S3_SECRET_KEY.
+    image: disaster-dxos/cuu-tro-workflow:0.2.0
+    pull_policy: never
+    restart: "no"
+    profiles: [luu-tru]
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos"]
+    command: ["python", "-m", "cuu_tro_workflow.luu_tru", "xuat"]
+    depends_on:
+      bao-agent-cuu-tro:
+        condition: service_healthy
+    environment:
+      SECRETS_REQUIRED: BI_DB_URL S3_ACCESS_KEY S3_SECRET_KEY
+      S3_ENDPOINT: http://seaweedfs:8333
+      LUU_TRU_BUCKET: cuu-tro-lakehouse
+    volumes:
+      - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - secrets-cuu-tro-luu-tru:/run/secrets/dxos:ro
+    # DuckDB giữ một phân vùng trong bộ nhớ khi ghi; tệp tạm trong /tmp của container
+    mem_limit: 512m
+
   cuu-tro-web:
     # Web điều phối (#59, #64): Nuxt build từ mã nguồn (apps/cuu-tro/web/Dockerfile), chạy Nitro node
     # server, user không phải root. Mở qua APISIX (route /*, có Coraza WAF), không mở cổng ra host:
@@ -385,6 +411,12 @@ volumes:
       device: tmpfs
       o: "uid=100,gid=1000,mode=0755,size=1m"
   secrets-cuu-tro-thong-bao:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "uid=100,gid=1000,mode=0755,size=1m"
+  secrets-cuu-tro-luu-tru:
     driver: local
     driver_opts:
       type: tmpfs
