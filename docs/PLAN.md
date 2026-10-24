@@ -53,6 +53,7 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [x] [V2] Xuất dữ liệu cũ ra Parquet + truy vấn DuckDB (#91: `make luu-tru`, `make luu-tru-truy-van`, bucket `cuu-tro-lakehouse`, phân vùng theo tháng, khử định danh, idempotent)
 - [x] [V2] Grafana dashboard điều hành (#92: Grafana OSS profile `bi`, provisioning từ tệp, role chỉ đọc `cuu_tro_bi`, `/grafana/` qua APISIX; SSO Keycloak để sau)
 - [x] [V3] Web: lớp trạm đo mực nước trên bản đồ (#62: NGSI-LD qua gateway, màu theo cấp báo động, popup + biểu đồ 24 giờ, tải lại khi có cảnh báo realtime)
+- [x] [V3] Web: trang Minh bạch công khai cho phiếu kho + bút toán tiền, trình duyệt tự kiểm sổ cái (#63: `/workflow/minh-bach/xac-minh`, WebCrypto Ed25519 + Merkle)
 - [ ] [V1] Thuê VPS + tên miền, HTTPS, CI tự triển khai từ `main` — **còn mở**: chờ người hướng dẫn (VPS, tên miền)
 - [ ] [V3] Cuối tuần: mời 3–5 người dùng thật thử, ghi phản hồi thành issue `user-feedback` — **còn mở**: chờ người hướng dẫn (cần bản chạy trên VPS)
 - [ ] [V1] Grafana đăng nhập SSO Keycloak (generic OAuth) thay tài khoản admin — **còn mở**, để sau #92 (realm chỉ import lần đầu: cần hướng dẫn thêm client cho máy đã chạy)

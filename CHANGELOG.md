@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 ### Added
+- Web: trang Minh bạch cứu trợ công khai nâng cấp (#63), không cần đăng nhập. Một ô tra cho cả phiếu kho và bút toán tiền thu/chi (`GET /workflow/minh-bach/xac-minh/{mã}`); hiện kết luận của máy chủ, hàng/tiền đi đâu, giờ ghi sổ, số lá. **Trình duyệt tự kiểm** 5 bước bằng WebCrypto, độc lập với máy chủ: băm lại bản ghi chuẩn tắc, lá đúng mã, leaf hash RFC 6962, inclusion proof RFC 9162 tới root của checkpoint, chữ ký Ed25519 của checkpoint với khóa `/ledger/verifier`. Phần bằng chứng thu gọn: inclusion proof từng hash, checkpoint đã ký nguyên văn, lá, bản ghi chuẩn tắc, lệnh `ledger-verify`. Thêm quỹ tiền cứu trợ (thu, chi, số dư) và sổ cái gần đây bấm để tra. Vitest `tests/tu-kiem.test.ts` (cây Merkle tham chiếu, sổ cái giả lập có khóa Ed25519, 6 kiểu giả mạo); smoke mới `scripts/smoke-minh-bach.sh` chạy chính `utils/tu-kiem.ts` của web trên bằng chứng thật của sổ cái Tessera (trong `make smoke`).
 - Web điều phối: lớp trạm đo mực nước trên bản đồ MapLibre (#62). Dữ liệu từ bản sao số NGSI-LD trên Scorpio qua API Gateway (GeoJSON, JWT mọi vai); hình thoi màu theo cấp báo động (bình thường, cảnh báo, nguy hiểm), nhãn mã + mực nước từ zoom 11, công tắc bật/tắt và số trạm từng cấp trong ô chú thích. Bấm trạm → popup mực nước mới nhất, khoảng cách tới ngưỡng, biểu đồ nhỏ 24 giờ có vạch ngưỡng (GraphQL `sensor_readings`). Tải lại mỗi 60 giây và ngay khi người điều phối nhận cảnh báo mực nước qua Centrifugo. Vitest `tests/tram-do.test.ts`, smoke mới `scripts/smoke-tram-do.sh` (trong `make smoke`).
 
 ## [0.3.0] - 2026-10-24
