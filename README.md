@@ -55,7 +55,7 @@ Miền Trung mỗi năm hứng nhiều cơn bão và lũ. Trong vài giờ nư�
 |---|---|
 | **Kêu cứu** có tọa độ, chặn tin trùng | ✅ Đã có ở v0.1 (API GraphQL, phân quyền theo vai trò) |
 | **Phân công cứu hộ** đội gần nhất, chờ xác nhận | ✅ Đã có ở v0.1 (workflow Temporal, API `/workflow`); từ #67 (chưa phát hành): tự khởi chạy khi có tin mới, ưu tiên theo mức khẩn, đội không nhận trong hạn thì phân công lại |
-| **Cảnh báo mực nước** từ trạm đo | ✅ Đã có ở v0.1: trạm đo (giả lập) → MQTT → phát sự kiện vượt ngưỡng · 🔜 thông báo Telegram (tuần 4) |
+| **Cảnh báo mực nước** từ trạm đo | ✅ Đã có ở v0.1: trạm đo (giả lập) → MQTT → phát sự kiện vượt ngưỡng · từ #84, #85 (chưa phát hành): 9 trạm ở Quảng Nam, Đà Nẵng với trận lũ mẫu 48 giờ (giả lập), mỗi trạm là một bản sao số NGSI-LD trên Scorpio, đọc qua gateway `/ngsi-ld/v1/*` · 🔜 thông báo Telegram (tuần 4) |
 | **Sổ cái minh bạch** tiền và hàng cứu trợ | ✅ Đã có ở v0.1 (Tessera, trang công khai, CLI tự kiểm) |
 | **Bản đồ thời gian thực** cho người điều phối | 🔜 Tuần 3 (web Nuxt + MapLibre; dữ liệu và GraphQL đã sẵn) |
 | **AI bóc tách tin kêu cứu** tự do, người duyệt lại | 🔜 Tuần 5 (Ollama + Qwen2.5 7B/14B) |
@@ -81,9 +81,10 @@ Sơ đồ chi tiết, luồng JWT, route gateway, quản lý bí mật: [`docs/a
 | Workflow | Temporal 1.29 + Python SDK | MIT |
 | Sự kiện, IoT | NATS JetStream + MQTT | Apache-2.0 |
 | Sổ cái minh bạch | Tessera (Go, `core/ledger`) | Apache-2.0 |
+| Bản sao số (NGSI-LD) | Scorpio Broker 6.0 (dùng PostgreSQL + PostGIS, không MongoDB) | BSD-3-Clause |
 | Bí mật | OpenBao | MPL-2.0 |
 | Backend ứng dụng | Python 3.12, FastAPI | PSF-2.0, MIT |
-| Sắp có | Nuxt 4 + Nuxt UI + MapLibre, Flutter, Scorpio NGSI-LD, Centrifugo, Ollama + Qwen2.5, Qdrant, Grafana, ClamAV | MIT, BSD-3, Apache-2.0, AGPL-3.0/GPL-2.0 (dịch vụ riêng) |
+| Sắp có | Nuxt 4 + Nuxt UI + MapLibre, Flutter, Centrifugo, Ollama + Qwen2.5, Qdrant, Grafana, ClamAV | MIT, BSD-3, Apache-2.0, AGPL-3.0/GPL-2.0 (dịch vụ riêng) |
 
 Phiên bản và giấy phép từng image, thư viện: [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
@@ -115,7 +116,7 @@ API và lệnh mẫu của từng bước: [`apps/cuu-tro/README.md`](apps/cuu-t
 Theo [`docs/PLAN.md`](docs/PLAN.md):
 
 - **Tuần 3:** web điều phối Nuxt 4 + Nuxt UI với bản đồ MapLibre thời gian thực, màn hình phân công; tự khởi chạy phân công khi có tin mới; thông báo realtime qua Centrifugo.
-- **Tuần 4:** trạm đo thành bản sao số NGSI-LD trên Scorpio; cảnh báo vượt ngưỡng gửi Telegram; dữ liệu cũ ra Parquet + DuckDB; dashboard Grafana; lên VPS có HTTPS.
+- **Tuần 4:** trạm đo thành bản sao số NGSI-LD trên Scorpio (đã có, #85); cảnh báo vượt ngưỡng gửi Telegram; dữ liệu cũ ra Parquet + DuckDB; dashboard Grafana; lên VPS có HTTPS.
 - **Tuần 5:** AI bóc tách tin kêu cứu tự do thành dữ liệu có cấu trúc, người điều phối duyệt lại; app hiện trường Flutter chạy được khi mất mạng; demo công khai.
 - **Tuần 6–7:** sửa theo phản hồi người dùng thật, module mẫu cho `apps/`, phát hành v1.0.0.
 
@@ -156,7 +157,7 @@ Sau `make up`, mở web điều phối qua gateway: **http://localhost:9080/** (
 
 **Giữ kín `.data/openbao/`.** Lần đầu `make up` ghi unseal key và root token vào đây (đã nằm trong `.gitignore`); mất thư mục này thì không mở khóa được dữ liệu OpenBao. Sau khi khởi động lại máy, nếu OpenBao còn khóa: `make bao-unseal`.
 
-Lệnh khác: `make ps`, `make logs`, `make down` (dừng, giữ dữ liệu), `make seed` (nạp lại dữ liệu giả), `make gia-lap` và `make gia-lap-vuot-nguong` (giả lập trạm đo gửi MQTT), `make bao-status`, `make bao-init`. Danh sách đầy đủ trong [`Makefile`](Makefile).
+Lệnh khác: `make ps`, `make logs`, `make down` (dừng, giữ dữ liệu), `make seed` (nạp lại dữ liệu giả), `make gia-lap`, `make gia-lap-vuot-nguong` và `make gia-lap-tran-lu` (giả lập trạm đo gửi MQTT; trận lũ mẫu 48 giờ, #84), `make bao-status`, `make bao-init`. Danh sách đầy đủ trong [`Makefile`](Makefile).
 
 Cấu hình qua biến môi trường, lệnh OpenBao, cách thêm ứng dụng mới vào `apps/`, kiểm thử và lint: [`docs/cai-dat.md`](docs/cai-dat.md).
 

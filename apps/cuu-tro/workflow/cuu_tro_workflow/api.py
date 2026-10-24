@@ -12,6 +12,9 @@ Client gọi qua API Gateway: APISIX route /workflow/* kiểm JWT + WAF + rate l
   POST /{workflow_id}/huy           dừng luồng khi đội chưa nhận, gỡ đội (chỉ dieu-phoi)
   POST /{workflow_id}/xac-nhan      signal "đã cứu" (dieu-phoi; cuu-ho của đội được gán)
   GET  /healthz                     sống + kết nối Temporal (healthcheck của container)
+  GET  /ngsi-ld/context.jsonld      @context NGSI-LD của trạm đo (#85, apps/cuu-tro/ngsi-ld). Không cần
+                                    đăng nhập: Scorpio tải trong mạng nội bộ theo header Link mà APISIX đặt
+                                    cho route /ngsi-ld/v1/*; qua gateway (/workflow/*) vẫn cần JWT
 Tiếp nhận tin kêu cứu (#66, Poka-yoke: cuu_tro_workflow/keu_cuu.py, apps/cuu-tro/README.md):
   POST /keu-cuu                     tạo tin (dieu-phoi, tinh-nguyen); 201 · 409 trùng kèm mã tin đang mở ·
                                     422 lỗi theo trường. Route gateway riêng /workflow/keu-cuu (rate limit chặt)
@@ -285,6 +288,16 @@ class HuyVao(BaseModel):
 async def healthz(request: Request) -> dict[str, str]:
     await request.app.state.temporal.service_client.check_health()
     return {"status": "ok"}
+
+
+@app.get("/ngsi-ld/context.jsonld")
+async def ngsi_ld_context(request: Request) -> Response:
+    try:
+        with open(request.app.state.cfg.ngsi_ld_context_file, "rb") as f:
+            noi_dung = f.read()
+    except FileNotFoundError:
+        raise HTTPException(404, "Chưa mount @context NGSI-LD (NGSI_LD_CONTEXT_FILE)") from None
+    return Response(noi_dung, media_type="application/ld+json", headers={"Cache-Control": "public, max-age=300"})
 
 
 @app.get("/realtime/token")

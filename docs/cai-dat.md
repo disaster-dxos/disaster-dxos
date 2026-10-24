@@ -24,6 +24,10 @@ Mọi cấu hình qua biến môi trường trong `.env`, có giải thích tron
 | `REALTIME_TOKEN_HAN_GIAY` | `300` | Hạn token kết nối Centrifugo do `cuu-tro-api` cấp (30–3600 giây, #68) |
 | `CENTRIFUGO_ALLOWED_ORIGINS` | `GATEWAY_PUBLIC_URL` | Origin được mở WebSocket tới Centrifugo, cách nhau bởi dấu cách (#68) |
 | `GW_REALTIME_RATE_LIMIT_COUNT` | `60` | Số lần mở WebSocket `/realtime/websocket` mỗi IP trong `GW_RATE_LIMIT_WINDOW` giây (#68) |
+| `SCORPIO_DB`, `SCORPIO_DB_USER` | `scorpio`, `scorpio` | CSDL và role của Scorpio NGSI-LD trên PostgreSQL của lõi; mật khẩu trong OpenBao `secret/core/scorpio-db` (#85) |
+| `SCORPIO_PLATFORM` | `linux/amd64` | Image Scorpio chỉ có amd64 (như PostGIS) |
+| `SCORPIO_DB_POOL` | `8` | Số kết nối PostgreSQL tối đa của Scorpio (role `scorpio` có `CONNECTION LIMIT 20`); hết thì request xếp hàng |
+| `GW_NGSI_LD_CONTEXT_URL` | `http://<DXOS_APP>-api:8000/ngsi-ld/context.jsonld` | `@context` NGSI-LD mà gateway đặt vào header `Link` của route `/ngsi-ld/v1/*`; Scorpio tải trong mạng nội bộ (#85) |
 
 Thêm biến mới thì thêm vào `.env.example` kèm chú thích.
 
@@ -50,7 +54,8 @@ apps/<tên>/
 ├── compose.yaml               # backend của ứng dụng, profile app; API tên <tên>-api cổng 8000
 ├── openbao/policies/*.hcl     # quyền đọc bí mật secret/app/<tên>/*
 ├── s3/buckets.conf            # bucket, bắt buộc tiền tố <tên>-
-└── nats/streams.json          # stream JetStream, subject <tên>.>
+├── nats/streams.json          # stream JetStream, subject <tên>.>
+└── ngsi-ld/context.jsonld     # @context NGSI-LD nếu ứng dụng ghi thực thể lên Scorpio (#85); <tên>-api phục vụ ở /ngsi-ld/context.jsonld
 ```
 
 Các bước:

@@ -5,6 +5,8 @@
 #   keycloak  CSDL ${KEYCLOAK_DB} (do init/20-create-databases.sh tạo lần đầu)
 #   hasura    CSDL ${POSTGRES_DB}: sở hữu schema hdb_catalog (metadata), được tạo schema ứng dụng
 #   temporal  sở hữu CSDL temporal, temporal_visibility (tạo ở đây; auto-setup chỉ tạo schema)
+#   scorpio   sở hữu CSDL ${SCORPIO_DB} (tạo ở đây, bật PostGIS bằng superuser; Scorpio tự tạo bảng bằng
+#             Flyway khi khởi động, #85)
 #   <schema>_app  role dịch vụ của ứng dụng Tầng 2 đang chọn (DXOS_APP cuu-tro → cuu_tro_app, #29).
 #             Tạo ra KHÔNG có quyền gì trên schema ứng dụng: migration của ứng dụng tự GRANT đúng
 #             bảng/cột backend của nó cần (vd apps/cuu-tro/db/migrations/0003). Lõi không biết bảng nào.
@@ -29,6 +31,7 @@ SQL
 sync_role "$KEYCLOAK_DB_USER" "$KEYCLOAK_DB_PASSWORD" NOCREATEDB
 sync_role "$HASURA_DB_USER" "$HASURA_DB_PASSWORD" NOCREATEDB
 sync_role "$TEMPORAL_DB_USER" "$TEMPORAL_DB_PASSWORD" NOCREATEDB
+sync_role "$SCORPIO_DB_USER" "$SCORPIO_DB_PASSWORD" "NOCREATEDB CONNECTION LIMIT ${SCORPIO_DB_CONNECTION_LIMIT:-20}"
 APP_DB_USER=${APP_DB_USER:-${DXOS_APP//-/_}_app}
 sync_role "$APP_DB_USER" "$APP_DB_PASSWORD" "NOCREATEDB CONNECTION LIMIT ${APP_DB_CONNECTION_LIMIT:-10}"
 
@@ -71,4 +74,17 @@ SELECT format('ALTER DATABASE %I OWNER TO %I', :'db', :'u')
 SQL
 done
 echo "postgres-roles: CSDL temporal, temporal_visibility thuộc $TEMPORAL_DB_USER"
+
+# Scorpio NGSI-LD (#85): CSDL riêng thuộc role scorpio, PostGIS bật sẵn (CREATE EXTENSION postgis cần
+# superuser). Scorpio không đọc/ghi CSDL nghiệp vụ; bản sao số là dữ liệu dẫn xuất, dựng lại được từ NATS.
+psql_db postgres -v db="${SCORPIO_DB:-scorpio}" -v u="$SCORPIO_DB_USER" <<'SQL'
+SELECT format('CREATE DATABASE %I OWNER %I', :'db', :'u')
+ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'db')
+\gexec
+SELECT format('ALTER DATABASE %I OWNER TO %I', :'db', :'u')
+\gexec
+SQL
+# Schema public của PostgreSQL 15+ thuộc pg_database_owner, tức role scorpio: Flyway tạo bảng được
+psql_db "${SCORPIO_DB:-scorpio}" -c 'CREATE EXTENSION IF NOT EXISTS postgis;'
+echo "postgres-roles: CSDL ${SCORPIO_DB:-scorpio} thuộc $SCORPIO_DB_USER, đã bật PostGIS"
 echo "postgres-roles: xong"

@@ -72,6 +72,10 @@ class Config:
     # Tiếp nhận tin kêu cứu qua API (#66): vùng phục vụ (kinh_do_min,vi_do_min,kinh_do_max,vi_do_max).
     # Bán kính và khoảng thời gian chặn trùng nằm trong CSDL (bảng incident_dedup_config, #25).
     keu_cuu_vung: VungPhucVu = field(default_factory=lambda: vung_tu_chuoi(VUNG_VIET_NAM))
+    # Bản sao số trạm đo (#85): Scorpio NGSI-LD của lõi trong mạng nội bộ (consumer ban-sao-so ghi thẳng,
+    # người dùng đọc qua APISIX /ngsi-ld/v1/*) và @context của ứng dụng (mount từ apps/cuu-tro/ngsi-ld)
+    ngsi_ld_url: str = "http://scorpio:9090"
+    ngsi_ld_context_file: str = "/app/ngsi-ld/context.jsonld"
 
 
 def load() -> Config:
@@ -110,6 +114,8 @@ def load() -> Config:
         realtime_token_secret=os.environ.get("REALTIME_TOKEN_SECRET", ""),
         realtime_token_han_giay=min(3600, max(30, _int("REALTIME_TOKEN_HAN_GIAY", 300))),
         keu_cuu_vung=vung_tu_chuoi(os.environ.get("KEU_CUU_VUNG_PHUC_VU") or VUNG_VIET_NAM),
+        ngsi_ld_url=os.environ.get("NGSI_LD_URL", "http://scorpio:9090"),
+        ngsi_ld_context_file=os.environ.get("NGSI_LD_CONTEXT_FILE", "/app/ngsi-ld/context.jsonld"),
     )
 
 

@@ -63,6 +63,17 @@ upstreams:
       send: 60
       read: 60
 
+  - id: scorpio
+    type: roundrobin
+    # NGSI-LD broker của lõi (#85): chỉ các đường đọc thực thể đi qua gateway; ghi (entityOperations,
+    # POST/PATCH/DELETE) chỉ từ backend ứng dụng trong mạng nội bộ (scorpio:9090)
+    nodes:
+      "scorpio:9090": 1
+    timeout:
+      connect: 5
+      send: 15
+      read: 15
+
   - id: web
     type: roundrobin
     # Web Tầng 2 của ứng dụng (#64), không thuộc lõi: mặc định quy ước <DXOS_APP>-web:3000
@@ -362,6 +373,58 @@ routes:
         phase: rewrite
         functions:
           - "return function(conf, ctx) local core = require('apisix.core'); core.response.exit(403, {message = 'Forbidden: ghi sổ cái chỉ từ dịch vụ nội bộ'}) end"
+
+  # ---------------- /ngsi-ld/v1/* → Scorpio NGSI-LD (#85), chỉ đọc ----------------
+  # Bản sao số trạm đo: GET thực thể, kiểu, thuộc tính (NGSI-LD API 1.x của ETSI). Bắt buộc JWT (mọi vai trò
+  # đã đăng nhập; dữ liệu trạm không định danh), WAF kiểm URI/tham số (q=, georel=, coordinates=), rate limit.
+  # Gateway ĐẶT header Link tới @context của ứng dụng (GW_NGSI_LD_CONTEXT_URL, mặc định
+  # <DXOS_APP>-api:8000/ngsi-ld/context.jsonld, chỉ trong mạng nội bộ) và bỏ Link của client: client dùng
+  # tên ngắn (type=WaterLevelStation, waterLevel…) mà không phải biết URL context, và Scorpio không bị dùng
+  # để tải URL tùy ý (SSRF). Bỏ NGSILD-Tenant: chỉ dùng tenant mặc định. Accept: application/geo+json trả
+  # GeoJSON FeatureCollection cho bản đồ. Không mở: jsonldContexts, subscriptions, csourceRegistrations,
+  # entityOperations, temporal, /q/* (route ngsi-ld-deny bên dưới trả 403).
+  - id: ngsi-ld
+    uris:
+      - /ngsi-ld/v1/entities
+      - /ngsi-ld/v1/entities/*
+      - /ngsi-ld/v1/types
+      - /ngsi-ld/v1/types/*
+      - /ngsi-ld/v1/attributes
+      - /ngsi-ld/v1/attributes/*
+    methods: [GET, HEAD, OPTIONS]
+    priority: 10
+    upstream_id: scorpio
+    plugins:
+      request-id: {}
+      client-control: *api-body-limit
+      coraza-filter:
+        conf: *waf-api
+      cors: *cors
+      openid-connect:
+        client_id: dxos-gateway
+        client_secret: $env://KC_GATEWAY_CLIENT_SECRET
+        discovery: http://keycloak:8080/realms/${{KEYCLOAK_REALM:=disaster}}/.well-known/openid-configuration
+        bearer_only: true
+        use_jwks: true
+        set_userinfo_header: false
+        # Scorpio không đọc token: không chuyển tiếp (proxy-rewrite bỏ cả header Authorization)
+        set_access_token_header: false
+      proxy-rewrite:
+        headers:
+          set:
+            Link: '<${{GW_NGSI_LD_CONTEXT_URL:=http://workflow-api:8000/ngsi-ld/context.jsonld}}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"'
+          remove:
+            - Authorization
+            - NGSILD-Tenant
+      limit-count: *rate-limit
+
+  - id: ngsi-ld-deny
+    uri: /ngsi-ld/*
+    plugins:
+      serverless-pre-function:
+        phase: rewrite
+        functions:
+          - "return function(conf, ctx) local core = require('apisix.core'); core.response.exit(403, {message = 'Forbidden: NGSI-LD qua gateway chỉ đọc entities/types/attributes'}) end"
 
   # ---------------- /workflow/* → API workflow của ứng dụng (#29) ----------------
   # /workflow/<đường dẫn> → <app>-api:8000/<đường dẫn>. Gateway kiểm JWT + WAF + rate limit rồi chuyển

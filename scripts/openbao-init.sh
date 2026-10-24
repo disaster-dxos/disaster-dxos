@@ -180,6 +180,7 @@ do_setup() {
   kv_seed core/hasura-db      password=@rand:24
   kv_seed core/hasura         admin_secret=HASURA_GRAPHQL_ADMIN_SECRET
   kv_seed core/temporal-db    password=@rand:24
+  kv_seed core/scorpio-db     password=@rand:24
   kv_seed core/s3             access_key=@rand:10 secret_key=@rand:24
   # Khóa ký checkpoint Tessera (#28): tạo chỗ trống rồi ledger_key sinh khóa đúng một lần
   kv_seed core/ledger         signing_key=@empty
