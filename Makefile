@@ -22,7 +22,7 @@ up-bi:         ## Grafana OSS dashboard điều hành (#92, profile bi; cần ma
 	bash scripts/openbao-init.sh
 	docker compose --profile core --profile app --profile bi up -d grafana
 
-smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS, ràng buộc DB, phân quyền GraphQL, workflow phân công, luồng cảm biến MQTT, ảnh hiện trường, sổ cái minh bạch, web điều phối qua gateway, thông báo realtime Centrifugo, bản đồ tin kêu cứu realtime (GraphQL subscription), màn phân công 2 vai, API kêu cứu Poka-yoke, bản sao số trạm đo NGSI-LD trên Scorpio + trận lũ mẫu, thông báo cảnh báo vượt ngưỡng qua Temporal, tiền cứu trợ + xác minh sổ cái, lưu trữ Parquet + DuckDB, Grafana dashboard điều hành (tự bật profile bi), lớp trạm đo mực nước của web (cần make up trước)
+smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS, ràng buộc DB, phân quyền GraphQL, workflow phân công, luồng cảm biến MQTT, ảnh hiện trường, sổ cái minh bạch, web điều phối qua gateway, thông báo realtime Centrifugo, bản đồ tin kêu cứu realtime (GraphQL subscription), màn phân công 2 vai, API kêu cứu Poka-yoke, bản sao số trạm đo NGSI-LD trên Scorpio + trận lũ mẫu, thông báo cảnh báo vượt ngưỡng qua Temporal, tiền cứu trợ + xác minh sổ cái, lưu trữ Parquet + DuckDB, Grafana dashboard điều hành (tự bật profile bi), lớp trạm đo mực nước của web, trang Minh bạch công khai tự kiểm sổ cái trong trình duyệt (cần make up trước)
 	bash scripts/smoke-openbao.sh
 	bash scripts/smoke-jwt.sh
 	bash scripts/smoke-gateway.sh
@@ -45,6 +45,7 @@ smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/Seaweed
 	bash scripts/smoke-luu-tru.sh
 	bash scripts/smoke-grafana.sh
 	bash scripts/smoke-tram-do.sh
+	bash scripts/smoke-minh-bach.sh
 
 luu-tru:       ## Xuất dữ liệu cũ (trước đầu tháng này) ra Parquet trên SeaweedFS (#91); DEN=YYYY-MM-DD để đổi mốc
 	docker compose --profile core --profile app --profile luu-tru run --rm --no-deps cuu-tro-luu-tru \

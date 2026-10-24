@@ -444,6 +444,8 @@ sequenceDiagram
 
 Endpoint công khai (route APISIX `/workflow/minh-bach/*`: chỉ GET, không JWT, WAF + rate limit): `xac-minh/{mã}`, `phieu/{mã}`, `khoan-tien/{mã}`, `so-cai` (danh sách đã niêm phong, mới nhất trước, phân trang theo chỉ số lá), `quy` (tổng thu, tổng chi, số dư, số mục chờ niêm phong). Lập bút toán: `POST /workflow/quy/khoan` (JWT, chỉ `dieu-phoi`). Chi tiết và ví dụ: `apps/cuu-tro/README.md` mục "Sổ cái minh bạch".
 
+Trang web công khai `/minh-bach/<mã>` (#63) dùng `xac-minh`, `so-cai`, `quy` và khóa `/ledger/verifier`. Trình duyệt tự kiểm lại 5 bước bằng WebCrypto: băm bản ghi chuẩn tắc, lá đúng mã, leaf hash, inclusion proof, chữ ký Ed25519 của checkpoint. Cùng thuật toán với `so_cai.py` và `ledger-verify`, nên người dân không phải tin kết luận `hop_le` của máy chủ (`apps/cuu-tro/web/utils/tu-kiem.ts`, `scripts/smoke-minh-bach.sh`).
+
 Giới hạn hiện tại: khóa công khai lấy từ chính máy chủ thì chỉ chứng minh toàn vẹn so với khóa đang công bố; triển khai thật cần công bố khóa ở nơi độc lập (tài liệu phát hành) và đặt `LEDGER_VERIFIER_KEY`. Consistency proof (log không bị viết lại) và witness công khai của transparency.dev để tuần 6.
 
 ## 6. Luồng nghiệp vụ chính (đích tuần 3–5)

@@ -5,7 +5,7 @@
 
 ![Web điều phối: bản đồ và danh sách tin kêu cứu thời gian thực](../../../docs/images/web-dieu-phoi.png)
 
-> Trạng thái: khung web, đăng nhập Keycloak, bố cục, logo (#59); chạy trong stack qua gateway (#64); thông báo realtime qua Centrifugo (#68); bản đồ và danh sách tin kêu cứu **dữ liệu thật, thời gian thực** qua GraphQL subscription (#60); màn phân công cứu hộ cho 2 vai điều phối, cứu hộ (#61); lớp trạm đo mực nước trên bản đồ (#62). Việc tiếp theo: #63 (trang minh bạch).
+> Trạng thái: khung web, đăng nhập Keycloak, bố cục, logo (#59); chạy trong stack qua gateway (#64); thông báo realtime qua Centrifugo (#68); bản đồ và danh sách tin kêu cứu **dữ liệu thật, thời gian thực** qua GraphQL subscription (#60); màn phân công cứu hộ cho 2 vai điều phối, cứu hộ (#61); lớp trạm đo mực nước trên bản đồ (#62); trang Minh bạch công khai cho phiếu kho và bút toán tiền, trình duyệt tự kiểm sổ cái (#63).
 
 ## Đăng nhập: OIDC Authorization Code + PKCE
 
@@ -69,7 +69,29 @@ Kiểm thử: `tests/tram-do.test.ts` (đọc GeoJSON của Scorpio, màu, biể
 
 ## Trang Minh bạch cứu trợ (#78, #63)
 
-Trang công khai, không cần đăng nhập, không dùng khung điều phối: `/minh-bach/<mã phiếu>` (đường dẫn in trong mã QR trên phiếu; `/minh-bach?ma=<mã>` cũng tra sẵn). Người dân nhập mã → web kiểm dạng mã (UUID) → `GET /workflow/minh-bach/phieu/{mã}` qua gateway → hiện kết quả xác minh trên sổ cái Tessera: **Đã xác minh**, **Không khớp**, **Chưa ghi lên sổ cái**, **Tạm thời không kiểm được** (màu + biểu tượng khiên khác nhau), hàng gì, bao nhiêu, từ kho nào tới điểm nhận nào, giờ lập phiếu và giờ ghi sổ. Phần "Tự kiểm chứng" (SHA-256, checkpoint, lệnh `ledger-verify`) thu gọn cho người kỹ thuật. Lỗi 404, 429, 5xx, phản hồi sai dạng, mất mạng có câu riêng. Ánh xạ phản hồi → hiển thị: `utils/minh-bach.ts` (test `tests/minh-bach.test.ts`).
+Trang công khai, không cần đăng nhập, không dùng khung điều phối: `/minh-bach/<mã>`. Đây là đường dẫn in trong mã QR trên phiếu; `/minh-bach?ma=<mã>` cũng tra sẵn. Không có dữ liệu cá nhân: API chỉ trả bản ghi đã khử định danh, không có người lập.
+
+| Phần | Cách làm | Ở đâu |
+|---|---|---|
+| Tra một mã | Một ô cho cả **phiếu nhập/xuất kho** và **bút toán tiền thu/chi** (#89). Web kiểm dạng mã (UUID), gọi `GET /workflow/minh-bach/xac-minh/{mã}` qua gateway. Hiện kết luận của máy chủ: **Đã xác minh**, **Không khớp**, **Chưa ghi lên sổ cái**, **Tạm thời không kiểm được** (màu + biểu tượng khiên khác nhau). Phiếu kho: hàng gì, bao nhiêu, từ kho nào tới điểm nhận nào. Bút toán: số tiền, hạng mục, mục đích, điểm nhận, phiếu kho kèm (bấm để tra). Kèm giờ lập, giờ ghi sổ, số lá | `pages/minh-bach/[[ma]].vue`, `utils/minh-bach.ts` |
+| Trình duyệt tự kiểm | Không tin lời máy chủ: trình duyệt chạy lại 5 bước bằng WebCrypto trên bằng chứng công khai và khóa `GET /ledger/verifier`. Kết quả từng bước và kết luận riêng ("hợp lệ" / "phát hiện sai lệch" / "chưa đủ dữ liệu") | `components/TuKiemChung.vue`, `utils/tu-kiem.ts` |
+| Bằng chứng | Thu gọn cho người kỹ thuật: SHA-256 bản ghi, chỉ số lá, leaf hash, kích thước cây, root hash, khóa công khai, inclusion proof (từng hash), checkpoint đã ký nguyên văn, lá, bản ghi chuẩn tắc, lệnh `ledger-verify` | `components/TuKiemChung.vue` |
+| Sổ cái gần đây, quỹ | Tổng thu, tổng chi, số dư quỹ (`/minh-bach/quy`). 8 phiếu/bút toán vừa niêm phong (`/minh-bach/so-cai`), bấm để tra và tự kiểm | `components/SoCaiGanDay.vue` |
+| Lỗi | 404, 429, 5xx, phản hồi sai dạng, mất mạng có câu riêng. Không tải được khóa công khai thì bước chữ ký báo "không kiểm được" | `utils/minh-bach.ts` |
+
+Năm bước tự kiểm dùng cùng thuật toán với máy chủ (`cuu_tro_workflow/so_cai.py`) và CLI `core/ledger/cmd/ledger-verify`:
+
+1. **Băm bản ghi.** Băm lại bản ghi chuẩn tắc. JSON chuẩn tắc: khóa sắp xếp, không khoảng trắng, UTF-8, U+2028/U+2029 viết `\u`. Kết quả SHA-256 phải bằng trường `sha256` trong lá.
+2. **Kiểm lá.** Lá đúng loại và đúng mã.
+3. **Leaf hash.** Leaf hash = SHA-256(0x00 ‖ lá), theo RFC 6962.
+4. **Inclusion proof.** Proof dẫn từ leaf hash tới root của checkpoint (RFC 9162 mục 2.1.3.2).
+5. **Chữ ký checkpoint.** Chữ ký Ed25519 của checkpoint (signed note C2SP) hợp lệ với khóa công khai, và origin trùng tên khóa.
+
+SHA-256 có ở mọi trình duyệt. Ed25519 có ở Chrome 137+, Firefox 129+, Safari 17+; trình duyệt cũ hơn thì bước 5 báo "không kiểm được", 4 bước còn lại vẫn chạy.
+
+**Test:**
+- `tests/tu-kiem.test.ts`: vector JSON chuẩn tắc chung với Go; inclusion proof mọi chỉ số của cây 1–11 lá so với cây Merkle tham chiếu; sổ cái giả lập có khóa Ed25519 thật; mỗi kiểu giả mạo (sửa bản ghi, lá, leaf hash, proof, khóa khác, kích thước cây) đều bị phát hiện.
+- `scripts/smoke-minh-bach.sh`: chạy chính `tu-kiem.ts` bằng Node trên bằng chứng thật của sổ cái Tessera.
 
 ## Thông báo realtime (#68)
 
@@ -99,7 +121,7 @@ Hai đường mới, chỉ gọi lõi qua API Gateway bằng JWT của người 
 ## Kiểm thử
 
 ```bash
-npm test              # Vitest: PKCE (vector RFC 7636), URL OIDC, state/nonce, hạn token, GraphQL → tin → GeoJSON, bộ lọc, tin mới, CSP, thông báo realtime, phân công (nút theo vai, gọi /workflow, mã lỗi), trạm đo (GeoJSON NGSI-LD, màu, biểu đồ nhỏ)
+npm test              # Vitest: PKCE (vector RFC 7636), URL OIDC, state/nonce, hạn token, GraphQL → tin → GeoJSON, bộ lọc, tin mới, CSP, thông báo realtime, phân công (nút theo vai, gọi /workflow, mã lỗi), trạm đo (GeoJSON NGSI-LD, màu, biểu đồ nhỏ), minh bạch (phản hồi xác minh, tự kiểm 5 bước: JSON chuẩn tắc, Merkle, Ed25519)
 npm run typecheck     # vue-tsc
 npm run licenses      # giấy phép mọi gói npm trong package-lock.json
 ```
