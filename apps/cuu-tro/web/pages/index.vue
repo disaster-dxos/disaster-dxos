@@ -3,7 +3,10 @@
 // Trang điều phối: bản đồ lớn + cột tin kêu cứu thời gian thực (#60). Dữ liệu thật từ Hasura qua GraphQL
 // subscription ở API Gateway (composables/useTinKeuCuu.ts); bộ lọc dùng chung cho bản đồ và danh sách;
 // bấm điểm hoặc dòng → ngăn chi tiết nổi trên bản đồ (không che danh sách).
+// Lớp trạm đo mực nước (#62): NGSI-LD Scorpio qua gateway, tải lại mỗi phút; người điều phối nhận cảnh báo
+// mực nước realtime (Centrifugo) thì tải lại ngay để màu trạm đổi cùng lúc với thông báo.
 import { laCuuHo, laDieuPhoi } from '~/utils/session'
+import { demTheoMuc } from '~/utils/tram-do'
 import { TRANG_THAI, boLocMacDinh, demTheoTrangThai, locTin, noiTinMoi, type BoLoc } from '~/utils/tin'
 
 const { user, dangNhap } = useAuth()
@@ -11,14 +14,23 @@ const { user, dangNhap } = useAuth()
 const thongBao = useThongBao()
 const tin = useTinKeuCuu()
 const { ds, moi, trangThai, loi, capNhatLuc } = tin
+const tram = useTramDo()
+const hienTram = ref(true)
 onMounted(() => {
   if (laDieuPhoi(user.value)) thongBao.batDau()
   tin.batDau()
+  tram.batDau()
 })
 onBeforeUnmount(() => {
   thongBao.dung()
   tin.dung()
+  tram.dung()
 })
+// Thông báo mới nhất là cảnh báo mực nước → tải lại trạm ngay (không chờ chu kỳ)
+watch(() => thongBao.ds.value[0]?.id, () => {
+  if (thongBao.ds.value[0]?.loai === 'canh_bao') void tram.lamMoi()
+})
+const demTram = computed(() => tram.trangThai.value === 'tat' ? null : demTheoMuc(tram.ds.value))
 
 const loc = ref<BoLoc>(boLocMacDinh())
 // /?tin=<id>: mở sẵn tin (từ màn phân công, #61)
@@ -75,7 +87,7 @@ const suCo = computed(() => trangThai.value === 'mat-ket-noi' || trangThai.value
     </template>
 
     <template #body>
-      <BanDo :ds="daLoc" :moi="moi" :chon="chon" :de-phai="tinChon ? 416 : 0" @chon="chon = $event" />
+      <BanDo :ds="daLoc" :moi="moi" :chon="chon" :de-phai="tinChon ? 416 : 0" :tram="tram.ds.value" :hien-tram="hienTram" @chon="chon = $event" />
 
       <!-- Mất kết nối / hết phiên: băng nổi trên bản đồ, dữ liệu cũ vẫn hiện nhưng có thể đã lỗi thời -->
       <UAlert
@@ -89,7 +101,7 @@ const suCo = computed(() => trangThai.value === 'mat-ket-noi' || trangThai.value
           : [{ label: 'Thử lại', color: 'neutral', variant: 'solid', onClick: () => tin.thuLai() }]"
       />
 
-      <ChuThichBanDo class="absolute bottom-3 left-3 z-10 max-sm:hidden" />
+      <ChuThichBanDo v-model:hien-tram="hienTram" :dem-tram="demTram" :loi-tram="tram.trangThai.value === 'loi' ? tram.loi.value : ''" class="absolute bottom-3 left-3 z-10 max-sm:hidden" />
 
       <ChiTietTin
         v-if="tinChon" :tin="tinChon"
