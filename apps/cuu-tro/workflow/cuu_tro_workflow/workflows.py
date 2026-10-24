@@ -9,6 +9,9 @@ hoặc điều phối gọi tay) → lặp tối đa so_lan_giao_toi_da lần:
 Đội nhận → tin dang_cuu → chờ "xac_nhan_da_cuu" (có hạn) → tin da_cuu → dong, đội trở lại san_sang.
 Hết lần giao / không có đội / quá hạn xác nhận → báo điều phối (sự kiện NATS) rồi dừng.
 Signal "huy" (điều phối) dừng luồng khi đội chưa nhận: gỡ đội nếu đang giao, tin về tiep_nhan.
+CanhBaoVuotNguong (#87): một đợt vượt ngưỡng của một trạm (id canh-bao-<ma_tram>-<dot>), nhận sự kiện
+qua signal "su_kien" (canh_bao_khoi_chay.py signal-with-start); báo đúng 1 lần cho mỗi bước canh_bao,
+nguy_hiem, ve_duoi_nguong (canh_bao.quyet_dinh) bằng activity gui_canh_bao; về dưới ngưỡng thì kết thúc.
 Hello: kiểm thử đường đi API → Temporal → worker.
 Sơ đồ: apps/cuu-tro/README.md mục "Workflow", docs/architecture.md.
 """
@@ -22,7 +25,10 @@ from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError
 
 with workflow.unsafe.imports_passed_through():
+    from . import canh_bao
     from .activities import HoatDong, chao
+    from .canh_bao import SuKien, ThamSoCanhBao, TrangThaiCanhBao, YeuCauGui
+    from .canh_bao_gui import GuiCanhBao
     from .logic import (
         BAO_HET_LAN_GIAO,
         BAO_KHONG_CO_DOI,
@@ -73,6 +79,63 @@ _ACTIVITY = {
     "start_to_close_timeout": timedelta(seconds=30),
     "retry_policy": RetryPolicy(initial_interval=timedelta(seconds=1), maximum_attempts=5),
 }
+
+
+# Gửi thông báo (#87): Telegram/CSDL/NATS chập chờn thì thử lại giãn cách 2 s → 60 s, tối đa 10 lần
+# (429 của Telegram: activity đặt next_retry_delay theo retry_after). Hết lần vẫn lỗi: ghi lịch sử, đợt
+# vẫn tiếp tục (bước sau vẫn được báo).
+_GUI = {
+    "start_to_close_timeout": timedelta(seconds=30),
+    "retry_policy": RetryPolicy(initial_interval=timedelta(seconds=2), backoff_coefficient=2.0,
+                                maximum_interval=timedelta(seconds=60), maximum_attempts=10),
+}
+
+
+@workflow.defn(name="CanhBaoVuotNguong")
+class CanhBaoVuotNguong:
+    @workflow.init
+    def __init__(self, ts: ThamSoCanhBao) -> None:
+        self._tt = TrangThaiCanhBao(ma_tram=ts.ma_tram, dot=ts.dot, da_bao=[])
+        self._hang: list[SuKien] = []
+
+    @workflow.run
+    async def run(self, ts: ThamSoCanhBao) -> TrangThaiCanhBao:
+        tt = self._tt
+        han = workflow.now() + timedelta(seconds=ts.han_giay)
+        while True:
+            con = (han - workflow.now()).total_seconds()
+            try:
+                await workflow.wait_condition(lambda: bool(self._hang), timeout=timedelta(seconds=max(con, 1)))
+            except asyncio.TimeoutError:
+                tt.ket_thuc = canh_bao.KET_THUC_HET_HAN
+                return tt
+            while self._hang:
+                sk = self._hang.pop(0)
+                buoc = canh_bao.quyet_dinh(sk, tt.da_bao)
+                if buoc is None:
+                    if sk.loai == canh_bao.LOAI_VE and not tt.da_bao:
+                        # Đợt về dưới ngưỡng mà chưa báo bước nào (vd worker chạy sau khi đợt bắt đầu): đóng ngay
+                        tt.ket_thuc = canh_bao.KET_THUC_KHONG_BAO
+                        return tt
+                    continue
+                try:
+                    await workflow.execute_activity_method(
+                        GuiCanhBao.gui_canh_bao, YeuCauGui(buoc=buoc, su_kien=sk, da_bao=list(tt.da_bao)), **_GUI)
+                except ActivityError as e:
+                    workflow.logger.error("không gửi được thông báo %s %s: %s", tt.ma_tram, buoc, e)
+                tt.da_bao.append(buoc)
+                if buoc == canh_bao.BUOC_VE:
+                    tt.ket_thuc = canh_bao.BUOC_VE
+                    return tt
+
+    @workflow.signal(name=canh_bao.SIGNAL_SU_KIEN)
+    def su_kien(self, sk: SuKien) -> None:
+        if sk.ma_tram == self._tt.ma_tram and sk.dot == self._tt.dot:
+            self._hang.append(sk)
+
+    @workflow.query(name=QUERY_TRANG_THAI)
+    def trang_thai(self) -> TrangThaiCanhBao:
+        return self._tt
 
 
 @workflow.defn(name="Hello")

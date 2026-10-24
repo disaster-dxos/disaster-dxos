@@ -57,13 +57,15 @@ services:
       - secrets-cuu-tro-thiet-bi:/out/cuu-tro-thiet-bi
       - secrets-cuu-tro-api:/out/cuu-tro-api
       - secrets-cuu-tro-thong-bao:/out/cuu-tro-thong-bao
+      - secrets-cuu-tro-worker:/out/cuu-tro-worker
     healthcheck:
       test:
         - CMD-SHELL
         - >-
           for f in cuu-tro/APP_DB_URL cuu-tro/NATS_URL cuu-tro-thiet-bi/MQTT_PASSWORD cuu-tro-api/S3_SECRET_KEY
           cuu-tro-api/LEDGER_WRITE_TOKEN cuu-tro-api/REALTIME_TOKEN_SECRET cuu-tro-thong-bao/CENTRIFUGO_API_KEY
-          cuu-tro-thong-bao/NATS_URL; do test -s /out/$$f || exit 1; done
+          cuu-tro-thong-bao/NATS_URL cuu-tro-worker/APP_DB_URL cuu-tro-worker/NATS_URL; do test -s /out/$$f || exit 1; done;
+          test -e /out/cuu-tro-worker/TELEGRAM_BOT_TOKEN
       interval: 5s
       timeout: 3s
       retries: 24
@@ -80,6 +82,9 @@ services:
     # APP_DB_URL (role cuu_tro_app) do bao agent render, env-from-files.sh export rồi exec worker.
     # Cùng tiến trình: bộ khởi chạy tự động (#67) LISTEN cuu_tro_tin_moi + quét outbox assignment_queue;
     # NATS_URL để báo điều phối (stream CUU_TRO_DIEU_PHOI, worker tự khai báo stream khi khởi động).
+    # Cảnh báo vượt ngưỡng (#87): consumer canh-bao-temporal → workflow CanhBaoVuotNguong → activity
+    # gui_canh_bao, kênh CANH_BAO_KENH (gia-lap: hộp thư nội bộ + web; telegram: thêm Bot API). Token bot
+    # (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID) chỉ trong volume riêng secrets-cuu-tro-worker.
     entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos"]
     command: ["python", "-m", "cuu_tro_workflow.worker"]
     depends_on:
@@ -98,10 +103,15 @@ services:
       NATS_STREAMS_FILE: /app/nats/streams.json
       PHAN_CONG_TU_DONG: ${PHAN_CONG_TU_DONG:-1}
       PHAN_CONG_QUET_GIAY: ${PHAN_CONG_QUET_GIAY:-30}
+      CANH_BAO_KENH: ${CANH_BAO_KENH:-gia-lap}
+      CANH_BAO_HAN_DOT_GIAY: ${CANH_BAO_HAN_DOT_GIAY:-604800}
+      TELEGRAM_API_URL: ${TELEGRAM_API_URL:-https://api.telegram.org}
+      # Liên kết "Web điều phối" trong nội dung tin
+      GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL:-http://localhost:9080}
     volumes:
       - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
       - ./apps/cuu-tro/nats/streams.json:/app/nats/streams.json:ro
-      - secrets-cuu-tro:/run/secrets/dxos:ro
+      - secrets-cuu-tro-worker:/run/secrets/dxos:ro
     healthcheck:
       # Worker ghi lại /tmp/worker-alive mỗi 10 giây khi đang nhận việc từ Temporal
       test: ["CMD", "python", "-c", "import os,sys,time; sys.exit(time.time() - os.path.getmtime('/tmp/worker-alive') > 30)"]
@@ -259,8 +269,8 @@ services:
     mem_limit: 96m
 
   cuu-tro-thong-bao:
-    # Cầu nối thông báo realtime (#68): kéo từ consumer bền realtime-* (stream CUU_TRO_DIEU_PHOI:
-    # cần xử lý + tin mới; CUU_TRO_CANH_BAO: vượt ngưỡng), chỉ chép trường không định danh, POST
+    # Cầu nối thông báo realtime (#68): kéo từ consumer bền realtime-* (stream CUU_TRO_DIEU_PHOI: cần xử
+    # lý, tin mới, thông báo cảnh báo trạm đo do workflow #87 đã gửi), chỉ chép trường không định danh, POST
     # /api/publish của Centrifugo (idempotency_key = Nats-Msg-Id), Centrifugo nhận mới ack.
     # Bí mật: NATS_URL + CENTRIFUGO_API_KEY (volume riêng), không có mật khẩu DB.
     image: disaster-dxos/cuu-tro-workflow:0.2.0
@@ -369,6 +379,12 @@ volumes:
       device: tmpfs
       o: "uid=100,gid=1000,mode=0755,size=1m"
   secrets-cuu-tro-thong-bao:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "uid=100,gid=1000,mode=0755,size=1m"
+  secrets-cuu-tro-worker:
     driver: local
     driver_opts:
       type: tmpfs

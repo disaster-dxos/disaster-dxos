@@ -27,6 +27,9 @@ Mọi cấu hình qua biến môi trường trong `.env`, có giải thích tron
 | `SCORPIO_DB`, `SCORPIO_DB_USER` | `scorpio`, `scorpio` | CSDL và role của Scorpio NGSI-LD trên PostgreSQL của lõi; mật khẩu trong OpenBao `secret/core/scorpio-db` (#85) |
 | `SCORPIO_PLATFORM` | `linux/amd64` | Image Scorpio chỉ có amd64 (như PostGIS) |
 | `SCORPIO_DB_POOL` | `8` | Số kết nối PostgreSQL tối đa của Scorpio (role `scorpio` có `CONNECTION LIMIT 20`); hết thì request xếp hàng |
+| `CANH_BAO_KENH` | `gia-lap` | Kênh thông báo cảnh báo vượt ngưỡng (#87): `gia-lap` (hộp thư nội bộ + web) hoặc `telegram` (token + chat id trong OpenBao `secret/app/cuu-tro/telegram`, cách bật: `apps/cuu-tro/README.md`) |
+| `CANH_BAO_HAN_DOT_GIAY` | `604800` | Đợt vượt ngưỡng không có sự kiện về dưới ngưỡng thì workflow tự kết thúc sau ngần này giây |
+| `TELEGRAM_API_URL` | `https://api.telegram.org` | Địa chỉ Telegram Bot API (đổi khi dùng máy chủ Bot API riêng) |
 | `GW_NGSI_LD_CONTEXT_URL` | `http://<DXOS_APP>-api:8000/ngsi-ld/context.jsonld` | `@context` NGSI-LD mà gateway đặt vào header `Link` của route `/ngsi-ld/v1/*`; Scorpio tải trong mạng nội bộ (#85) |
 
 Thêm biến mới thì thêm vào `.env.example` kèm chú thích.
@@ -53,6 +56,7 @@ apps/<tên>/
 ├── hasura/metadata/           # bảng lộ ra GraphQL, quyền theo vai trò
 ├── compose.yaml               # backend của ứng dụng, profile app; API tên <tên>-api cổng 8000
 ├── openbao/policies/*.hcl     # quyền đọc bí mật secret/app/<tên>/*
+├── openbao/secrets.conf       # bí mật riêng của ứng dụng (tạo trống/ngẫu nhiên nếu chưa có, #87)
 ├── s3/buckets.conf            # bucket, bắt buộc tiền tố <tên>-
 ├── nats/streams.json          # stream JetStream, subject <tên>.>
 └── ngsi-ld/context.jsonld     # @context NGSI-LD nếu ứng dụng ghi thực thể lên Scorpio (#85); <tên>-api phục vụ ở /ngsi-ld/context.jsonld

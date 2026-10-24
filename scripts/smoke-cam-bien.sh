@@ -6,7 +6,8 @@
 # (3) giả lập gửi bản tin bình thường cho trạm AL-MN-02 → bản tin vào stream → dòng mới trong
 #     sensor_readings (mức binh_thuong) → sensors.last_value / last_observed_at cập nhật;
 # (4) kịch bản vượt ngưỡng → dòng nguy_hiem, sự kiện cảnh báo trên cuu-tro.canh-bao.cam-bien.AL-MN-02
-#     (mức trước binh_thuong); gửi tiếp khi vẫn trên ngưỡng → KHÔNG có cảnh báo mới; nước rút → không cảnh báo;
+#     (mức trước binh_thuong); gửi tiếp khi vẫn trên ngưỡng → KHÔNG có cảnh báo mới; nước rút → sự kiện
+#     ve_duoi_nguong có mã đợt (#87), không phải cảnh báo;
 # (5) bản tin sai (đơn vị sai, JSON hỏng, trạm không có) → bị bỏ, không ghi, consumer vẫn chạy, không tồn đọng;
 # (6) dieu-phoi, cuu-ho, tinh-nguyen đọc sensor_readings qua APISIX /graphql; không token → 401;
 #     không vai trò nào ghi được sensor_readings.
@@ -137,8 +138,16 @@ check "vẫn trên ngưỡng: KHÔNG phát cảnh báo mới" True \
   "$(python3 -c 'import sys; from datetime import datetime as D; print(D.fromisoformat(sys.argv[1]) == D.fromisoformat(sys.argv[2]))' "$(jf 'd.get("thoi_diem", "")' <<<"$(canh_bao_cuoi)")" "$t2" 2>&1)"
 bt=$(gia_lap --mot-lan --tram "$TRAM")
 t4=$(jf 'd["thoi_diem"]' <<<"$bt")
-check "nước rút: dòng binh_thuong, không cảnh báo" "binh_thuong True" \
-  "$(cho_dong "$t4" | cut -d' ' -f2) $(python3 -c 'import sys; from datetime import datetime as D; print(D.fromisoformat(sys.argv[1]) == D.fromisoformat(sys.argv[2]))' "$(jf 'd.get("thoi_diem", "")' <<<"$(canh_bao_cuoi)")" "$t2" 2>&1)"
+check "nước rút: dòng binh_thuong" binh_thuong "$(cho_dong "$t4" | cut -d' ' -f2)"
+cb=""
+for _ in $(seq 1 20); do
+  cb=$(canh_bao_cuoi)
+  [ "$(jf 'd.get("loai", "")' <<<"$cb")" = ve_duoi_nguong ] && break
+  sleep 0.5
+done
+# #87: về dưới ngưỡng phát sự kiện kết thúc đợt (mã đợt = lần đo đầu tiên trên ngưỡng = t2), không phải cảnh báo mới
+check "nước rút: sự kiện ve_duoi_nguong của đợt bắt đầu lúc vượt ngưỡng" "ve_duoi_nguong binh_thuong nguy_hiem True" \
+  "$(jf '" ".join(str(d.get(k)) for k in ("loai", "muc", "muc_truoc"))' <<<"$cb") $(python3 -c 'import sys; from datetime import datetime as D; f=lambda s: D.fromisoformat(s.replace("Z", "+00:00")); print(f(sys.argv[1]) == f(sys.argv[2]))' "$(jf 'd.get("dot", "")' <<<"$cb")" "$t2" 2>&1)"
 
 # ---------- (5) Bản tin sai ----------
 dong_giua=$(so_dong)

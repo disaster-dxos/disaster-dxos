@@ -48,7 +48,7 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 ## Tuần 4 · 05–11/11 · Tầng [D] + lên mạng → v0.2.0
 - [x] [V2] Mô phỏng cảm biến mực nước (Python → MQTT) (khung có từ #30; #84: 9 trạm ở Quảng Nam, Đà Nẵng, kịch bản `tran-lu` 48 giờ trong `du_lieu/tran_lu_mau.json`, `--phat-lai`, `--seed`)
 - [x] [V2] NATS → Scorpio: thực thể trạm đo NGSI-LD (bản sao số) (#85: consumer `ban-sao-so` trên `CUU_TRO_CAM_BIEN`, Scorpio trong `core`, đọc qua `/ngsi-ld/v1/*`)
-- [ ] [V1] Cảnh báo vượt ngưỡng → Temporal → thông báo Telegram (sự kiện đã phát lên stream `CUU_TRO_CANH_BAO` từ #30)
+- [x] [V1] Cảnh báo vượt ngưỡng → Temporal → thông báo Telegram (#87: workflow `CanhBaoVuotNguong` mỗi đợt, báo 1 lần mỗi bước; kênh `gia-lap` mặc định, `telegram` khi đặt token trong OpenBao)
 - [ ] [V2] Sổ cái minh bạch: niêm phong nhập/xuất hàng, tiền cứu trợ + endpoint xác minh
 - [ ] [V2] Xuất dữ liệu cũ ra Parquet + truy vấn DuckDB
 - [ ] [V2] Grafana dashboard điều hành

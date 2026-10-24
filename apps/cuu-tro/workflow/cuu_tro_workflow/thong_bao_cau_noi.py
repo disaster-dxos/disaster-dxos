@@ -22,6 +22,7 @@ import time
 import httpx
 import nats
 from nats.errors import TimeoutError as NatsTimeout
+from nats.js.errors import NotFoundError
 
 from . import thong_bao
 from .cam_bien_consumer import doc_khai_bao, khai_bao_jetstream
@@ -29,6 +30,9 @@ from .cam_bien_consumer import doc_khai_bao, khai_bao_jetstream
 HEALTH_FILE = os.environ.get("HEALTH_FILE", "/tmp/thong-bao-alive")
 TIEN_TO_CONSUMER = "realtime-"
 LO_KEO = 50
+# Consumer cũ đã thay bằng luồng thông báo qua Temporal (#87): xóa trên máy nâng cấp từ bản trước để
+# không giữ bản tin chờ vô ích
+CONSUMER_BO = (("CUU_TRO_CANH_BAO", "realtime-canh-bao"),)
 log = logging.getLogger("cuu-tro-thong-bao")
 
 
@@ -107,6 +111,12 @@ async def main() -> None:
     nc = await nats.connect(nats_url, name="cuu-tro-thong-bao", max_reconnect_attempts=-1, reconnect_time_wait=2)
     js = nc.jetstream()
     await khai_bao_jetstream(js, streams, cua_minh)
+    for stream, ten in CONSUMER_BO:
+        try:
+            await js.delete_consumer(stream, ten)
+            log.info("đã xóa consumer cũ %s/%s", stream, ten)
+        except NotFoundError:
+            pass
 
     dung = asyncio.Event()
     loop = asyncio.get_running_loop()
