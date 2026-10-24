@@ -1,8 +1,12 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script setup lang="ts">
-// Chú thích bản đồ gọn: màu điểm = mức khẩn, màu viền = trạng thái. Thu lại thành một nút khi không cần.
+// Chú thích bản đồ gọn: màu điểm = mức khẩn, màu viền = trạng thái; hình thoi = trạm đo mực nước theo cấp
+// báo động (#62), kèm công tắc bật/tắt lớp trạm và số trạm từng cấp. Thu lại thành một nút khi không cần.
 import { DS_MUC_KHAN, DS_TRANG_THAI, MUC_KHAN, TRANG_THAI, mauTrangThai } from '~/utils/tin'
+import { DS_MUC_TRAM, MUC_TRAM, type MucTram } from '~/utils/tram-do'
 
+const props = defineProps<{ demTram?: Record<MucTram, number> | null; loiTram?: string }>()
+const hienTram = defineModel<boolean>('hienTram', { default: true })
 const mo = ref(true)
 const toi = useToi()
 </script>
@@ -29,6 +33,13 @@ const toi = useToi()
           <span class="size-3.5 rounded-full border-[3px] bg-accented ring-1 ring-accented" :style="{ borderColor: mauTrangThai(s, toi) }" aria-hidden="true" />{{ TRANG_THAI[s] }}
         </li>
       </ul>
+      <USwitch v-model="hienTram" size="xs" label="Trạm đo" class="col-span-1" :ui="{ label: 'text-muted font-normal' }" />
+      <ul class="flex flex-wrap gap-x-3 gap-y-1" :class="{ 'opacity-50': !hienTram }" aria-label="Cấp báo động trạm đo mực nước">
+        <li v-for="m in DS_MUC_TRAM" :key="m" class="flex items-center gap-1.5">
+          <span class="size-2.5 rotate-45 ring-2 ring-default" :style="{ background: MUC_TRAM[m].mau }" aria-hidden="true" />{{ MUC_TRAM[m].nhan }}<span v-if="props.demTram" class="so text-muted">{{ props.demTram[m] }}</span>
+        </li>
+      </ul>
+      <p v-if="props.loiTram" class="col-span-2 text-error">{{ props.loiTram }}</p>
     </div>
   </div>
 </template>

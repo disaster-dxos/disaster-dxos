@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+### Added
+- Web điều phối: lớp trạm đo mực nước trên bản đồ MapLibre (#62). Dữ liệu từ bản sao số NGSI-LD trên Scorpio qua API Gateway (GeoJSON, JWT mọi vai); hình thoi màu theo cấp báo động (bình thường, cảnh báo, nguy hiểm), nhãn mã + mực nước từ zoom 11, công tắc bật/tắt và số trạm từng cấp trong ô chú thích. Bấm trạm → popup mực nước mới nhất, khoảng cách tới ngưỡng, biểu đồ nhỏ 24 giờ có vạch ngưỡng (GraphQL `sensor_readings`). Tải lại mỗi 60 giây và ngay khi người điều phối nhận cảnh báo mực nước qua Centrifugo. Vitest `tests/tram-do.test.ts`, smoke mới `scripts/smoke-tram-do.sh` (trong `make smoke`).
+
 ## [0.3.0] - 2026-10-24
 Tuần 4: Tầng [D] và [I]. Mỗi trạm đo là một bản sao số NGSI-LD trên Scorpio (lõi, CSDL riêng trên PostGIS, không MongoDB), bộ giả lập có 9 trạm ở Quảng Nam, Đà Nẵng với trận lũ mẫu 48 giờ (giả lập); cảnh báo vượt ngưỡng chạy qua Temporal, mỗi đợt báo đúng một lần mỗi bước (vượt ngưỡng, lên nguy hiểm, về dưới ngưỡng) vào hộp thư nội bộ, web điều phối hoặc Telegram; tiền cứu trợ thu/chi lên sổ cái minh bạch, worker niêm phong bù và API xác minh chung theo mã kèm bằng chứng; dữ liệu cũ xuất ra Parquet trên SeaweedFS, truy vấn bằng DuckDB; Grafana OSS dashboard điều hành đọc bằng role chỉ đọc (PR #86, #88, #90, #93).
 

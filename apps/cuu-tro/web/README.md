@@ -5,7 +5,7 @@
 
 ![Web điều phối: bản đồ và danh sách tin kêu cứu thời gian thực](../../../docs/images/web-dieu-phoi.png)
 
-> Trạng thái: khung web, đăng nhập Keycloak, bố cục, logo (#59); chạy trong stack qua gateway (#64); thông báo realtime qua Centrifugo (#68); bản đồ và danh sách tin kêu cứu **dữ liệu thật, thời gian thực** qua GraphQL subscription (#60); màn phân công cứu hộ cho 2 vai điều phối, cứu hộ (#61). Việc tiếp theo: #62 (trạm đo), #63 (trang minh bạch).
+> Trạng thái: khung web, đăng nhập Keycloak, bố cục, logo (#59); chạy trong stack qua gateway (#64); thông báo realtime qua Centrifugo (#68); bản đồ và danh sách tin kêu cứu **dữ liệu thật, thời gian thực** qua GraphQL subscription (#60); màn phân công cứu hộ cho 2 vai điều phối, cứu hộ (#61); lớp trạm đo mực nước trên bản đồ (#62). Việc tiếp theo: #63 (trang minh bạch).
 
 ## Đăng nhập: OIDC Authorization Code + PKCE
 
@@ -56,6 +56,17 @@ Biến môi trường `NUXT_PUBLIC_*`: xem `.env.example` ở gốc repo (mục 
 
 CSP `connect-src` đã có origin `ws(s)://` của gateway (#68), dùng chung cho `/graphql`. Kiểm trên stack thật: `bash scripts/smoke-ban-do.sh` (trong `make smoke`).
 
+## Lớp trạm đo mực nước (#62)
+
+| Phần | Cách làm | Ở đâu |
+|---|---|---|
+| Nguồn dữ liệu | Bản sao số trạm đo NGSI-LD trên Scorpio (#85) qua API Gateway: `GET /ngsi-ld/v1/entities?type=WaterLevelStation&options=keyValues&limit=200`, `Accept: application/geo+json`, kèm JWT (mọi vai). Gateway tự đặt `@context` nên web dùng tên ngắn (`stationCode`, `waterLevel`, `alertLevel`, `warningThreshold`, `dangerThreshold`). Dữ liệu trạm không định danh | `composables/useTramDo.ts`, `utils/tram-do.ts` |
+| Bản đồ | Hình thoi màu theo cấp báo động (xanh bình thường, vàng cảnh báo, đỏ nguy hiểm; nguy hiểm vẽ trên cùng), nằm dưới lớp tin kêu cứu (bấm trùng thì ưu tiên tin). Từ zoom 11 hiện nhãn `mã · mực nước`. Công tắc "Trạm đo" trong ô chú thích bật/tắt lớp, kèm số trạm từng cấp | `components/BanDo.vue`, `components/ChuThichBanDo.vue` |
+| Popup | Bấm trạm → tên, mã, cấp báo động, mực nước mới nhất, còn bao nhiêu cm tới ngưỡng (hoặc đã vượt), biểu đồ nhỏ 24 giờ có vạch ngưỡng cảnh báo/nguy hiểm. Chuỗi đo lấy bằng GraphQL `sensor_readings` (tối đa 96 lần đo), chỉ khi mở popup; trạm có lần đo mới thì tự tải lại | `components/PopupTram.vue` |
+| Cập nhật | Tải lại mỗi 60 giây (bỏ lượt khi tab ẩn, hiện lại thì tải ngay). Người điều phối nhận cảnh báo mực nước realtime qua Centrifugo (#68, #87) → tải lại ngay, màu trạm đổi cùng lúc với thông báo. Lỗi mạng: giữ dữ liệu cũ trên bản đồ, báo lỗi trong ô chú thích | `pages/index.vue` |
+
+Kiểm thử: `tests/tram-do.test.ts` (đọc GeoJSON của Scorpio, màu, biểu đồ nhỏ, ngưỡng) và `scripts/smoke-tram-do.sh` (gọi đúng đường dẫn và query của web qua gateway cho cả 3 vai; màu/giá trị khớp lần đo mới nhất trong CSDL).
+
 ## Trang Minh bạch cứu trợ (#78, #63)
 
 Trang công khai, không cần đăng nhập, không dùng khung điều phối: `/minh-bach/<mã phiếu>` (đường dẫn in trong mã QR trên phiếu; `/minh-bach?ma=<mã>` cũng tra sẵn). Người dân nhập mã → web kiểm dạng mã (UUID) → `GET /workflow/minh-bach/phieu/{mã}` qua gateway → hiện kết quả xác minh trên sổ cái Tessera: **Đã xác minh**, **Không khớp**, **Chưa ghi lên sổ cái**, **Tạm thời không kiểm được** (màu + biểu tượng khiên khác nhau), hàng gì, bao nhiêu, từ kho nào tới điểm nhận nào, giờ lập phiếu và giờ ghi sổ. Phần "Tự kiểm chứng" (SHA-256, checkpoint, lệnh `ledger-verify`) thu gọn cho người kỹ thuật. Lỗi 404, 429, 5xx, phản hồi sai dạng, mất mạng có câu riêng. Ánh xạ phản hồi → hiển thị: `utils/minh-bach.ts` (test `tests/minh-bach.test.ts`).
@@ -88,7 +99,7 @@ Hai đường mới, chỉ gọi lõi qua API Gateway bằng JWT của người 
 ## Kiểm thử
 
 ```bash
-npm test              # Vitest: PKCE (vector RFC 7636), URL OIDC, state/nonce, hạn token, GraphQL → tin → GeoJSON, bộ lọc, tin mới, CSP, thông báo realtime, phân công (nút theo vai, gọi /workflow, mã lỗi)
+npm test              # Vitest: PKCE (vector RFC 7636), URL OIDC, state/nonce, hạn token, GraphQL → tin → GeoJSON, bộ lọc, tin mới, CSP, thông báo realtime, phân công (nút theo vai, gọi /workflow, mã lỗi), trạm đo (GeoJSON NGSI-LD, màu, biểu đồ nhỏ)
 npm run typecheck     # vue-tsc
 npm run licenses      # giấy phép mọi gói npm trong package-lock.json
 ```

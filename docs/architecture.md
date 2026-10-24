@@ -780,7 +780,7 @@ flowchart LR
 | Chỉ đọc qua gateway | Route `/ngsi-ld/v1/{entities,types,attributes}` GET + JWT; mọi đường khác dưới `/ngsi-ld/` → 403; bỏ `NGSILD-Tenant` | Scorpio không có xác thực riêng; người dùng không sửa được bản sao số, không tạo subscription gửi dữ liệu ra ngoài |
 | Không lưu lịch sử trong Scorpio | Chỉ trạng thái mới nhất; chuỗi đo nằm ở `sensor_readings` (Hasura) | Tránh hai nơi giữ lịch sử; bản sao số dựng lại được từ stream (lưu 7 ngày) hoặc từ `sensors.last_*` |
 
-Đọc dữ liệu (cho lớp trạm đo trên bản đồ, #62): `GET /ngsi-ld/v1/entities?type=WaterLevelStation&options=keyValues` kèm Bearer JWT; thêm `Accept: application/geo+json` để nhận GeoJSON FeatureCollection cho MapLibre; lọc `q=alertLevel=="nguy_hiem"`, `georel=near;maxDistance==5000&geometry=Point&coordinates=[108.11,15.86]`. Chi tiết thuộc tính: `apps/cuu-tro/ngsi-ld/README.md`.
+Đọc dữ liệu (lớp trạm đo trên bản đồ của web điều phối, #62, `apps/cuu-tro/web/README.md` mục "Lớp trạm đo mực nước"; web tải lại mỗi 60 giây và ngay khi có cảnh báo realtime): `GET /ngsi-ld/v1/entities?type=WaterLevelStation&options=keyValues` kèm Bearer JWT; thêm `Accept: application/geo+json` để nhận GeoJSON FeatureCollection cho MapLibre; lọc `q=alertLevel=="nguy_hiem"`, `georel=near;maxDistance==5000&geometry=Point&coordinates=[108.11,15.86]`. Chi tiết thuộc tính: `apps/cuu-tro/ngsi-ld/README.md`.
 
 ### 7.5. Dữ liệu phi cấu trúc: ảnh hiện trường (#27)
 

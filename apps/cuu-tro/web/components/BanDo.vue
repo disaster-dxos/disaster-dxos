@@ -5,18 +5,31 @@
 // Điểm: màu nền theo mức khẩn, màu viền theo trạng thái; nhiều điểm gần nhau thì gom cụm (cụm đỏ nếu có tin
 // khẩn cấp); tin vừa đến có vòng nhấp nháy. Bấm điểm → chọn (danh sách và ngăn chi tiết đồng bộ).
 // Giao diện tối → kiểu nền tối của OpenFreeMap; đổi kiểu nền thì thêm lại các lớp (sự kiện style.load).
+// Lớp trạm đo mực nước (#62): hình thoi màu theo cấp báo động, nằm dưới lớp tin kêu cứu; bấm trạm → popup
+// giá trị mới nhất + biểu đồ nhỏ 24 giờ (components/PopupTram.vue). Bật/tắt lớp bằng prop hienTram.
 import 'maplibre-gl/dist/maplibre-gl.css'
-import type { GeoJSONSource, Map as MlMap, StyleSpecification } from 'maplibre-gl'
+import type { GeoJSONSource, Map as MlMap, Popup as MlPopup, StyleSpecification } from 'maplibre-gl'
 import {
   CUM_BAN_KINH, CUM_ZOOM_TOI_DA, QUAN_DAO, TAM_MAC_DINH, THUOC_TINH_CUM, ZOOM_MAC_DINH, bieuThucMauCum,
   bieuThucMauKhan, bieuThucMauTrangThai, kieuDuPhongOsm, nhanTiengViet, tinSangGeoJson, toaDoHopLe, zoomChon,
 } from '~/utils/ban-do'
 import type { TinKeuCuu } from '~/utils/tin'
+import { DS_MUC_TRAM, MUC_TRAM, tramSangGeoJson, type DiemDo, type TramDo } from '~/utils/tram-do'
 
 // dePhai: bề rộng (px) ngăn chi tiết che bên phải bản đồ, để điểm được chọn bay vào giữa phần còn thấy
-const props = defineProps<{ ds: TinKeuCuu[]; moi: Map<string, number>; chon: string | null; dePhai?: number }>()
+const props = withDefaults(defineProps<{
+  ds: TinKeuCuu[]; moi: Map<string, number>; chon: string | null; dePhai?: number
+  tram?: TramDo[]; hienTram?: boolean
+}>(), { dePhai: 0, tram: () => [], hienTram: true })
 const emit = defineEmits<{ chon: [id: string] }>()
 const el = ref<HTMLDivElement>()
+const popupEl = ref<HTMLDivElement>()
+const { layLichSu } = useTramDo()
+const tramChon = ref<string | null>(null)
+const lichSu = ref<DiemDo[] | null>(null)
+const loiLichSu = ref('')
+const tramDangMo = computed(() => props.tram.find((t) => t.ma === tramChon.value) ?? null)
+let popup: MlPopup | undefined
 const loiNen = ref(false)
 const colorMode = useColorMode()
 const toi = computed(() => colorMode.value === 'dark')
@@ -42,9 +55,67 @@ function duLieuChon(id: string | null) {
   return t ? tinSangGeoJson([t]) : KHONG_CO_DIEM
 }
 
+/** Biểu tượng hình thoi cho từng cấp báo động (vẽ bằng canvas; đổi kiểu nền thì phải thêm lại). */
+function themBieuTuongTram(m: MlMap, vien: string) {
+  const r = window.devicePixelRatio > 1 ? 2 : 1
+  const n = 22 * r
+  for (const muc of DS_MUC_TRAM) {
+    const ten = `tram-${muc}`
+    if (m.hasImage(ten)) continue
+    const c = document.createElement('canvas')
+    c.width = c.height = n
+    const g = c.getContext('2d')
+    if (!g) return
+    g.beginPath()
+    g.moveTo(n / 2, 2 * r); g.lineTo(n - 2 * r, n / 2); g.lineTo(n / 2, n - 2 * r); g.lineTo(2 * r, n / 2); g.closePath()
+    g.fillStyle = MUC_TRAM[muc].mau
+    g.fill()
+    g.lineWidth = 2.5 * r
+    g.strokeStyle = vien
+    g.stroke()
+    // Vạch sóng nước ở giữa
+    g.beginPath()
+    g.moveTo(n * 0.33, n / 2); g.lineTo(n * 0.67, n / 2)
+    g.strokeStyle = '#ffffff'
+    g.lineWidth = 2 * r
+    g.stroke()
+    m.addImage(ten, g.getImageData(0, 0, n, n), { pixelRatio: r })
+  }
+}
+
+function themLopTram(m: MlMap, coChu: boolean, nenDiem: string) {
+  themBieuTuongTram(m, nenDiem)
+  const hien = props.hienTram ? 'visible' : 'none'
+  m.addSource('tram', { type: 'geojson', data: tramSangGeoJson(props.tram) as never })
+  m.addLayer({
+    id: 'tram', type: 'symbol', source: 'tram',
+    layout: {
+      'visibility': hien,
+      'icon-image': ['concat', 'tram-', ['get', 'muc']] as never,
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+      // Nguy hiểm vẽ trên cùng
+      'symbol-sort-key': ['-', 2, ['get', 'thuTu']] as never,
+    },
+  })
+  if (coChu) {
+    m.addLayer({
+      id: 'tram-nhan', type: 'symbol', source: 'tram', minzoom: 11,
+      layout: {
+        'visibility': hien,
+        'text-field': ['get', 'nhan'], 'text-font': ['Noto Sans Bold'], 'text-size': 11,
+        'text-offset': [0, 1.25], 'text-anchor': 'top', 'text-optional': true,
+      },
+      paint: { 'text-color': toi.value ? '#C0D1E6' : '#12355B', 'text-halo-color': nenDiem, 'text-halo-width': 1.5 },
+    })
+  }
+}
+
 function themLop(m: MlMap) {
   if (m.getSource('tin')) return
   const nenDiem = toi.value ? '#0B1626' : '#ffffff'
+  // Trạm đo thêm trước: nằm dưới các điểm tin kêu cứu (tin quan trọng hơn khi chồng nhau)
+  themLopTram(m, !!m.getStyle().glyphs, nenDiem)
   m.addSource('tin', {
     type: 'geojson',
     data: tinSangGeoJson(props.ds, props.moi),
@@ -117,7 +188,13 @@ function ganSuKien(m: MlMap) {
     const z = await (m.getSource('tin') as GeoJSONSource).getClusterExpansionZoom(cid)
     m.easeTo({ center: (f.geometry as GeoJSON.Point).coordinates as [number, number], zoom: z })
   })
-  for (const lop of ['tin', 'cum']) {
+  m.on('click', 'tram', (e) => {
+    // Bấm trúng cả tin kêu cứu → ưu tiên tin (handler 'tin'/'cum' đã xử lý)
+    if (m.queryRenderedFeatures(e.point, { layers: ['tin', 'cum'].filter((l) => m.getLayer(l)) }).length) return
+    const ma = e.features?.[0]?.properties?.ma
+    if (typeof ma === 'string') void moPopupTram(m, ma)
+  })
+  for (const lop of ['tin', 'cum', 'tram']) {
     m.on('mouseenter', lop, () => { m.getCanvas().style.cursor = 'pointer' })
     m.on('mouseleave', lop, () => { m.getCanvas().style.cursor = '' })
   }
@@ -134,6 +211,30 @@ function batNhapNhay(m: MlMap) {
     m.setPaintProperty('tin-moi', 'circle-radius', 10 + 16 * p)
     m.setPaintProperty('tin-moi', 'circle-opacity', 0.55 * (1 - p))
   }, 80)
+}
+
+async function taiLichSu(ma: string) {
+  loiLichSu.value = ''
+  try {
+    const ds = await layLichSu(ma)
+    if (tramChon.value === ma) lichSu.value = ds
+  } catch (e) {
+    if (tramChon.value === ma) loiLichSu.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+async function moPopupTram(m: MlMap, ma: string) {
+  const t = props.tram.find((x) => x.ma === ma)
+  if (!t || !popupEl.value) return
+  tramChon.value = ma
+  lichSu.value = null
+  if (!popup) {
+    const { Popup } = await import('maplibre-gl')
+    popup = new Popup({ className: 'popup-tram', maxWidth: '280px', offset: 12, focusAfterOpen: false })
+    popup.on('close', () => { tramChon.value = null })
+  }
+  popup.setLngLat(t.location).setDOMContent(popupEl.value).addTo(m)
+  await taiLichSu(ma)
 }
 
 onMounted(async () => {
@@ -168,7 +269,26 @@ watch(toi, async () => {
 
 onBeforeUnmount(() => {
   clearInterval(henNhapNhay)
+  popup?.remove()
   map?.remove()
+})
+
+// Danh sách trạm tải lại (định kỳ hoặc do cảnh báo realtime): vẽ lại; popup đang mở thì tải lại chuỗi đo khi
+// trạm có lần đo mới, trạm biến mất thì đóng popup
+watch(() => props.tram, (ds, cu) => {
+  (map?.getSource('tram') as GeoJSONSource | undefined)?.setData(tramSangGeoJson(ds) as never)
+  if (!tramChon.value) return
+  const t = ds.find((x) => x.ma === tramChon.value)
+  if (!t) { popup?.remove(); return }
+  const truoc = cu?.find((x) => x.ma === t.ma)
+  if (truoc && (truoc.mucNuoc !== t.mucNuoc || truoc.muc !== t.muc)) void taiLichSu(t.ma)
+})
+
+watch(() => props.hienTram, (hien) => {
+  for (const lop of ['tram', 'tram-nhan']) {
+    if (map?.getLayer(lop)) map.setLayoutProperty(lop, 'visibility', hien ? 'visible' : 'none')
+  }
+  if (!hien) popup?.remove()
 })
 
 watch([() => props.ds, () => props.moi], () => {
@@ -188,9 +308,36 @@ watch(() => props.chon, (id: string | null) => {
 
 <template>
   <div class="relative h-full w-full">
-    <div ref="el" class="h-full w-full" role="region" aria-label="Bản đồ tin kêu cứu" />
+    <div ref="el" class="h-full w-full" role="region" aria-label="Bản đồ tin kêu cứu và trạm đo mực nước" />
+    <!-- Nội dung popup trạm đo: MapLibre chuyển phần tử này vào khung popup khi mở -->
+    <div class="hidden">
+      <div ref="popupEl">
+        <PopupTram :tram="tramDangMo" :lich-su="lichSu" :loi="loiLichSu" />
+      </div>
+    </div>
     <p v-if="loiNen" class="absolute bottom-16 right-3 rounded-md bg-default/95 px-2.5 py-1.5 text-xs text-muted shadow ring ring-default">
       Không tải được bản đồ nền vector, đang dùng ô ảnh OpenStreetMap
     </p>
   </div>
 </template>
+
+<style>
+/* Popup trạm đo theo màu giao diện (sáng/tối) của Nuxt UI */
+.popup-tram .maplibregl-popup-content {
+  background: var(--ui-bg);
+  color: var(--ui-text);
+  border-radius: var(--ui-radius, 0.375rem);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+  padding: 12px 14px;
+  outline: 1px solid var(--ui-border);
+}
+.popup-tram .maplibregl-popup-close-button { color: var(--ui-text-muted); font-size: 18px; padding: 0 6px; }
+.popup-tram.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.popup-tram.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.popup-tram.maplibregl-popup-anchor-top-right .maplibregl-popup-tip { border-bottom-color: var(--ui-bg); }
+.popup-tram.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.popup-tram.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.popup-tram.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip { border-top-color: var(--ui-bg); }
+.popup-tram.maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: var(--ui-bg); }
+.popup-tram.maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: var(--ui-bg); }
+</style>
