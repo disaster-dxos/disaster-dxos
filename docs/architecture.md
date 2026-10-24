@@ -1,6 +1,6 @@
 # Kiến trúc Disaster DX-OS
 
-> Phiên bản tài liệu: v0.2.0 (cập nhật 23/10/2026). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
+> Phiên bản tài liệu: v0.3.0 (cập nhật 24/10/2026; từ v0.2.0 thêm Scorpio NGSI-LD #85, cảnh báo vượt ngưỡng qua Temporal #87, tiền cứu trợ trên sổ cái #89, Parquet + DuckDB #91, Grafana #92). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
 
 Disaster DX-OS gồm hai tầng, đúng mô hình Open-Core của đề:
 
@@ -77,7 +77,7 @@ flowchart TB
 ```
 
 Đường liền: luồng dữ liệu. Đường đứt: xác thực, khóa và bí mật.
-Hiện profile `core` có `openbao` (+ 8 bao agent), `postgres` (+ `postgres-roles`), `keycloak`, `apisix`, `hasura`, `seaweedfs`, `temporal` (+ `temporal-ui`), `nats` (#11; bắt buộc xác thực, MQTT cho thiết bị, #30), `ledger` (sổ cái Tessera, #28) và route gateway `/graphql`, `/files/*`, `/workflow/*`, `/ledger/*` (đọc công khai, #28), `/api/v1/me` sau Coraza WAF (#12, mục 3.3), route `/*` cho web điều phối `cuu-tro-web` (profile `app`, #64); các thành phần còn lại tuần 3–5 (xem `docs/PLAN.md`).
+Hiện profile `core` có `openbao` (+ 10 bao agent), `postgres` (+ `postgres-roles`), `keycloak`, `apisix`, `hasura`, `seaweedfs`, `temporal` (+ `temporal-ui`), `nats` (#11; bắt buộc xác thực, MQTT cho thiết bị, #30), `ledger` (sổ cái Tessera, #28), `centrifugo` (#68), `scorpio` (NGSI-LD, bản sao số trạm đo, #85) và route gateway `/graphql`, `/files/*`, `/workflow/*`, `/ledger/*` (đọc công khai, #28), `/ngsi-ld/v1/*` (chỉ đọc, #85), `/api/v1/me` sau Coraza WAF (#12, mục 3.3), route `/*` cho web điều phối `cuu-tro-web` (profile `app`, #64); các thành phần còn lại tuần 3–5 (xem `docs/PLAN.md`).
 
 ## 2. Ánh xạ 4 dịch vụ bắt buộc của đề
 
@@ -212,6 +212,8 @@ Tầng 2 chỉ thấy cổng `9080` của APISIX. Hasura (`8081`), SeaweedFS S3 
 | `/ledger/*` (#28) | POST, PUT, PATCH, DELETE | – | – | – | – | **403**: ghi sổ cái chỉ từ dịch vụ nội bộ |
 | `/workflow/keu-cuu` (#66) | POST, OPTIONS | Như `/workflow/*`, ưu tiên hơn (`priority`) | Bắt buộc (không mở gửi ẩn danh) | Bộ `api`: đọc body JSON | Body 1 MiB; **giới hạn riêng** `GW_KEU_CUU_RATE_LIMIT_COUNT` (mặc định 20) / `GW_RATE_LIMIT_WINDOW` / IP, đếm riêng | Quy ước của lõi: đường tạo tin từ hiện trường, dễ bị spam nhất (mục 6.2) |
 | `/workflow/*` | GET, POST, OPTIONS | API workflow của ứng dụng `<DXOS_APP>-api:8000` (`GW_WORKFLOW_UPSTREAM_HOST/PORT`), bỏ tiền tố `/workflow` | Bắt buộc, chuyển nguyên Bearer token (API kiểm lại) | Bộ `api` | Body 1 MiB; rate limit như trên | #29, mục 7.3 |
+| `/ngsi-ld/v1/entities`, `/types`, `/attributes` (+ `/*`) (#85) | GET, HEAD, OPTIONS (**chỉ đọc**) | `scorpio:9090` (NGSI-LD broker của lõi) | Bắt buộc (mọi vai trò), rồi **bỏ** `Authorization` | Bộ `api`: kiểm URI, tham số `q=`, `georel=`, `coordinates=` | Rate limit như trên | Gateway **đặt** header `Link` tới `@context` của ứng dụng (`GW_NGSI_LD_CONTEXT_URL`), bỏ `Link` và `NGSILD-Tenant` của client: client dùng tên ngắn, Scorpio không bị dùng để tải URL tùy ý (SSRF). Mục 7.4a |
+| `/ngsi-ld/*` khác (#85) | mọi | – | – | – | – | **403**: ghi (`entityOperations`, POST/PATCH/DELETE), `jsonldContexts`, `subscriptions`, `csourceRegistrations`, `temporal`, `/q/*` không ra ngoài |
 | `/realtime/websocket` (#68) | GET (bắt tay WebSocket) | `centrifugo:8000/connection/websocket` | **Không** ở gateway (trình duyệt không gửi header khi mở WebSocket); token ngắn hạn trong lệnh connect, Centrifugo kiểm, mục 3.5 | Bộ `realtime`: kiểm bắt tay (URI, tham số, header), không đọc khung WebSocket | `GW_REALTIME_RATE_LIMIT_COUNT` (mặc định 60) lần mở / `GW_RATE_LIMIT_WINDOW` | Đúng một đường; HTTP API `/api/*` của Centrifugo không có route ra ngoài |
 | `/api/v1/me` | GET, OPTIONS | Keycloak userinfo | Bắt buộc | Bộ `api` | rate limit như trên | Route mẫu v0.0.1 |
 | `/healthz` | GET | không (APISIX tự trả) | Không | – | 20 request / 10 s / IP | Healthcheck; smoke dùng để kiểm `limit-count` |
@@ -266,7 +268,7 @@ sequenceDiagram
   GW->>CF: /connection/websocket
   W->>CF: connect {token}
   CF->>CF: kiểm chữ ký, iss, aud, exp, Origin → đăng ký server-side kênh dieu-phoi
-  JS-->>BR: consumer bền realtime-dieu-phoi / realtime-canh-bao
+  JS-->>BR: consumer bền realtime-dieu-phoi (cả thông báo cảnh báo trạm đo của #87)
   BR->>BR: danh sách trắng trường (không SĐT/tên)
   BR->>CF: POST /api/publish (X-API-Key, idempotency_key = Nats-Msg-Id)
   CF-->>W: publication
@@ -280,7 +282,7 @@ sequenceDiagram
 | Đường WebSocket | APISIX `/realtime/websocket` → `centrifugo:8000/connection/websocket`, Coraza WAF bật cho bắt tay, rate limit riêng; Centrifugo không mở cổng ra host; HTTP API chỉ mạng nội bộ | Một cửa vào duy nhất như mọi route khác. Khung WebSocket sau bắt tay không đi qua WAF (Coraza không phân tích); nội dung client gửi chỉ là lệnh giao thức, client không publish được |
 | Origin | `CENTRIFUGO_CLIENT_ALLOWED_ORIGINS` = `GATEWAY_PUBLIC_URL` | Chặn trang lạ mở WebSocket bằng token bị lộ (bắt tay 403) |
 | Bí mật | `secret/app/<DXOS_APP>/realtime` (`token_hmac_secret`, `api_key`): `bao-agent-centrifugo` render file cấu hình chỉ chứa 2 bí mật (tmpfs); `bao-agent-cuu-tro` render khóa ký cho `cuu-tro-api`, API key + `NATS_URL` cho cầu nối (volume riêng). Tùy chọn khác đặt bằng biến `CENTRIFUGO_*` | Không có bí mật trong `.env`, image hay web |
-| Nguồn sự kiện | JetStream: `cuu-tro.dieu-phoi.can-xu-ly.<id>` (#67), `cuu-tro.dieu-phoi.tin-moi.<id>` (bộ khởi chạy phát sau khi khởi chạy phân công, cùng stream `CUU_TRO_DIEU_PHOI`), `cuu-tro.canh-bao.cam-bien.<trạm>` (#30) | Không thêm stream; tin mới đi theo outbox của #67 nên không phát cho tin bị rollback. Tắt phân công tự động (`PHAN_CONG_TU_DONG=0`) thì không có thông báo tin mới |
+| Nguồn sự kiện | JetStream: `cuu-tro.dieu-phoi.can-xu-ly.<id>` (#67), `cuu-tro.dieu-phoi.tin-moi.<id>` (bộ khởi chạy phát sau khi khởi chạy phân công), `cuu-tro.dieu-phoi.canh-bao.<trạm>` (workflow cảnh báo đã gửi một bước của đợt, #87), cùng stream `CUU_TRO_DIEU_PHOI`. Trước #87 cầu nối đọc thẳng sự kiện thô `cuu-tro.canh-bao.cam-bien.<trạm>` (consumer `realtime-canh-bao`, nay đã bỏ và tự xóa trên máy nâng cấp): web nhận bản đã khử trùng lặp theo đợt (mục 6.3) | Không thêm stream; tin mới đi theo outbox của #67 nên không phát cho tin bị rollback. Tắt phân công tự động (`PHAN_CONG_TU_DONG=0`) thì không có thông báo tin mới |
 | Giao đúng một lần (với người xem) | Consumer bền `realtime-*` (`deliver_policy: new`, ack sau khi Centrifugo nhận, nak 5 s khi lỗi); `Nats-Msg-Id` chống trùng ở JetStream, `idempotency_key` chống trùng ở Centrifugo (5 phút); web bỏ trùng theo `id` | Cầu nối khởi động lại không mất tin, không đẩy lại sự kiện cũ lúc tạo consumer lần đầu |
 | Dữ liệu cá nhân | Cầu nối chỉ chép trường trong danh sách trắng theo loại (id tin, mức khẩn, lý do, số lần giao; mã/tên trạm, giá trị, ngưỡng); chuỗi có dãy số dạng SĐT/CCCD bị bỏ | Web điều phối xem chi tiết tin qua `/graphql` theo quyền Hasura, không qua kênh đẩy |
 | Kết nối lại | centrifuge-js tự kết nối lại (backoff 0,5–20 s), tự xin token mới; kênh giữ 50 tin / 10 phút (`force_recovery`) để lấy bù tin lỡ khi mất kết nối ngắn | Engine `memory` một nút: Centrifugo khởi động lại thì mất lịch sử kênh (chấp nhận được với thông báo; dữ liệu gốc vẫn ở PostgreSQL/JetStream) |
@@ -293,7 +295,7 @@ RAM đo 22/10/2026 sau `make smoke`: centrifugo ~33 MiB (`mem_limit` 128 MiB, `G
 flowchart LR
   subgraph core["profile core (#11)"]
     direction TB
-    bao[openbao + 6 bao agent] --> pg[(postgres)] --> roles[postgres-roles<br/>một lần]
+    bao[openbao + 10 bao agent] --> pg[(postgres)] --> roles[postgres-roles<br/>một lần]
     roles --> kc[keycloak] --> gw[apisix]
     roles --> hs[hasura]
     roles --> tp[temporal] --> tui[temporal-ui]
@@ -301,23 +303,26 @@ flowchart LR
     bao --> nt[nats<br/>JetStream + MQTT có xác thực]
     bao --> ld[ledger<br/>Tessera · POSIX]
     bao --> cf[centrifugo<br/>WebSocket qua apisix]
+    roles --> sc[scorpio<br/>NGSI-LD · CSDL riêng]
   end
   subgraph later["profile sau"]
-    gis["gis · Scorpio, mô phỏng cảm biến"]
     sec["sec · ClamAV"]
     ai["ai · Ollama + Qwen2.5 7B/14B, Qdrant, agent"]
-    bi["bi · Grafana"]
   end
+  subgraph bi["profile bi (#92)"]
+    gf[grafana OSS<br/>qua apisix /grafana/]
+  end
+  core --> bi
   core --> later
 ```
 
 | Profile | Dịch vụ | Lệnh | RAM |
 |---|---|---|---|
-| `core` | openbao, openbao-unseal (dev), 8 bao agent, postgres, postgres-roles (chạy một lần rồi thoát), keycloak, apisix, hasura, seaweedfs, temporal, temporal-ui, nats, ledger (#28), centrifugo (#68) | `make up` | **Đo 19/10/2026** (`docker stats --no-stream`, Mac Apple Silicon, PostGIS chạy giả lập amd64): ~1,5 GB ngay sau khi mọi dịch vụ healthy; ~2,1 GB sau `make smoke` (bảng dưới; APISIX đo lại sau #12) |
-| `gis` | Scorpio (dùng chung postgis), mô phỏng cảm biến | tuần 4 | |
+| `core` | openbao, openbao-unseal (dev), 10 bao agent, postgres, postgres-roles (chạy một lần rồi thoát), keycloak, apisix, hasura, seaweedfs, temporal, temporal-ui, nats, ledger (#28), centrifugo (#68), scorpio (#85) | `make up` | **Đo 19/10/2026** (`docker stats --no-stream`, Mac Apple Silicon, PostGIS chạy giả lập amd64): ~1,5 GB ngay sau khi mọi dịch vụ healthy; ~2,1 GB sau `make smoke` (bảng dưới; APISIX đo lại sau #12) |
+| ~~`gis`~~ | Gộp vào `core` ở #85: Scorpio (CSDL riêng trên postgis của lõi). Bộ giả lập cảm biến ở profile `gia-lap` của ứng dụng (#30) | – | Scorpio ~150 MiB (đo ở bảng dưới) |
 | `sec` | ClamAV | tuần 2–4 | ClamAV ~1,5 GB. `ledger` (Tessera) đã vào `core` (#28) |
 | `ai` | Ollama, Qdrant, agent | tuần 5 | Qwen2.5 7B ~5 GB |
-| `bi` | Grafana | tuần 4 | |
+| `bi` (#92) | bao-agent-grafana, grafana (Grafana OSS 13.0.2, AGPL-3.0, image gốc) | `make up-bi` (`make smoke` tự bật) | grafana ~150 MiB (đo ở mục 7.6) |
 
 RAM từng dịch vụ của `core` (MiB; "sau smoke" = sau khi chạy `make smoke` khoảng 10 phút):
 
@@ -333,6 +338,7 @@ RAM từng dịch vụ của `core` (MiB; "sau smoke" = sau khi chạy `make smo
 | nats | 12 | 25 | 256 | `mem_limit`, `GOMEMLIMIT=200MiB`, JetStream bộ nhớ 64 MB, ổ 1 GB (`NATS_JS_MAX_MEMORY`, `NATS_JS_MAX_FILE`, #30) |
 | temporal-ui | 11 | 33 | 128 | `mem_limit`, `GOMEMLIMIT=100MiB` |
 | centrifugo (#68, đo 22/10) | ~30 | 33 | 128 | `mem_limit`, `GOMEMLIMIT=80MiB`, engine `memory` |
+| scorpio (#85, đo 24/10, chạy giả lập amd64) | 128 | 122 (sau khi smoke dừng và chạy lại Scorpio) | 384 | `mem_limit`; bản native (GraalVM), không có JVM heap; 2 kết nối PostgreSQL (`CONNECTION LIMIT 20`) |
 | 6 bao agent + openbao-unseal | ~100 | ~115 | 64 mỗi cái | `mem_limit` |
 | **Tổng** | **~1478** | **~2125** | | |
 
@@ -418,6 +424,26 @@ sequenceDiagram
 2. `ledger-verify` (`core/ledger/cmd/ledger-verify`, có sẵn trong image `ledger`): chỉ dùng checkpoint + tile công khai qua gateway, tự dựng proof (không dùng `/ledger/proof`), kiểm chữ ký bằng khóa công khai do người dùng đưa vào, băm lại bản ghi đã lưu từ trang công khai.
 3. Tự viết: định dạng là chuẩn mở (tlog-tiles, tlog-checkpoint, signed note), mọi thư viện tương thích đều kiểm được.
 
+### 5.2. Tiền cứu trợ, niêm phong không sót, xác minh chung (#89)
+
+Ứng dụng niêm phong hai loại giao dịch, mỗi giao dịch một lá Merkle, cùng cách băm và cùng ba cách kiểm chứng ở trên:
+
+| Loại lá | Bảng (`apps/cuu-tro`) | Bản ghi chuẩn hóa | Thuộc tính trong lá |
+|---|---|---|---|
+| `cuu-tro.phieu-kho` (#28) | `supply_movements`: nhập, xuất; xuất kèm điểm nhận = phân phát hàng | `cuu-tro.phieu-kho/v1` | chiều, số lượng, thời điểm |
+| `cuu-tro.khoan-tien` (#89) | `relief_fund_entries` (migration 0011): thu (ủng hộ, ngân sách), chi (mua hàng, hỗ trợ hộ dân, vận chuyển); đồng Việt Nam, số nguyên | `cuu-tro.khoan-tien/v1` | chiều, số tiền, đơn vị (`VND`), thời điểm |
+
+| Quyết định | Cách làm | Vì sao |
+|---|---|---|
+| Không dữ liệu cá nhân | Không có cột tên/SĐT/số tài khoản người ủng hộ hay người nhận; chi cho hộ dân chỉ ghi hạng mục + điểm nhận; nội dung công khai bị chặn dãy số dạng SĐT/CCCD; người lập (`created_by`) không vào bản ghi, lá, trang công khai hay GraphQL | Sổ cái không xóa được: thứ gì lên sổ cái là lên mãi mãi |
+| Chi không vượt số dư | Trigger `relief_fund_entries_balance` (khóa advisory theo transaction) | Hai khoản chi đồng thời không cùng lọt; số dư công khai không âm |
+| Bất biến | Trigger chặn sửa/xóa; chỉ điền `ledger_*` một lần; sai thì lập bút toán điều chỉnh | Giống phiếu kho (#25) |
+| Outbox trong cùng transaction | Dòng có `ledger_index` NULL chính là việc "phải niêm phong", ghi cùng transaction với bút toán. API niêm phong ngay; **bộ niêm phong** trong `cuu-tro-worker` (`so_cai_niem_phong.py`) quét mỗi `SO_CAI_QUET_GIAY` giây các dòng cũ hơn `SO_CAI_CHO_GIAY` giây, `FOR UPDATE SKIP LOCKED`, ghi bù | Sổ cái tạm dừng hay API chết giữa chừng không làm sót giao dịch; gửi lại cùng lá là an toàn vì `core/ledger` chống trùng (trả index cũ) |
+| Bằng chứng trả kèm | Mọi phản hồi công khai có `bang_chung`: chỉ số lá, leaf hash, inclusion proof, checkpoint đã ký nguyên văn | Client (#63, đối tác) tự kiểm lại mà không phải tin kết luận `hop_le` của máy chủ |
+| Một ô tra cứu | `GET /workflow/minh-bach/xac-minh/{mã}` nhận mã phiếu hoặc mã bút toán, trả `hop_le` | Người dân không cần biết đó là loại giao dịch nào |
+
+Endpoint công khai (route APISIX `/workflow/minh-bach/*`: chỉ GET, không JWT, WAF + rate limit): `xac-minh/{mã}`, `phieu/{mã}`, `khoan-tien/{mã}`, `so-cai` (danh sách đã niêm phong, mới nhất trước, phân trang theo chỉ số lá), `quy` (tổng thu, tổng chi, số dư, số mục chờ niêm phong). Lập bút toán: `POST /workflow/quy/khoan` (JWT, chỉ `dieu-phoi`). Chi tiết và ví dụ: `apps/cuu-tro/README.md` mục "Sổ cái minh bạch".
+
 Giới hạn hiện tại: khóa công khai lấy từ chính máy chủ thì chỉ chứng minh toàn vẹn so với khóa đang công bố; triển khai thật cần công bố khóa ở nơi độc lập (tài liệu phát hành) và đặt `LEDGER_VERIFIER_KEY`. Consistency proof (log không bị viết lại) và witness công khai của transparency.dev để tuần 6.
 
 ## 6. Luồng nghiệp vụ chính (đích tuần 3–5)
@@ -435,7 +461,8 @@ flowchart LR
   B -->|"hợp lệ"| C["Temporal: tiếp nhận"]
   A2["Tin nhắn tự do"] --> AI["AI bóc tách (Qwen2.5 7B)"] --> H["Người điều phối duyệt (HITL)"] --> C
   C --> D["Phân công đội gần nhất (PostGIS)"] --> E["Đội cứu hộ xác nhận"] --> F["Đóng sự cố"]
-  S["Cảm biến mực nước"] -->|"MQTT → NATS"| N["Scorpio: bản sao số trạm đo"] -->|"vượt ngưỡng"| W["Temporal: cảnh báo"] --> T["Telegram / Centrifugo"]
+  S["Cảm biến mực nước"] -->|"MQTT → NATS"| N["Scorpio: bản sao số trạm đo"]
+  S -->|"vượt ngưỡng (NATS)"| W["Temporal: một workflow mỗi đợt (#87)"] --> T["Hộp thư nội bộ / Telegram + Centrifugo"]
   F --> L["Ghi nhận hàng/tiền đã cấp → core/ledger (Tessera)"]
 ```
 
@@ -515,6 +542,51 @@ sequenceDiagram
 | Chặn trùng khi gửi đồng thời | Trong CSDL: trigger `BEFORE INSERT` + `pg_advisory_xact_lock` theo SĐT (có từ #25), nay `SECURITY DEFINER` | Kiểm ở API (đọc rồi ghi) sẽ lọt khi hai request chạy song song hoặc nhiều bản API. Khóa theo SĐT tuần tự hóa đúng các request có thể trùng nhau, request khác SĐT không chờ nhau. Exclusion constraint không dùng được vì điều kiện phụ thuộc thời điểm và trạng thái |
 | Gửi ẩn danh | **Không mở** | Repo chưa có quyết định về kênh công khai. Endpoint ẩn danh + `409` kèm mã tin cho phép dò "số X có đang báo tin quanh chỗ Y không", và chỉ còn giới hạn theo IP để chống spam. Kênh người dân (Telegram bot, việc sau) gọi API bằng tài khoản dịch vụ riêng của bot |
 | Vùng phục vụ | Hình chữ nhật cấu hình bằng `KEU_CUU_VUNG_PHUC_VU` (mặc định Việt Nam) | Bắt lỗi đổi chỗ vĩ độ/kinh độ và tọa độ (0, 0) của GPS chưa bắt được vị trí; xã triển khai thu hẹp về địa bàn của mình |
+
+### 6.3. Cảnh báo vượt ngưỡng → Temporal → thông báo (#87)
+
+Consumer ghi chuỗi đo (`ghi-csdl`, #30) đã phát sự kiện lên `CUU_TRO_CANH_BAO` khi mức **tăng**; từ #87 nó phát thêm sự kiện `ve_duoi_nguong` khi lần đo mới nhất về `binh_thuong` sau một đợt, và mọi sự kiện mang **mã đợt** `dot` = thời điểm lần đo đầu tiên trên ngưỡng của đợt (SQL `SQL_DAU_DOT`, cùng transaction với dòng vừa ghi).
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant D as Trạm đo / bộ giả lập
+  participant G as cuu-tro-cam-bien (ghi-csdl)
+  participant JS as NATS JetStream
+  participant K as worker: bộ khởi chạy cảnh báo
+  participant WF as Temporal: CanhBaoVuotNguong<br/>id canh-bao-<trạm>-<đợt>
+  participant A as activity gui_canh_bao
+  participant H as Hộp thư sensor_alert_notifications
+  participant TG as Telegram Bot API
+  participant BR as cầu nối → Centrifugo → web
+  D->>G: MQTT mực nước
+  G->>JS: cuu-tro.canh-bao.cam-bien.<trạm> {loai, muc, dot}
+  JS-->>K: consumer bền canh-bao-temporal (deliver_policy new)
+  K->>WF: signal-with-start "su_kien" (REJECT_DUPLICATE: đợt đã xong thì từ chối)
+  WF->>WF: quyet_dinh: bước đã báo? (canh_bao < nguy_hiem; ve_duoi_nguong kết thúc)
+  WF->>A: một lần cho mỗi bước mới (retry 2 s → 60 s, 10 lần)
+  A->>H: INSERT … ON CONFLICT (trạm, đợt, bước): chạy lại chỉ tăng attempts
+  opt CANH_BAO_KENH=telegram
+    A->>TG: sendMessage (token từ OpenBao)
+  end
+  A->>JS: cuu-tro.dieu-phoi.canh-bao.<trạm> (Nats-Msg-Id trạm:đợt:bước)
+  JS-->>BR: realtime-dieu-phoi → kênh dieu-phoi
+  A->>H: status da_gui
+```
+
+| Quyết định | Cách làm | Vì sao |
+|---|---|---|
+| Một đợt = một workflow | Id tất định `canh-bao-<ma_tram>-<dot>`; consumer signal-with-start; `REJECT_DUPLICATE` | Temporal giữ trạng thái đợt bền (đã báo bước nào), không cần bảng trạng thái riêng. Sự kiện giao lại/gửi bù đến sau khi đợt kết thúc bị Temporal từ chối, không mở đợt thứ hai |
+| Báo theo bước, không theo lần đo | `canh_bao.quyet_dinh`: vượt ngưỡng (`canh_bao` hoặc thẳng `nguy_hiem`), lên cấp (`nguy_hiem`), về dưới ngưỡng (`ve_duoi_nguong`, kết thúc). Đo lại vẫn trên ngưỡng, xuống `canh_bao` rồi lên lại `nguy_hiem`: không báo thêm | Người trực không bị dội tin mỗi chu kỳ đo; mỗi tin mang thông tin mới |
+| Khử trùng lặp hai tầng | Trong workflow (danh sách bước đã báo) và trong hộp thư (`UNIQUE (sensor_code, episode_at, step)`); `Nats-Msg-Id` cho tin lên web | Activity chạy lại (worker chết, timeout) không tạo dòng hay thông báo web thứ hai |
+| Kênh chọn bằng biến môi trường | `CANH_BAO_KENH=gia-lap` (mặc định): hộp thư nội bộ (đọc qua `/graphql`, vai `dieu-phoi`) + web điều phối. `telegram`: thêm Telegram Bot API | Chạy, demo, smoke, CI không cần tài khoản ngoài; bật kênh thật chỉ là đổi cấu hình |
+| Token bot | `secret/app/cuu-tro/telegram` (`bot_token`, `chat_id`) do `openbao-init.sh` tạo trống theo `apps/cuu-tro/openbao/secrets.conf`; `bao-agent-cuu-tro` render chỉ vào volume riêng của worker (`secrets-cuu-tro-worker`) | Không có token trong repo, `.env`, image hay log (URL chứa token không bị ghi). Lõi chỉ tạo chỗ theo khai báo của ứng dụng, không biết "Telegram" (D-005) |
+| Thử lại | Retry policy của activity: 2 s, nhân 2, tối đa 60 s, 10 lần; 429 của Telegram dùng `retry_after` (`next_retry_delay`); 400/401/403/404 và thiếu token → ghi `loi` + lý do, không thử lại; bước lỗi không chặn các bước sau | Lỗi mạng tạm thời tự khỏi; lỗi cấu hình không bị gửi lại vô ích, người vận hành thấy lý do trong hộp thư |
+| Nội dung | Văn bản thuần tiếng Việt: trạm (tên + mã), giá trị + ngưỡng, cấp báo động (và cấp trước), thời điểm đo giờ Việt Nam, liên kết OpenStreetMap tới tọa độ trạm, liên kết web điều phối (`GATEWAY_PUBLIC_URL`) | Đọc được trên mọi kênh (Telegram, hộp thư, sau này SMS); bản đồ công khai mở được cả khi không đăng nhập web |
+| Đợt treo | Không có sự kiện về dưới ngưỡng trong `CANH_BAO_HAN_DOT_GIAY` (7 ngày) → workflow kết thúc `het_han`; về dưới ngưỡng khi chưa báo bước nào → kết thúc `khong_bao` | Không để workflow chạy mãi khi trạm mất tín hiệu |
+| Chạy ở đâu | Trong tiến trình `cuu-tro-worker` (như bộ khởi chạy phân công #67) | Đã có Temporal client, NATS, CSDL; không thêm container |
+
+Gửi Telegram là "ít nhất một lần": worker chết sau khi Telegram nhận mà trước khi ghi `da_gui` thì lần thử lại gửi thêm một tin; hộp thư vẫn một dòng. Kiểm thử: `tests/test_cuu_tro_canh_bao.py` (workflow trên máy chủ test của Temporal, khử trùng lặp, Telegram giả), `db/tests/0010`, `scripts/smoke-canh-bao.sh`.
 
 ## 7. Vì sao lõi độc lập với nghiệp vụ (`core/` và `apps/`)
 
@@ -645,12 +717,13 @@ flowchart LR
   subgraph it["IT: nghiệp vụ"]
     db[("PostgreSQL<br/>sensors.last_*, sensor_readings")]
     gql["Hasura /graphql<br/>qua APISIX"]
-    later["tuần 4–5: Scorpio NGSI-LD,<br/>agent cảnh báo → Temporal"]
+    twin["Scorpio NGSI-LD<br/>bản sao số trạm đo (#85, mục 7.4a)"]
+    later["Temporal: CanhBaoVuotNguong (#87, mục 6.3)<br/>hộp thư / Telegram / web"]
   end
   dev -->|"cuu-tro/cam-bien/&lt;trạm&gt;/muc-nuoc"| mq
   js --- st --> cs -->|"role cuu_tro_app"| db --> gql
   cs -->|"vượt ngưỡng"| cb -.-> later
-  st -.-> later
+  js -->|"consumer bền ban-sao-so"| twin
 ```
 
 | Quyết định | Cách làm | Vì sao |
@@ -660,10 +733,54 @@ flowchart LR
 | Phạm vi subject theo ứng dụng | Thiết bị chỉ `publish` vào `<DXOS_APP>.>`, không `subscribe`; backend pub/sub `<DXOS_APP>.>`, gọi `$JS.API.>` | Lõi chỉ biết tên ứng dụng (như role `<schema>_app`, mục 7.3), không biết "cảm biến" hay "mực nước" |
 | Ứng dụng tự khai báo stream | `apps/cuu-tro/nats/streams.json`, consumer tạo/cập nhật khi khởi động | Đổi giới hạn lưu trữ, thêm stream không cần sửa lõi |
 | Ghi dữ liệu nghiệp vụ một chiều | Consumer dùng role `cuu_tro_app`: `INSERT` chuỗi đo, `UPDATE` đúng 2 cột `last_*` (migration 0004); người dùng chỉ đọc qua `/graphql` | Dữ liệu đo không đi qua quyền người dùng; điều phối chỉnh ngưỡng, không sửa số đo |
-| Cảnh báo là sự kiện | Mức tăng lên `canh_bao`/`nguy_hiem` → subject `cuu-tro.canh-bao.cam-bien.<trạm>` (stream lưu 30 ngày, `Nats-Msg-Id` chống trùng) | Tách nguồn phát hiện khỏi kênh thông báo: agent cảnh báo (tuần 4–5) và Temporal tiêu thụ sau, không chặn đường ghi |
+| Cảnh báo là sự kiện | Mức tăng lên `canh_bao`/`nguy_hiem` → subject `cuu-tro.canh-bao.cam-bien.<trạm>`; về `binh_thuong` sau một đợt → sự kiện `ve_duoi_nguong` (#87); mỗi sự kiện có mã đợt `dot` (stream lưu 30 ngày, `Nats-Msg-Id` chống trùng) | Tách nguồn phát hiện khỏi kênh thông báo: workflow cảnh báo (#87, mục 6.3) tiêu thụ sau, không chặn đường ghi |
 | Chưa TLS | Cổng MQTT mặc định chỉ `127.0.0.1` (`NATS_MQTT_BIND`) | Thiết bị thật qua Internet cần TLS + chứng chỉ (việc sau); mật khẩu NATS đang ở dạng rõ trong file tmpfs, bcrypt/nkey là việc sau |
 
-Bản sao số đầy đủ (NGSI-LD trên Scorpio, D-004) nối vào ở tuần 4 bằng một consumer thứ hai trên cùng stream `CUU_TRO_CAM_BIEN`, cập nhật thực thể theo `sensors.ngsi_ld_id`; thiết bị, topic và consumer ghi CSDL giữ nguyên. Chi tiết topic, payload, cách chạy bộ giả lập: `apps/cuu-tro/README.md` mục "Cảm biến mực nước".
+Bản sao số NGSI-LD trên Scorpio (D-004) nối vào ở #85 bằng consumer thứ hai trên cùng stream `CUU_TRO_CAM_BIEN` (mục 7.4a); thiết bị, topic và consumer ghi CSDL giữ nguyên. Bộ giả lập có thêm 6 trạm có tọa độ thật ở Quảng Nam, Đà Nẵng và kịch bản trận lũ mẫu 48 giờ (`tran-lu`, #84). Chi tiết topic, payload, cách chạy bộ giả lập: `apps/cuu-tro/README.md` mục "Cảm biến mực nước".
+
+### 7.4a. Bản sao số trạm đo: NATS → Scorpio NGSI-LD (#84, #85)
+
+Mỗi trạm đo là một **thực thể NGSI-LD** (chuẩn ETSI GS CIM 009) trên Scorpio Broker: giá trị đo mới nhất kèm `observedAt`, mức cảnh báo, ngưỡng, tọa độ. Đây là "bản sao số" để hệ khác (bản đồ, agent cảnh báo, đối tác dùng NGSI-LD) đọc theo một chuẩn mở, không phải biết schema `cuu_tro`.
+
+```mermaid
+flowchart LR
+  gl["Bộ giả lập (#84)<br/>9 trạm · trận lũ mẫu"] -->|"MQTT QoS 1"| mq["NATS MQTT"]
+  subgraph core["Tầng 1: lõi"]
+    mq --> js[("JetStream<br/>CUU_TRO_CAM_BIEN")]
+    sc["Scorpio 6.0.2 (native)<br/>không xác thực, chỉ mạng nội bộ"]
+    pg[("PostgreSQL + PostGIS<br/>CSDL scorpio, role scorpio")]
+    gw["APISIX /ngsi-ld/v1/*<br/>JWT · WAF · chỉ GET<br/>đặt header Link"]
+    sc --> pg
+    gw --> sc
+  end
+  subgraph app["Tầng 2: apps/cuu-tro"]
+    g1["ghi-csdl → sensor_readings (#30)"]
+    bs["cuu-tro-ban-sao-so<br/>consumer bền ban-sao-so"]
+    db[("cuu_tro.sensors<br/>tên, tọa độ, ngưỡng")]
+    ctx["ngsi-ld/context.jsonld<br/>(cuu-tro-api phục vụ)"]
+  end
+  js --> g1
+  js --> bs
+  db -->|"role cuu_tro_app, chỉ đọc (0009)"| bs
+  bs -->|"GET thực thể · upsert (@context nội tuyến)"| sc
+  sc -.->|"tải theo Link"| ctx
+  web["Web / #62 / hệ khác<br/>Bearer JWT"] -->|"GET /ngsi-ld/v1/entities?type=WaterLevelStation"| gw
+```
+
+| Quyết định | Cách làm | Vì sao |
+|---|---|---|
+| Scorpio vào profile `core` | Gộp profile `gis` dự kiến vào `core` (như `core-next` ở tuần 2) | NGSI-LD là dịch vụ nền tảng dùng chung (như Hasura), bản native nhẹ (~150 MiB RAM, image ~240 MB); `make up` và `make smoke` luôn có, giám khảo không phải bật thêm profile |
+| Image native "all-in-one", không Kafka | `scorpiobroker/all-in-one-runner:linux-amd64-6.0.2` | Một tiến trình, các thành phần trao đổi trong bộ nhớ; không kéo Kafka/MQTT riêng. Không có MongoDB (Scorpio dùng PostgreSQL); không Orion-LD, không Stellio (D-004). Chỉ có amd64: Mac Apple Silicon chạy giả lập như postgis |
+| CSDL riêng, role riêng | `postgres-roles` tạo CSDL `scorpio` thuộc role `scorpio` (không superuser), bật PostGIS bằng superuser; Scorpio tự tạo bảng bằng Flyway; mật khẩu `secret/core/scorpio-db` | Cùng mô hình Keycloak/Temporal (mục 8.1a): không dịch vụ nào dùng superuser, Scorpio không chạm CSDL nghiệp vụ |
+| Mô hình dữ liệu ở ứng dụng | `apps/cuu-tro/ngsi-ld/` (`context.jsonld`, `README.md`); consumer `cuu_tro_workflow/ban_sao_so.py`, ánh xạ thuần `ngsi_ld.py` | D-005: lõi không biết "trạm đo". Ứng dụng khác dùng Scorpio với `@context` của mình |
+| `@context` trong repo, không tải từ Internet | Consumer gửi `@context` nội tuyến khi ghi; gateway đặt `Link` tới bản do `cuu-tro-api` phục vụ (`/ngsi-ld/context.jsonld`) khi đọc | Chạy được không cần mạng ngoài; một nguồn sự thật cho cả ghi và đọc. Core context NGSI-LD có sẵn trong Scorpio |
+| Consumer bền thứ hai, độc lập | `ban-sao-so` cạnh `ghi-csdl` trên `CUU_TRO_CAM_BIEN` (`streams.json`) | Mỗi consumer nhận đủ bản tin; Scorpio chậm/hỏng không làm chậm đường ghi CSDL và cảnh báo |
+| Idempotent, không lùi | Mỗi lần ghi thay cả thực thể (upsert); trước đó GET thực thể, bản tin có `observedAt` cũ hơn thì bỏ qua (ack) | Giao lại, gửi bù, chạy lại từ đầu stream đều cho cùng kết quả; giá trị mới nhất luôn thắng |
+| Thử lại có hẹn giờ | Scorpio không trả lời / 5xx / 429 → `nak` sau 2, 4, 8 … 60 giây, tối đa `max_deliver` 20 lần; 4xx khác → bỏ (term) và ghi log | Scorpio khởi động lại không làm mất bản tin (smoke dừng Scorpio rồi chạy lại); bản tin sai không bị giao lại mãi |
+| Chỉ đọc qua gateway | Route `/ngsi-ld/v1/{entities,types,attributes}` GET + JWT; mọi đường khác dưới `/ngsi-ld/` → 403; bỏ `NGSILD-Tenant` | Scorpio không có xác thực riêng; người dùng không sửa được bản sao số, không tạo subscription gửi dữ liệu ra ngoài |
+| Không lưu lịch sử trong Scorpio | Chỉ trạng thái mới nhất; chuỗi đo nằm ở `sensor_readings` (Hasura) | Tránh hai nơi giữ lịch sử; bản sao số dựng lại được từ stream (lưu 7 ngày) hoặc từ `sensors.last_*` |
+
+Đọc dữ liệu (cho lớp trạm đo trên bản đồ, #62): `GET /ngsi-ld/v1/entities?type=WaterLevelStation&options=keyValues` kèm Bearer JWT; thêm `Accept: application/geo+json` để nhận GeoJSON FeatureCollection cho MapLibre; lọc `q=alertLevel=="nguy_hiem"`, `georel=near;maxDistance==5000&geometry=Point&coordinates=[108.11,15.86]`. Chi tiết thuộc tính: `apps/cuu-tro/ngsi-ld/README.md`.
 
 ### 7.5. Dữ liệu phi cấu trúc: ảnh hiện trường (#27)
 
@@ -708,6 +825,59 @@ flowchart LR
 
 API ghi S3 thẳng `seaweedfs:8333` trong mạng nội bộ, giống worker gọi Temporal/PostgreSQL thẳng (mục 7.3): đó là dịch vụ nền của ứng dụng, có định danh riêng, không dùng quyền người dùng. Mọi thứ người dùng gọi vẫn qua APISIX. Chi tiết API, bảng quyền: `apps/cuu-tro/README.md` mục "Ảnh hiện trường".
 
+### 7.6. Tách dữ liệu nóng / lịch sử và dashboard điều hành (#91, #92, nguyên lý B1)
+
+PostgreSQL giữ dữ liệu **nóng** cho nghiệp vụ (GraphQL, workflow). Dữ liệu **lịch sử** được xuất ra Parquet trên SeaweedFS để phân tích bằng DuckDB mà không tải lên CSDL đang phục vụ. Grafana OSS là bảng điều hành cho người vận hành. Cả hai đọc bằng cùng một role **chỉ đọc**, không thấy dữ liệu định danh.
+
+```mermaid
+flowchart LR
+  subgraph core["Tầng 1: lõi"]
+    pg[("PostgreSQL<br/>role &lt;schema&gt;_bi: chỉ đọc,<br/>phiên read-only, statement_timeout 30s")]
+    s3[("SeaweedFS S3<br/>bucket cuu-tro-lakehouse")]
+    gf["Grafana OSS (profile bi)<br/>provisioning từ tệp"]
+    gw["APISIX /grafana/*<br/>WAF (không đọc body)"]
+    bao[("OpenBao<br/>core/grafana, app/&lt;APP&gt;/bi-db")]
+  end
+  subgraph app["Tầng 2: apps/cuu-tro"]
+    mig["migration 0012<br/>GRANT SELECT cột không định danh"]
+    lt["cuu-tro-luu-tru (make luu-tru)<br/>luu_tru.py + DuckDB"]
+    dash["grafana/dashboards/dieu-hanh.json"]
+  end
+  mig -.-> pg
+  pg -->|"đọc bằng cuu_tro_bi"| lt -->|"Parquet thang=YYYY-MM<br/>+ _manifest.json"| s3
+  s3 -->|"make luu-tru-truy-van"| lt
+  pg -->|"datasource chỉ đọc"| gf
+  dash -.->|"mount, chỉ đọc"| gf
+  bao -.-> gf
+  bao -.-> lt
+  nv["Người vận hành"] --> gw --> gf
+```
+
+| Quyết định | Cách làm | Vì sao |
+|---|---|---|
+| Một role chỉ đọc cho phân tích | `postgres-roles` tạo `<schema>_bi` (không quyền gì, `default_transaction_read_only = on`, `statement_timeout = 30s`, `CONNECTION LIMIT 10`), mật khẩu `secret/app/<APP>/bi-db`; migration 0012 của ứng dụng `GRANT SELECT` đúng các cột không định danh | Khử định danh bằng **quyền**, không chỉ bằng câu SQL: kể cả SQL viết sai trong Grafana cũng không đọc được SĐT, họ tên, mô tả, địa chỉ, người lập; không ghi được gì |
+| Parquet trên SeaweedFS, không trên volume | Bucket `cuu-tro-lakehouse` (khai báo ở `apps/cuu-tro/s3/buckets.conf`), khóa S3 của ứng dụng | Đúng mô hình lakehouse của stack (D-003): object storage tách khỏi máy chạy CSDL, sao lưu/chia sẻ bằng công cụ S3 chuẩn, sau này DuckDB/Spark đọc thẳng qua S3. Volume cục bộ thì gắn chặt với một máy |
+| Phân vùng theo tháng (giờ Việt Nam), không theo tỉnh | `<bảng>/thang=YYYY-MM/du-lieu.parquet` (Hive) | Truy vấn lịch sử chủ yếu theo thời gian (mùa lũ, so sánh trận lũ); dữ liệu hiện chỉ một xã, chưa có cột tỉnh. Thêm phân vùng tỉnh là thêm một cấp thư mục |
+| Bảng xuất | `su_co` (tin đã xong, thời gian phản hồi, tọa độ **làm tròn 2 chữ số ~1 km**), `so_do` (chuỗi đo), `phan_phoi` (phiếu xuất kho), `khoan_tien` (bút toán tiền, #89) | Đủ cho phân tích sau trận lũ; tọa độ chính xác của nhà người dân là dữ liệu định danh gián tiếp |
+| Idempotent | Mỗi lần dựng lại mọi phân vùng trước mốc `--den` (mặc định đầu tháng hiện tại), sắp xếp cố định → cùng dữ liệu cùng tệp; `_manifest.json` ghi số dòng + SHA-256; tệp không đổi thì không ghi, phân vùng mất thì xóa | Chạy lại (cron, tay, CI) an toàn; DuckDB kiểm SHA-256 với manifest trước khi đọc, tệp bị sửa thì từ chối |
+| Không xóa dữ liệu nóng | Xuất là sao chép | Xóa/giữ bao lâu trong PostgreSQL là chính sách của người vận hành (việc sau) |
+| DuckDB trong tiến trình | Thư viện Python (wheel có sẵn Parquet), không tải extension lúc chạy; `make luu-tru-truy-van` tải tệp về thư mục tạm rồi tạo view `su_co`, `so_do`, `phan_phoi`, `khoan_tien` | Không thêm dịch vụ; chạy được offline |
+| Grafana là dịch vụ riêng (AGPL-3.0) | Image gốc `grafana/grafana-oss:13.0.2`, không sửa mã, không nhúng; dự án chỉ cung cấp tệp provisioning (datasource lõi `core/grafana/provisioning`, dashboard của ứng dụng `apps/cuu-tro/grafana/dashboards`) | Tuân thủ giấy phép (CLAUDE.md quy tắc 3); lõi không biết dashboard nào (D-005) |
+| Provisioning từ tệp | Datasource `dxos-app-pg` (mật khẩu `$__file{…}` do bao agent render), dashboard `cuu-tro-dieu-hanh` (`editable: false`, `allowUiUpdates: false`) | Không cấu hình tay; dashboard là mã, review được trong PR |
+| Đăng nhập | Tài khoản `admin`, mật khẩu `secret/core/grafana` (`GF_SECURITY_ADMIN_PASSWORD__FILE`); tắt đăng ký, tắt ẩn danh, cookie SameSite strict. SSO Keycloak (generic OAuth) để sau | Realm Keycloak chỉ import lần đầu: thêm client mới buộc mọi máy đã chạy phải sửa tay; bản đầu giữ đơn giản |
+| Qua gateway | APISIX `/grafana/*` (Grafana `serve_from_sub_path`), WAF kiểm URI/tham số/header nhưng **không đọc body** | Truy vấn panel (`POST /api/ds/query`) mang SQL trong body, luật SQLi của CRS chặn nhầm; giới hạn thật nằm ở role chỉ đọc |
+| Không gọi Internet | `GF_PLUGINS_PREINSTALL_DISABLED`, tắt kiểm cập nhật, tin tức, thống kê, Gravatar | Chạy offline được; không gửi dữ liệu ra ngoài |
+
+Ví dụ truy vấn DuckDB (chạy `make luu-tru` trước):
+
+```bash
+make luu-tru-truy-van SQL="SELECT thang, count(*) AS so_tin, round(median(phan_hoi_giay)/60, 1) AS phan_hoi_phut FROM su_co GROUP BY 1 ORDER BY 1"
+make luu-tru-truy-van SQL="SELECT ma_tram, max(gia_tri) AS dinh, arg_max(thoi_diem, gia_tri) AS luc_dinh FROM so_do WHERE dai_luong = 'muc_nuoc' GROUP BY 1 ORDER BY 2 DESC"
+make luu-tru-truy-van SQL="SELECT thang, chieu, sum(so_tien) AS tong FROM khoan_tien GROUP BY ALL ORDER BY 1, 2"
+```
+
+RAM đo 24/10/2026: grafana 149 MiB sau khởi động, 158 MiB sau `make smoke` (`mem_limit` 384 MiB); image 1,38 GB trên ổ (nén khoảng 350 MB). Kiểm thử: `tests/test_cuu_tro_luu_tru.py`, `db/tests/0012`, `scripts/smoke-luu-tru.sh`, `scripts/smoke-grafana.sh` (cả hai trong `make smoke`).
+
 ## 8. Quản lý bí mật: OpenBao (#14)
 
 OpenBao 2.7.1 (MPL-2.0, nhánh nguồn mở của Vault) chạy như dịch vụ riêng bằng image gốc trong profile `core`, **chế độ server** (không `-dev`): lưu trữ raft trên volume `baodata`, tắt UI (Tầng 1 headless), chỉ mở cổng `127.0.0.1:8200`. Cấu hình: `core/openbao/openbao.hcl`. TLS tắt trên laptop; bật khi lên VPS (tuần 4).
@@ -723,16 +893,20 @@ OpenBao 2.7.1 (MPL-2.0, nhánh nguồn mở của Vault) chạy như dịch vụ
 | `secret/core/hasura-db` | `password` | Hasura (`HASURA_GRAPHQL_DATABASE_URL` do agent ghép), `postgres-roles` (role `hasura`) | ✔ (#11) |
 | `secret/core/hasura` | `admin_secret` | Hasura (`HASURA_GRAPHQL_ADMIN_SECRET`) | ✔ (#11) |
 | `secret/core/temporal-db` | `password` | Temporal (`POSTGRES_PWD`), `postgres-roles` (role `temporal`) | ✔ (#11) |
+| `secret/core/scorpio-db` | `password` | Scorpio (`DBPASS`), `postgres-roles` (role `scorpio`) | ✔ (#85) |
+| `secret/core/grafana` | `admin_password` | Grafana (`GF_SECURITY_ADMIN_PASSWORD__FILE`, profile `bi`) | ✔ (#92) |
+| `secret/app/<DXOS_APP>/bi-db` | `password` | `postgres-roles` (role chỉ đọc `<schema>_bi`), Grafana (datasource), `cuu-tro-luu-tru` (`BI_DB_URL`) | ✔ (#91, #92) |
 | `secret/core/s3` | `access_key`, `secret_key` | SeaweedFS (`-s3.config` do agent render) | ✔ (#11) |
 | `secret/core/ledger` | `signing_key`, `verifier_key` | `core/ledger` (khóa ký checkpoint Ed25519 dạng note, D-007); `scripts/openbao-init.sh` sinh một lần. `verifier_key` là khóa công khai, chỉ để tra cứu | ✔ (#28) |
 | `secret/app/<DXOS_APP>/ledger` | `write_token` | `core/ledger` (file `writers`: dịch vụ được ghi) và `cuu-tro-api` (`LEDGER_WRITE_TOKEN`) | ✔ (#28) |
 | `secret/app/<DXOS_APP>/s3` | `access_key`, `secret_key` | SeaweedFS (định danh `<DXOS_APP>-app`, chỉ bucket `<DXOS_APP>-*`, không Admin); `bao-agent-cuu-tro` render `S3_ACCESS_KEY`, `S3_SECRET_KEY` chỉ cho `cuu-tro-api` | ✔ (#27) |
 | `secret/app/<DXOS_APP>/nats` | `app_password`, `device_password` | NATS (`auth.conf` do `bao-agent-nats` render): user `<DXOS_APP>-app` (backend, cổng NATS thường) và `<DXOS_APP>-thiet-bi` (thiết bị, chỉ MQTT); `bao-agent-cuu-tro` render `NATS_URL`, `MQTT_PASSWORD` cho ứng dụng | ✔ (#30) |
+| `secret/app/cuu-tro/telegram` | `bot_token`, `chat_id` | `cuu-tro-worker` (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, volume riêng `secrets-cuu-tro-worker`) khi `CANH_BAO_KENH=telegram`. Tạo trống theo `apps/cuu-tro/openbao/secrets.conf` (bí mật riêng của ứng dụng, `openbao-init.sh` chỉ tạo chỗ, không ghi đè) | ✔ (#87, trống tới khi đội đặt token thật) |
 | `secret/app/<DXOS_APP>/realtime` | `token_hmac_secret`, `api_key` | Centrifugo (`client.token.hmac_secret_key`, `http_api.key` trong file cấu hình do `bao-agent-centrifugo` render); `bao-agent-cuu-tro` render `REALTIME_TOKEN_SECRET` cho `cuu-tro-api` (ký token kết nối) và `CENTRIFUGO_API_KEY` cho cầu nối `cuu-tro-thong-bao` | ✔ (#68) |
 
 `.env` không còn bí mật của dịch vụ lõi. `KC_DEMO_USER_PASSWORD` là mật khẩu của user mẫu (dữ liệu giả của `apps/cuu-tro`, dùng cho `make smoke`), không phải bí mật của dịch vụ lõi.
 
-**Superuser PostgreSQL** chỉ có tác dụng ở lần `initdb` đầu (volume `pgdata` trống): image `postgis/postgis` đặt mật khẩu superuser theo `POSTGRES_PASSWORD` lúc đó, về sau đổi giá trị trong OpenBao **không** đổi mật khẩu trong CSDL. Muốn đổi: `ALTER ROLE` bằng superuser rồi `bao kv put secret/core/postgres` cùng giá trị. Mật khẩu role `keycloak`, `hasura`, `temporal` thì khác: `postgres-roles` chạy `ALTER ROLE ... PASSWORD` mỗi lần `make up`, nên chỉ cần đổi trong OpenBao rồi `make up`.
+**Superuser PostgreSQL** chỉ có tác dụng ở lần `initdb` đầu (volume `pgdata` trống): image `postgis/postgis` đặt mật khẩu superuser theo `POSTGRES_PASSWORD` lúc đó, về sau đổi giá trị trong OpenBao **không** đổi mật khẩu trong CSDL. Muốn đổi: `ALTER ROLE` bằng superuser rồi `bao kv put secret/core/postgres` cùng giá trị. Mật khẩu role `keycloak`, `hasura`, `temporal`, `scorpio` thì khác: `postgres-roles` chạy `ALTER ROLE ... PASSWORD` mỗi lần `make up`, nên chỉ cần đổi trong OpenBao rồi `make up`.
 
 ### 8.1a. Role PostgreSQL của từng dịch vụ (#11)
 
@@ -743,6 +917,8 @@ Container một lần `postgres-roles` (image postgis có sẵn, script `core/po
 | `keycloak` | Chủ CSDL `keycloak` | Tạo lần đầu bởi `core/postgres/init/20-create-databases.sh` |
 | `hasura` | Chủ schema `hdb_catalog` (metadata); `CONNECT, CREATE, TEMPORARY` trên CSDL `disaster`; `USAGE, CREATE` trên `public`; đọc `information_schema`, `pg_catalog`, `spatial_ref_sys` | Quyền tối thiểu theo tài liệu Hasura. Migration ứng dụng không chạy bằng role này (mục 7.1, #25): trên schema ứng dụng `hasura` chỉ có quyền DML. Bảng `hdb_catalog` có sẵn từ trước thì chuyển chủ sở hữu |
 | `temporal` | Chủ CSDL `temporal`, `temporal_visibility` (script tạo sẵn) | Không cần `CREATEDB`: Temporal chạy với `SKIP_DB_CREATE=true`, auto-setup chỉ tạo schema |
+| `scorpio` (#85) | Chủ CSDL `scorpio` (script tạo sẵn, bật PostGIS), `CONNECTION LIMIT 20` | Scorpio tự tạo bảng bằng Flyway trong schema `public` của CSDL riêng |
+| `<schema>_bi` (`cuu_tro_bi`, #91, #92) | `LOGIN`, `CONNECTION LIMIT 10`, phiên mặc định read-only, `statement_timeout 30s`; lúc tạo không có quyền gì | Role chỉ đọc cho Grafana và bộ xuất Parquet. Migration 0012 của ứng dụng cấp `SELECT` theo cột không định danh (mục 7.6) |
 | `<schema>_app` (`cuu_tro_app`) | `LOGIN`, `CONNECTION LIMIT 10`, lúc tạo **không có quyền gì** trên schema ứng dụng | Role dịch vụ cho backend của ứng dụng (#29). Mật khẩu `secret/app/<DXOS_APP>/db`. Migration của ứng dụng tự `GRANT` bảng/cột cần (mục 7.3) |
 
 Không role nào là superuser hay có `CREATEROLE`. `make smoke` kiểm Hasura kết nối bằng `hasura` (`rolsuper = false`) và 2 CSDL Temporal thuộc `temporal`.
@@ -755,14 +931,16 @@ Mỗi dịch vụ một AppRole, mỗi AppRole một policy **chỉ đọc** đ�
 |---|---|---|
 | `keycloak` | `core-keycloak` | `core/keycloak-db`, `core/keycloak-admin`, `core/gateway` (#11: thôi render cho PostgreSQL) |
 | `apisix` | `core-apisix` | `core/gateway` |
-| `postgres` | `core-postgres` | `core/postgres`, `core/keycloak-db`, `core/hasura-db`, `core/temporal-db`, `app/+/db` (#29) |
+| `postgres` | `core-postgres` | `core/postgres`, `core/keycloak-db`, `core/hasura-db`, `core/temporal-db`, `core/scorpio-db` (#85), `app/+/db` (#29) |
 | `hasura` | `core-hasura` | `core/hasura-db`, `core/hasura` |
 | `temporal` | `core-temporal` | `core/temporal-db` |
+| `scorpio` | `core-scorpio` | `core/scorpio-db` (#85) |
+| `grafana` | `core-grafana` | `core/grafana`, `app/+/bi-db` (#92) |
 | `seaweedfs` | `core-seaweedfs` | `core/s3`, `app/+/s3` (#27) |
 | `ledger` | `core-ledger` | `core/ledger`, `app/+/ledger` (#28) |
 | `nats` | `core-nats` | `app/+/nats` (#30) |
 | `centrifugo` | `core-centrifugo` | `app/+/realtime` (#68) |
-| `app-cuu-tro-workflow` | `app-cuu-tro-workflow` (`apps/cuu-tro/openbao/policies/workflow.hcl`) | `app/cuu-tro/db` (#29), `app/cuu-tro/nats` (#30), `app/cuu-tro/s3` (#27), `app/cuu-tro/ledger` (#28), `app/cuu-tro/realtime` (#68). Không đọc được `core/ledger` (khóa ký) |
+| `app-cuu-tro-workflow` | `app-cuu-tro-workflow` (`apps/cuu-tro/openbao/policies/workflow.hcl`) | `app/cuu-tro/db` (#29), `app/cuu-tro/nats` (#30), `app/cuu-tro/s3` (#27), `app/cuu-tro/ledger` (#28), `app/cuu-tro/realtime` (#68), `app/cuu-tro/telegram` (#87). Không đọc được `core/ledger` (khóa ký) |
 
 `core-postgres` đọc thêm `app/+/db` (một đoạn đường dẫn bất kỳ) để `postgres-roles` đồng bộ mật khẩu role `<schema>_app` của ứng dụng đang chọn.
 
@@ -781,6 +959,7 @@ flowchart LR
   BAO -->|"AppRole seaweedfs"| AS["bao-agent-seaweedfs"] --> VS[["tmpfs secrets-seaweedfs<br/>s3.json"]] --> SW["seaweedfs"]
   BAO -->|"AppRole nats"| AN["bao-agent-nats"] --> VN[["tmpfs secrets-nats<br/>auth.conf"]] --> NT["nats"]
   BAO -->|"AppRole centrifugo"| AC["bao-agent-centrifugo"] --> VC[["tmpfs secrets-centrifugo<br/>config.json"]] --> CF["centrifugo"]
+  BAO -->|"AppRole scorpio"| ASC["bao-agent-scorpio"] --> VSC[["tmpfs secrets-scorpio"]] --> SCO["scorpio"]
 ```
 
 - Mỗi dịch vụ đọc bí mật có một `bao agent` riêng (`core/openbao/agent-<dịch vụ>.hcl`), đăng nhập bằng `role_id`/`secret_id` của AppRole tương ứng, render mỗi bí mật thành một file trên volume **tmpfs** (nằm trong RAM, mất khi dừng). Agent đọc lại KV mỗi 5 phút.

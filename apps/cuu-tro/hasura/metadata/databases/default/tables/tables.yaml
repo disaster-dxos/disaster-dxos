@@ -10,5 +10,7 @@
 - "!include cuu_tro_shelters.yaml"
 - "!include cuu_tro_supplies.yaml"
 - "!include cuu_tro_supply_movements.yaml"
+- "!include cuu_tro_relief_fund_entries.yaml"
 - "!include cuu_tro_sensors.yaml"
 - "!include cuu_tro_sensor_readings.yaml"
+- "!include cuu_tro_sensor_alert_notifications.yaml"

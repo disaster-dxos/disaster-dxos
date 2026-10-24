@@ -29,6 +29,9 @@ const LY_DO: Record<string, string> = {
 }
 
 const MUC_NUOC: Record<string, string> = { canh_bao: 'Cảnh báo', nguy_hiem: 'Nguy hiểm' }
+/** Bước của một đợt cảnh báo (#87): kết thúc đợt khi trạm về dưới ngưỡng */
+const BUOC_VE = 've_duoi_nguong'
+
 
 /** URL WebSocket của Centrifugo qua API Gateway: http(s)://gateway → ws(s)://gateway/realtime/websocket */
 export function wsUrl(gatewayUrl: string): string {
@@ -92,6 +95,16 @@ export function docThongBao(data: unknown, bayGio = new Date()): ThongBao | null
       const giaTri = soNgan(d.gia_tri)
       const nguong = soNgan(d.nguong)
       const donVi = chuoi(d.don_vi) ?? ''
+      if (d.buoc === BUOC_VE || d.muc === 'binh_thuong') {
+        return {
+          id, loai: 'canh_bao', luc,
+          tieuDe: `Đã về dưới ngưỡng: ${chuoi(d.ten_tram) ?? maTram}`,
+          noiDung: giaTri
+            ? `Đo được ${giaTri} ${donVi}${nguong ? `, dưới ngưỡng cảnh báo ${nguong} ${donVi}` : ''}`.trim()
+            : 'Trạm đo đã về mức bình thường',
+          mucDo: 'thong-tin',
+        }
+      }
       return {
         id, loai: 'canh_bao', luc,
         tieuDe: `${MUC_NUOC[d.muc as string] ?? 'Cảnh báo'}: ${chuoi(d.ten_tram) ?? maTram}`,

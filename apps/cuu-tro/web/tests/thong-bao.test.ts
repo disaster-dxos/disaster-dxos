@@ -48,6 +48,14 @@ describe('đọc thông báo', () => {
       tieuDe: 'Cảnh báo: T2', noiDung: 'Trạm đo vượt ngưỡng', mucDo: 'canh-bao' })
   })
 
+  it('cảnh báo mực nước: về dưới ngưỡng kết thúc đợt (#87) là thông tin, không phải cảnh báo', () => {
+    const tb = docThongBao({ loai: 'canh_bao', id: 'v', ma_tram: 'QN-CL-01', ten_tram: 'Câu Lâu', buoc: 've_duoi_nguong',
+      muc: 'binh_thuong', muc_truoc: 'nguy_hiem', gia_tri: 280, nguong: 300, don_vi: 'cm' })!
+    expect(tb).toMatchObject({ tieuDe: 'Đã về dưới ngưỡng: Câu Lâu', noiDung: 'Đo được 280 cm, dưới ngưỡng cảnh báo 300 cm',
+      mucDo: 'thong-tin' })
+    expect(docThongBao({ loai: 'canh_bao', id: 'w', ma_tram: 'T3', buoc: 'nguy_hiem', muc: 'nguy_hiem' })!.mucDo).toBe('khan')
+  })
+
   it('dữ liệu lạ hoặc thiếu trường bị bỏ qua', () => {
     for (const d of [null, 'x', 1, {}, { loai: 'tin_moi', incident_id: INC }, { loai: 'khac', id: 'f' },
       { loai: 'tin_moi', id: 'g' }, { loai: 'canh_bao', id: 'h' }, { loai: 'can_xu_ly', id: 'i', incident_id: 5 }]) {

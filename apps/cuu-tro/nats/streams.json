@@ -1,5 +1,5 @@
 {
-  "_mo_ta": "Stream + consumer NATS JetStream của apps/cuu-tro (#30). cuu-tro-cam-bien tạo/cập nhật stream + consumer khi khởi động (cuu_tro_workflow/cam_bien_consumer.py); cuu-tro-worker tạo/cập nhật stream (báo điều phối, #67). cuu-tro-thong-bao (#68) khai báo các consumer realtime-* (deliver_policy new: lần đầu không đẩy lại sự kiện cũ) và đẩy sự kiện lên Centrifugo. Thời gian tính bằng giây, dung lượng bằng byte. Tổng max_bytes phải nhỏ hơn NATS_JS_MAX_FILE của lõi.",
+  "_mo_ta": "Stream + consumer NATS JetStream của apps/cuu-tro (#30). cuu-tro-cam-bien tạo/cập nhật stream + consumer ghi-csdl khi khởi động (cuu_tro_workflow/cam_bien_consumer.py); cuu-tro-ban-sao-so (#85) khai báo consumer ban-sao-so (cuu_tro_workflow/ban_sao_so.py); cuu-tro-worker tạo/cập nhật stream (báo điều phối, #67). cuu-tro-thong-bao (#68) khai báo các consumer realtime-* (deliver_policy new: lần đầu không đẩy lại sự kiện cũ) và đẩy sự kiện lên Centrifugo. Thời gian tính bằng giây, dung lượng bằng byte. Tổng max_bytes phải nhỏ hơn NATS_JS_MAX_FILE của lõi.",
   "streams": [
     {
       "name": "CUU_TRO_CAM_BIEN",
@@ -15,7 +15,7 @@
     },
     {
       "name": "CUU_TRO_DIEU_PHOI",
-      "description": "Sự kiện cho điều phối viên: cần xử lý (#67: hết lần giao, không có đội, quá hạn xác nhận) và tin kêu cứu mới vào hàng đợi phân công (#68). Cầu nối realtime đẩy lên web",
+      "description": "Sự kiện cho điều phối viên: cần xử lý (#67: hết lần giao, không có đội, quá hạn xác nhận), tin kêu cứu mới vào hàng đợi phân công (#68), thông báo cảnh báo trạm đo đã gửi (#87). Cầu nối realtime đẩy lên web",
       "subjects": [
         "cuu-tro.dieu-phoi.>"
       ],
@@ -27,7 +27,7 @@
     },
     {
       "name": "CUU_TRO_CANH_BAO",
-      "description": "Sự kiện cảnh báo vượt ngưỡng: cầu nối realtime đẩy lên web (#68), agent cảnh báo (tuần 4-5)",
+      "description": "Sự kiện cảnh báo của trạm đo (#30): vượt ngưỡng / lên cấp và về dưới ngưỡng (#87), mỗi sự kiện có mã đợt. Worker khởi chạy workflow thông báo (consumer canh-bao-temporal)",
       "subjects": [
         "cuu-tro.canh-bao.>"
       ],
@@ -49,6 +49,15 @@
       "max_ack_pending": 200
     },
     {
+      "stream": "CUU_TRO_CAM_BIEN",
+      "durable_name": "ban-sao-so",
+      "description": "Bản sao số trạm đo (#85): cập nhật thực thể NGSI-LD của trạm trên Scorpio. Scorpio chưa sẵn sàng thì giao lại có hẹn giờ tăng dần (tối đa 60 giây)",
+      "filter_subject": "cuu-tro.cam-bien.>",
+      "ack_wait": 30,
+      "max_deliver": 20,
+      "max_ack_pending": 200
+    },
+    {
       "stream": "CUU_TRO_DIEU_PHOI",
       "durable_name": "realtime-dieu-phoi",
       "description": "Cầu nối thông báo realtime (#68): cần xử lý + tin mới → Centrifugo kênh dieu-phoi",
@@ -60,8 +69,8 @@
     },
     {
       "stream": "CUU_TRO_CANH_BAO",
-      "durable_name": "realtime-canh-bao",
-      "description": "Cầu nối thông báo realtime (#68): cảnh báo vượt ngưỡng → Centrifugo kênh dieu-phoi",
+      "durable_name": "canh-bao-temporal",
+      "description": "Thông báo cảnh báo (#87): worker signal-with-start workflow CanhBaoVuotNguong theo trạm + đợt; workflow gửi hộp thư nội bộ / Telegram và đẩy cuu-tro.dieu-phoi.canh-bao.<trạm> lên web. Thay consumer realtime-canh-bao của #68",
       "filter_subject": "cuu-tro.canh-bao.>",
       "deliver_policy": "new",
       "ack_wait": 30,

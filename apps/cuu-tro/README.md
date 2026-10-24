@@ -189,9 +189,9 @@ Backend nghiệp vụ của ứng dụng (D-008), không thuộc lõi. Hai dịc
 
 | Dịch vụ | Lệnh | Gọi tới |
 |---|---|---|
-| `cuu-tro-worker` | `python -m cuu_tro_workflow.worker` | Temporal (task queue `cuu-tro`), PostgreSQL bằng role `cuu_tro_app` (`APP_DB_URL` từ OpenBao qua `bao-agent-cuu-tro`), NATS (báo điều phối, #67). Cùng tiến trình: bộ khởi chạy tự động `khoi_chay.py` (#67) |
+| `cuu-tro-worker` | `python -m cuu_tro_workflow.worker` | Temporal (task queue `cuu-tro`), PostgreSQL bằng role `cuu_tro_app` (`APP_DB_URL` từ OpenBao qua `bao-agent-cuu-tro`), NATS (báo điều phối, #67). Cùng tiến trình: bộ khởi chạy tự động `khoi_chay.py` (#67), bộ khởi chạy cảnh báo `canh_bao_khoi_chay.py` (#87) |
 | `cuu-tro-api` | `uvicorn cuu_tro_workflow.api:app --root-path /workflow` | Temporal (start/signal/query), Hasura qua gateway `/graphql` bằng JWT người dùng. Không mở cổng ra host. Cấp token kết nối Centrifugo (#68) |
-| `cuu-tro-thong-bao` | `python -m cuu_tro_workflow.thong_bao_cau_noi` | Cầu nối thông báo realtime (#68): consumer JetStream `realtime-dieu-phoi`, `realtime-canh-bao` → HTTP API Centrifugo (mạng nội bộ) → kênh `dieu-phoi`. Không đọc CSDL |
+| `cuu-tro-thong-bao` | `python -m cuu_tro_workflow.thong_bao_cau_noi` | Cầu nối thông báo realtime (#68): consumer JetStream `realtime-dieu-phoi` (gồm thông báo cảnh báo trạm đo đã khử trùng lặp, #87) → HTTP API Centrifugo (mạng nội bộ) → kênh `dieu-phoi`. Không đọc CSDL |
 
 Cách backend gọi lõi và vì sao: `docs/architecture.md` mục 7.3.
 
@@ -375,7 +375,7 @@ curl -s -H "Authorization: Bearer $TOKEN" "$URL" -o anh-tai-ve.jpg
 
 Kiểm thử: `tests/test_cuu_tro_anh.py` (ký SigV4 khớp ví dụ chính thức của AWS, magic bytes, luật quyền, endpoint với Hasura/S3/CSDL giả); `scripts/smoke-anh.sh` (trong `make smoke`) gọi thật qua APISIX. Luồng dữ liệu: `docs/architecture.md` mục 7.5.
 
-## Sổ cái minh bạch: phiếu nhập/xuất → sổ cái → trang công khai (`workflow/cuu_tro_workflow/so_cai.py`, #28)
+## Sổ cái minh bạch: phiếu nhập/xuất, tiền cứu trợ → sổ cái → xác minh công khai (`workflow/cuu_tro_workflow/so_cai*.py`, #28, #89)
 
 Mỗi phiếu nhập/xuất hàng cứu trợ được ghi thành một lá của sổ cái minh bạch của lõi (`core/ledger`, Tessera, D-007). Người dân, nhà tài trợ tra mã phiếu trên trang công khai, hoặc tự tải checkpoint + tile để kiểm, không cần tin hệ thống. Kiến trúc lõi: `docs/architecture.md` mục 5.1.
 
@@ -422,7 +422,31 @@ Kết quả `ĐÃ XÁC MINH` (mã 0) hoặc `KHÔNG KHỚP` kèm lý do (mã 1).
 
 Kiểm thử: `tests/test_cuu_tro_so_cai.py` (14 test: vector JSON chuẩn tắc chung với Go, inclusion proof mọi kích thước cây 1–17, chữ ký checkpoint, endpoint với CSDL + sổ cái giả, sửa CSDL → không khớp, sổ cái tắt → ghi lại); `db/tests/0006_so_cai_phieu_kho.sql` (16 ca quyền); `scripts/smoke-ledger.sh` (47 ca qua APISIX, trong `make smoke`).
 
-## Cảm biến mực nước (`workflow/cuu_tro_workflow/cam_bien*.py`, `gia_lap.py`, #30)
+
+### Tiền cứu trợ, niêm phong bù, xác minh chung (#89)
+
+**Bút toán tiền** (`relief_fund_entries`, migration `0011`): thu (`ung_ho`, `ngan_sach`, `khac`) và chi (`mua_hang`, `ho_tro_ho_dan`, `van_chuyen`, `khac`), số tiền là đồng nguyên, đơn vị `VND`. Chi vượt số dư quỹ → 409 (trigger, khóa advisory). Không có tên/SĐT/số tài khoản người ủng hộ hay người nhận; chi cho hộ dân chỉ ghi hạng mục + điểm nhận; khoản chi mua hàng gắn được phiếu nhập kho (`supply_movement_id`). Bản ghi chuẩn hóa `cuu-tro.khoan-tien/v1` `{id, direction, amount, currency, category, purpose, shelter_id, supply_movement_id, created_at}`, lá `{type: "cuu-tro.khoan-tien", ref, sha256, attrs: {direction, amount, currency, at}}`.
+
+**Niêm phong không sót.** Dòng chưa có `ledger_index` là outbox (cùng transaction với phiếu/bút toán). API niêm phong ngay khi lập; sổ cái lỗi thì trả 202 và **worker tự ghi bù** (`so_cai_niem_phong.py`, quét mỗi `SO_CAI_QUET_GIAY` = 10 giây các dòng cũ hơn `SO_CAI_CHO_GIAY` = 5 giây). Bút toán mẫu trong seed cũng được niêm phong theo cách này. Endpoint `.../ghi-so` vẫn dùng được để ghi ngay.
+
+| Phương thức, đường dẫn | Quyền | Kết quả |
+|---|---|---|
+| `POST /workflow/quy/khoan` body `{direction: thu\|chi, amount (đồng, > 0), category, purpose?, shelter_id?, supply_movement_id?}` | `dieu-phoi` | `201 {ban_ghi_chuan_hoa, sha256, so_cai}` · `202` chờ niêm phong · `409` chi vượt số dư · `422` hạng mục sai chiều / nội dung có số dạng SĐT · `404` điểm nhận/phiếu không có |
+| `POST /workflow/quy/khoan/{mã}/ghi-so` | `dieu-phoi` | như `kho/phieu/{mã}/ghi-so` |
+| `GET /workflow/minh-bach/xac-minh/{mã}` | Công khai | Mã phiếu **hoặc** mã bút toán → `{hop_le, loai: phieu_kho\|khoan_tien, trang_thai, chi_tiet, ban_ghi_chuan_hoa, sha256, hien_thi, so_cai, bang_chung}` · `404` |
+| `GET /workflow/minh-bach/khoan-tien/{mã}` | Công khai | như trên, chỉ bút toán tiền (`hien_thi`: hạng mục, đơn vị, điểm nhận) |
+| `GET /workflow/minh-bach/so-cai?loai=phieu_kho\|khoan_tien&truoc=<chỉ số lá>&gioi_han=1..100` | Công khai | `{muc: [{loai, ma, chieu, so_luong, don_vi, noi_dung, diem_nhan, thoi_diem, ledger_index}], truoc_tiep}`: đã niêm phong, mới nhất trước; trang sau truyền `truoc=truoc_tiep` |
+| `GET /workflow/minh-bach/quy` | Công khai | `{don_vi: VND, tong_thu, tong_chi, so_du, khoan_tien_da_niem_phong, khoan_tien_cho_niem_phong, phieu_kho_cho_niem_phong}` |
+
+`bang_chung` = `{leaf_index, leaf_hash, tree_size, inclusion_proof: [hex…], checkpoint: <văn bản checkpoint đã ký>}`: đủ để client tự kiểm (băm `ban_ghi_chuan_hoa` theo JSON chuẩn tắc → so `sha256` trong lá `so_cai.la` → leaf hash `SHA-256(0x00 ‖ lá)` → dựng root từ proof theo RFC 9162 → so root trong checkpoint → kiểm chữ ký checkpoint bằng khóa công khai `/ledger/verifier`). `ledger-verify` ở trên kiểm được cả bút toán tiền: lưu phản hồi `xac-minh/{mã}` rồi chạy như với phiếu.
+
+```bash
+curl -s http://localhost:9080/workflow/minh-bach/xac-minh/e1000000-0000-4000-8000-000000000001 | python3 -m json.tool
+curl -s http://localhost:9080/workflow/minh-bach/quy
+```
+
+Kiểm thử: `tests/test_cuu_tro_so_cai_tien.py` (bản ghi chuẩn hóa ổn định, sửa bất kỳ trường công khai đổi SHA-256, endpoint, bằng chứng tự kiểm, sửa CSDL → không hợp lệ, lá khác loại bị từ chối, bộ niêm phong bù), `db/tests/0011`, `scripts/smoke-so-cai.sh` (trong `make smoke`).
+## Cảm biến mực nước (`workflow/cuu_tro_workflow/cam_bien*.py`, `gia_lap.py`, #30, #84)
 
 Luồng IT/OT của ứng dụng: thiết bị (ở đây là bộ giả lập) gửi MQTT vào NATS của lõi, consumer của ứng dụng ghi chuỗi đo vào PostgreSQL và phát cảnh báo khi nước vượt ngưỡng. Lõi chỉ cung cấp NATS có xác thực (user `cuu-tro-thiet-bi` chỉ gửi được vào `cuu-tro.>`, chỉ qua MQTT), không biết topic nào. Vì sao làm vậy và ánh xạ nguyên lý B2: `docs/architecture.md` mục 7.4.
 
@@ -433,7 +457,8 @@ flowchart LR
   st -->|"consumer bền ghi-csdl<br/>pull, ack thủ công"| cs["cuu-tro-cam-bien<br/>kiểm payload, so ngưỡng"]
   cs -->|"role cuu_tro_app, 1 transaction"| db[("sensor_readings<br/>sensors.last_*")]
   cs -->|"mức tăng lên canh_bao / nguy_hiem<br/>Nats-Msg-Id chống trùng"| cb[("Stream CUU_TRO_CANH_BAO<br/>cuu-tro.canh-bao.cam-bien.&lt;ma_tram&gt;")]
-  cb -.->|"tuần 4–5"| ag["agent cảnh báo<br/>Temporal → Telegram / Centrifugo"]
+  cb -->|"consumer canh-bao-temporal (#87)"| ag["workflow CanhBaoVuotNguong<br/>hộp thư / Telegram / web"]
+  st -->|"consumer bền ban-sao-so (#85)"| bs["cuu-tro-ban-sao-so"] -->|"upsert NGSI-LD"| sc[("Scorpio (lõi)<br/>thực thể trạm đo")]
   db -->|"/graphql qua APISIX"| ui["dieu-phoi · cuu-ho · tinh-nguyen"]
 ```
 
@@ -456,11 +481,43 @@ Stream và consumer khai báo ở `nats/streams.json`; `cuu-tro-cam-bien` tạo 
 
 ```bash
 make up                     # lõi + app: NATS có xác thực, consumer cuu-tro-cam-bien
-make gia-lap                # một bản tin bình thường cho mỗi trạm mẫu (AL-MN-01, AL-MN-02, AL-LM-01)
+make gia-lap                # một bản tin bình thường cho mỗi trạm mẫu (9 trạm, xem bảng dưới)
 make gia-lap-vuot-nguong    # một bản tin trên ngưỡng nguy hiểm cho mỗi trạm → sự kiện cảnh báo
+make gia-lap-tran-lu        # phát lại trận lũ mẫu 48 giờ của 9 trạm trong vài giây (#84)
+# Trận lũ chạy theo thời gian thực "tua nhanh": mỗi 10 giây một giờ của trận lũ, bắt đầu từ giờ 6
+GIA_LAP_KICH_BAN=tran-lu docker compose --profile core --profile app --profile gia-lap run --rm --no-deps \
+  cuu-tro-gia-lap python -m cuu_tro_workflow.gia_lap --lien-tuc --kich-ban tran-lu --buoc-dau 6
 # Chạy liên tục (mỗi 10 giây; kịch bản vuot-nguong: nước lên dần trong 6 chu kỳ rồi giữ)
 GIA_LAP_KICH_BAN=vuot-nguong docker compose --profile core --profile app --profile gia-lap up -d cuu-tro-gia-lap
 docker compose --profile core --profile app run --rm --no-deps cuu-tro-gia-lap python -m cuu_tro_workflow.gia_lap --help
+```
+
+### Trạm mẫu và trận lũ mẫu (#84)
+
+Trạm và chuỗi giá trị nằm trong [`workflow/cuu_tro_workflow/du_lieu/tran_lu_mau.json`](workflow/cuu_tro_workflow/du_lieu/tran_lu_mau.json). **Dữ liệu giả lập**: tên địa danh và tọa độ (gần đúng) ở Quảng Nam, Đà Nẵng là thật; mực nền, ngưỡng và giá trị là giả định, không phải cấp báo động chính thức hay số đo thật. Ngưỡng trong tệp khớp seed `db/seed/0001_xa_mau.sql` (pytest kiểm).
+
+| Mã | Trạm | Loại | Ngưỡng cảnh báo / nguy hiểm | Đỉnh trận lũ mẫu (giờ) |
+|---|---|---|---|---|
+| `AL-MN-01` | Cầu An Lạc (xã mẫu, giả định) | mực nước | 350 / 450 cm | 470 cm (giờ 20) |
+| `AL-MN-02` | Bến đò thôn 2 (xã mẫu, giả định) | mực nước | 300 / 400 cm | 380 cm (giờ 21) |
+| `AL-LM-01` | UBND xã (xã mẫu, giả định) | lượng mưa | 100 / 200 mm | 120 mm (giờ 13) |
+| `QN-AN-01` | Sông Vu Gia tại Ái Nghĩa, Đại Lộc | mực nước | 900 / 1000 cm | 1080 cm (giờ 19) |
+| `QN-GT-01` | Sông Thu Bồn tại Giao Thủy, Đại Lộc | mực nước | 750 / 850 cm | 920 cm (giờ 20) |
+| `QN-CL-01` | Sông Thu Bồn tại Câu Lâu, Duy Xuyên | mực nước | 300 / 400 cm | 450 cm (giờ 22) |
+| `QN-HA-01` | Sông Hoài tại Hội An | mực nước | 150 / 200 cm | 230 cm (giờ 24) |
+| `DN-CLE-01` | Sông Cẩm Lệ tại cầu Cẩm Lệ, Đà Nẵng | mực nước | 180 / 250 cm | 230 cm (giờ 21, chỉ tới mức cảnh báo) |
+| `QN-LM-01` | Lượng mưa 1 giờ tại Đại Lộc | lượng mưa | 30 / 60 mm | 75 mm (giờ 12) |
+
+Trận lũ mẫu dài 48 giờ, mỗi bước một giờ: mưa đạt đỉnh trước, trạm thượng nguồn (Ái Nghĩa, Giao Thủy) lên đỉnh trước trạm hạ lưu (Câu Lâu, Hội An), sau đó rút dần. Kịch bản `tran-lu`: chế độ liên tục gửi giờ kế tiếp mỗi chu kỳ (`--buoc-dau` chọn giờ bắt đầu, `--so-lan` số chu kỳ rồi dừng, hết chuỗi thì giữ giá trị cuối); `--mot-lan` gửi đúng giờ `--buoc-dau`; `--phat-lai` gửi ngay cả chuỗi với thời điểm lùi về quá khứ mỗi bước một giờ, bước cuối là bây giờ (lịch sử trận lũ trong `sensor_readings`, bản sao số ở giá trị giờ cuối). Nhiễu của kịch bản `binh-thuong` lấy từ `--seed` (hoặc `GIA_LAP_SEED`): cùng seed cho cùng chuỗi.
+
+### Bản sao số NGSI-LD (#85)
+
+Consumer bền thứ hai `ban-sao-so` trên cùng stream: dịch vụ `cuu-tro-ban-sao-so` cập nhật thực thể NGSI-LD của trạm (`WaterLevelStation`, `RainGauge`) trên Scorpio của lõi, giá trị mới nhất kèm `observedAt`, mức cảnh báo, ngưỡng, tọa độ. Bản tin cũ hơn lần đo đang có không ghi đè; Scorpio lỗi thì giao lại có hẹn giờ. Mô hình, `@context` và ví dụ truy vấn: [`ngsi-ld/README.md`](ngsi-ld/README.md). Đọc qua gateway (Bearer JWT):
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" -H 'Accept: application/geo+json' \
+  "http://localhost:9080/ngsi-ld/v1/entities?type=WaterLevelStation&options=keyValues"
+docker compose logs -f cuu-tro-ban-sao-so  # "đã cập nhật urn:ngsi-ld:WaterLevelStation:QN-CL-01: 412.50 cm lúc …"
 ```
 
 Bộ giả lập chạy trong container chỉ có mật khẩu thiết bị (`bao-agent-cuu-tro` render vào volume tmpfs riêng `secrets-cuu-tro-thiet-bi`). Chạy từ máy host thì dùng cổng `127.0.0.1:${NATS_MQTT_PORT}` (thiết bị trong LAN: `NATS_MQTT_BIND=0.0.0.0`, chưa TLS):
@@ -484,4 +541,107 @@ query ChuoiDo { sensors { code last_value last_observed_at
   readings(order_by: {observed_at: desc}, limit: 10) { observed_at value level } } }
 ```
 
-Kiểm thử thật: `scripts/smoke-cam-bien.sh` (trong `make smoke`). NGSI-LD (Scorpio, bản sao số trạm đo) nối vào luồng này ở tuần 4: consumer thứ hai trên cùng stream cập nhật thực thể `sensors.ngsi_ld_id`, không đổi thiết bị hay topic.
+Kiểm thử thật: `scripts/smoke-cam-bien.sh` (luồng ghi CSDL, cảnh báo), `scripts/smoke-canh-bao.sh` (thông báo cảnh báo) và `scripts/smoke-ngsi-ld.sh` (trận lũ mẫu, bản sao số NGSI-LD), đều trong `make smoke`.
+
+## Cảnh báo vượt ngưỡng → Temporal → thông báo (`workflow/cuu_tro_workflow/canh_bao*.py`, #87)
+
+Mỗi **đợt** vượt ngưỡng của một trạm (từ lần đo đầu tiên trên ngưỡng tới khi về dưới ngưỡng) là một workflow Temporal `CanhBaoVuotNguong`, id `canh-bao-<mã trạm>-<đợt>`. Workflow báo **đúng 1 lần** cho mỗi bước:
+
+| Bước | Khi nào | Tiêu đề tin |
+|---|---|---|
+| `canh_bao` | mức lên cảnh báo lần đầu trong đợt | 🟠 CẢNH BÁO: &lt;trạm&gt; |
+| `nguy_hiem` | mức lên nguy hiểm (lần đầu trong đợt; có thể nhảy thẳng từ bình thường) | 🔴 NGUY HIỂM: &lt;trạm&gt; |
+| `ve_duoi_nguong` | lần đo mới nhất về bình thường; kết thúc đợt | 🟢 ĐÃ VỀ DƯỚI NGƯỠNG: &lt;trạm&gt; |
+
+Đo lại vẫn trên ngưỡng, xuống cảnh báo rồi lên nguy hiểm lại, sự kiện giao lại hay gửi bù đều không tạo tin mới. Ví dụ nội dung (văn bản thuần, gửi được cả Telegram):
+
+```
+🔴 NGUY HIỂM: Mực nước sông Hoài tại Hội An (giả lập) (QN-HA-01)
+Mực nước: 210 cm (ngưỡng nguy hiểm 200 cm)
+Cấp báo động: Nguy hiểm (trước: Cảnh báo)
+Thời điểm đo: 09:15 24/10/2026 (giờ Việt Nam)
+Bản đồ: https://www.openstreetmap.org/?mlat=15.87700&mlon=108.33300#map=14/15.87700/108.33300
+Web điều phối: http://localhost:9080/
+```
+
+Kênh gửi (`CANH_BAO_KENH` trong `.env`):
+
+- `gia-lap` (mặc định, dùng cho smoke và CI): tin ghi vào **hộp thư nội bộ** `cuu_tro.sensor_alert_notifications` (vai `dieu-phoi` đọc qua `/graphql`) và hiện trên nút **Thông báo** của web điều phối (Centrifugo). Không gửi ra ngoài.
+- `telegram`: như trên, cộng thêm gọi `sendMessage` của Telegram Bot API.
+
+Bật Telegram thật (cần token bot từ [@BotFather](https://t.me/BotFather) và id nhóm/kênh mà bot đã được thêm vào; **không** ghi token vào `.env` hay repo):
+
+```bash
+# 1. Đặt token + chat id vào OpenBao (chỗ trống đã được make up tạo theo openbao/secrets.conf)
+docker compose exec -e BAO_TOKEN="$(cat .data/openbao/root.token)" openbao   bao kv put -address=http://127.0.0.1:8200 secret/app/cuu-tro/telegram bot_token='<token>' chat_id='<chat id>'
+# 2. Chọn kênh rồi chạy lại (bao agent render lại token trong ≤ 5 phút; restart để nhận ngay)
+sed -i.bak 's/^CANH_BAO_KENH=.*/CANH_BAO_KENH=telegram/' .env && make up
+docker compose restart bao-agent-cuu-tro cuu-tro-worker
+docker compose logs cuu-tro-worker | grep "kênh telegram"
+make gia-lap-vuot-nguong    # thử: mỗi trạm một tin NGUY HIỂM; make gia-lap → tin ĐÃ VỀ DƯỚI NGƯỠNG
+```
+
+Token sai, bot bị chặn hay chat không có (Telegram trả 400/401/403/404): bước đó ghi `status = loi` kèm lý do trong hộp thư, không thử lại; các bước sau của đợt vẫn được báo. Lỗi mạng, 5xx, 429 (`retry_after`): Temporal thử lại 2 s → 60 s, tối đa 10 lần.
+
+```graphql
+query HopThu { sensor_alert_notifications(order_by: {id: desc}, limit: 20) {
+  sensor_code episode_at step status channel message detail sent_at } }
+```
+
+```bash
+# Xem workflow của các đợt
+docker compose exec temporal temporal workflow list --address temporal:7233 --query "WorkflowType = 'CanhBaoVuotNguong'"
+```
+
+Thiết kế và lý do: `docs/architecture.md` mục 6.3.
+
+## Lưu trữ lịch sử Parquet + DuckDB (`workflow/cuu_tro_workflow/luu_tru.py`, #91)
+
+Xuất dữ liệu cũ ra Parquet trên SeaweedFS (bucket `cuu-tro-lakehouse`), phân vùng theo tháng giờ Việt Nam `<bảng>/thang=YYYY-MM/du-lieu.parquet`, kèm `_manifest.json` (số dòng + SHA-256 từng tệp). Dữ liệu trong PostgreSQL không bị xóa. Đọc CSDL bằng role **chỉ đọc** `cuu_tro_bi` (migration `0012`), role này không có quyền với cột định danh. Thiết kế và lý do: `docs/architecture.md` mục 7.6.
+
+| Bảng | Nguồn | Cột |
+|---|---|---|
+| `su_co` | tin kêu cứu `da_cuu`/`dong` | `id, muc_khan, trang_thai, nguon, so_nguoi, vi_do, kinh_do` (làm tròn 2 chữ số ~1 km), `tao_luc, nhan_luc, dong_luc, phan_hoi_giay` (tiếp nhận → đội nhận), `so_lan_giao, doi_id` |
+| `so_do` | `sensor_readings` | `ma_tram, dai_luong, don_vi, thoi_diem, gia_tri, muc` |
+| `phan_phoi` | phiếu xuất kho (phân phát hàng) | `id, mat_hang, don_vi, so_luong, kho, diem_nhan, thoi_diem, chi_so_la` (chỉ số lá sổ cái) |
+| `khoan_tien` | bút toán tiền (#89) | `id, chieu, so_tien, don_vi, hang_muc, noi_dung, diem_nhan, thoi_diem, chi_so_la` |
+
+Không có SĐT, họ tên, mô tả tự do, địa chỉ, người lập phiếu, người nhận nhiệm vụ, ghi chú. Chạy lại cho cùng kết quả: tệp không đổi thì không ghi lại (`"ghi": []`).
+
+```bash
+make luu-tru                    # xuất mọi dòng trước đầu tháng này (dữ liệu "cũ")
+make luu-tru DEN=2026-12-01     # đổi mốc: xuất mọi dòng trước ngày này (giờ Việt Nam)
+make luu-tru-truy-van SQL="SELECT thang, count(*) AS so_tin, round(median(phan_hoi_giay)/60, 1) AS phan_hoi_phut FROM su_co GROUP BY 1 ORDER BY 1"
+make luu-tru-truy-van SQL="SELECT ma_tram, max(gia_tri) AS dinh FROM so_do WHERE dai_luong = 'muc_nuoc' GROUP BY 1 ORDER BY 2 DESC"
+make luu-tru-truy-van SQL="SELECT diem_nhan, mat_hang, sum(so_luong) AS da_phat, any_value(don_vi) AS don_vi FROM phan_phoi GROUP BY ALL ORDER BY 1"
+make luu-tru-truy-van SQL="SELECT thang, chieu, hang_muc, sum(so_tien) AS tong FROM khoan_tien GROUP BY ALL ORDER BY ALL"
+```
+
+Mỗi lần truy vấn, tệp được tải về thư mục tạm trong container và kiểm SHA-256 với manifest (tệp bị sửa → từ chối), rồi DuckDB tạo view `su_co`, `so_do`, `phan_phoi`, `khoan_tien` (thêm cột `thang` từ phân vùng). Thêm `--json` (gọi thẳng `python -m cuu_tro_workflow.luu_tru truy-van --json "<SQL>"`) để mỗi dòng in một object JSON.
+
+Kiểm thử: `tests/test_cuu_tro_luu_tru.py`, `db/tests/0012`, `scripts/smoke-luu-tru.sh` (trong `make smoke`).
+
+## Dashboard điều hành Grafana (`grafana/dashboards/dieu-hanh.json`, #92)
+
+Grafana OSS của lõi (profile `bi`, dịch vụ riêng, AGPL-3.0, image gốc) nạp dashboard **Điều hành cứu trợ** từ tệp JSON trong thư mục này. Datasource là PostgreSQL bằng role chỉ đọc `cuu_tro_bi`. Panel:
+
+| Panel | Dữ liệu |
+|---|---|
+| Tin kêu cứu đang mở | số tin chưa `da_cuu`/`dong` |
+| Thời gian phản hồi trung vị | tiếp nhận → đội nhận nhiệm vụ, tin tạo trong khoảng đang xem |
+| Quỹ cứu trợ | tổng thu, tổng chi, số dư (#89) |
+| Tin kêu cứu theo trạng thái | đếm theo trạng thái |
+| Mực nước các trạm | chuỗi đo theo thời gian |
+| Trạm đo: lần đo cuối và ngưỡng | mức hiện tại so với ngưỡng |
+| Tồn kho hàng cứu trợ | mặt hàng, tồn, kho |
+| Thu / chi theo ngày | bút toán tiền |
+| Cảnh báo vượt ngưỡng đã gửi | hộp thư thông báo (#87) |
+
+```bash
+make up-bi                      # sau make up; mở http://localhost:9080/grafana/  (tài khoản admin)
+curl -s -H "X-Vault-Token: $(cat .data/openbao/root.token)" http://127.0.0.1:8200/v1/secret/data/core/grafana \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["data"]["admin_password"])'   # mật khẩu admin
+```
+
+Sửa dashboard: sửa tệp JSON (Grafana nạp lại sau tối đa 60 giây); sửa trên giao diện không lưu được. Panel mới chỉ đọc được cột mà migration 0012 cấp cho `cuu_tro_bi`; cần cột khác thì thêm GRANT trong migration mới (không cấp cột định danh). Kiểm thử: `scripts/smoke-grafana.sh` (trong `make smoke`, tự bật profile `bi`).
+

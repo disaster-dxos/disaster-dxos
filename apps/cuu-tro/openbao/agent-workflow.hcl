@@ -93,3 +93,55 @@ template {
   perms       = "0444"
   contents    = "{{ with secret \"secret/data/app/cuu-tro/realtime\" }}{{ .Data.data.api_key }}{{ end }}"
 }
+
+# Worker (#87): như /out/cuu-tro (DB + NATS) và thêm token bot Telegram, volume riêng để consumer cảm biến,
+# bản sao số (cùng dùng /out/cuu-tro) không có token
+template {
+  destination = "/out/cuu-tro-worker/APP_DB_URL"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/db\" }}postgres://{{ env \"APP_DB_USER\" }}:{{ .Data.data.password | urlquery }}@postgres:5432/{{ env \"POSTGRES_DB\" }}{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro-worker/NATS_URL"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/nats\" }}nats://cuu-tro-app:{{ .Data.data.app_password | urlquery }}@nats:4222{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro-worker/TELEGRAM_BOT_TOKEN"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/telegram\" }}{{ .Data.data.bot_token }}{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro-worker/TELEGRAM_CHAT_ID"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/telegram\" }}{{ .Data.data.chat_id }}{{ end }}"
+}
+
+# Worker (#89): token ghi sổ cái cho bộ niêm phong bù phiếu kho / bút toán tiền chưa lên sổ cái
+template {
+  destination = "/out/cuu-tro-worker/LEDGER_WRITE_TOKEN"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/ledger\" }}{{ .Data.data.write_token }}{{ end }}"
+}
+
+# Lưu trữ lịch sử (#91): role chỉ đọc cuu_tro_bi + khóa S3 của ứng dụng cho cuu-tro-luu-tru (volume riêng)
+template {
+  destination = "/out/cuu-tro-luu-tru/BI_DB_URL"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/bi-db\" }}postgres://cuu_tro_bi:{{ .Data.data.password | urlquery }}@postgres:5432/{{ env \"POSTGRES_DB\" }}{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro-luu-tru/S3_ACCESS_KEY"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/s3\" }}{{ .Data.data.access_key }}{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro-luu-tru/S3_SECRET_KEY"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/s3\" }}{{ .Data.data.secret_key }}{{ end }}"
+}

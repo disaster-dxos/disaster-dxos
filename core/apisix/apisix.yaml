@@ -63,6 +63,27 @@ upstreams:
       send: 60
       read: 60
 
+  - id: scorpio
+    type: roundrobin
+    # NGSI-LD broker của lõi (#85): chỉ các đường đọc thực thể đi qua gateway; ghi (entityOperations,
+    # POST/PATCH/DELETE) chỉ từ backend ứng dụng trong mạng nội bộ (scorpio:9090)
+    nodes:
+      "scorpio:9090": 1
+    timeout:
+      connect: 5
+      send: 15
+      read: 15
+
+  - id: grafana
+    type: roundrobin
+    # Grafana OSS của lõi (#92, profile bi). Không chạy profile bi thì route /grafana/* trả 502/503
+    nodes:
+      "grafana:3000": 1
+    timeout:
+      connect: 5
+      send: 60
+      read: 60
+
   - id: web
     type: roundrobin
     # Web Tầng 2 của ứng dụng (#64), không thuộc lõi: mặc định quy ước <DXOS_APP>-web:3000
@@ -363,6 +384,58 @@ routes:
         functions:
           - "return function(conf, ctx) local core = require('apisix.core'); core.response.exit(403, {message = 'Forbidden: ghi sổ cái chỉ từ dịch vụ nội bộ'}) end"
 
+  # ---------------- /ngsi-ld/v1/* → Scorpio NGSI-LD (#85), chỉ đọc ----------------
+  # Bản sao số trạm đo: GET thực thể, kiểu, thuộc tính (NGSI-LD API 1.x của ETSI). Bắt buộc JWT (mọi vai trò
+  # đã đăng nhập; dữ liệu trạm không định danh), WAF kiểm URI/tham số (q=, georel=, coordinates=), rate limit.
+  # Gateway ĐẶT header Link tới @context của ứng dụng (GW_NGSI_LD_CONTEXT_URL, mặc định
+  # <DXOS_APP>-api:8000/ngsi-ld/context.jsonld, chỉ trong mạng nội bộ) và bỏ Link của client: client dùng
+  # tên ngắn (type=WaterLevelStation, waterLevel…) mà không phải biết URL context, và Scorpio không bị dùng
+  # để tải URL tùy ý (SSRF). Bỏ NGSILD-Tenant: chỉ dùng tenant mặc định. Accept: application/geo+json trả
+  # GeoJSON FeatureCollection cho bản đồ. Không mở: jsonldContexts, subscriptions, csourceRegistrations,
+  # entityOperations, temporal, /q/* (route ngsi-ld-deny bên dưới trả 403).
+  - id: ngsi-ld
+    uris:
+      - /ngsi-ld/v1/entities
+      - /ngsi-ld/v1/entities/*
+      - /ngsi-ld/v1/types
+      - /ngsi-ld/v1/types/*
+      - /ngsi-ld/v1/attributes
+      - /ngsi-ld/v1/attributes/*
+    methods: [GET, HEAD, OPTIONS]
+    priority: 10
+    upstream_id: scorpio
+    plugins:
+      request-id: {}
+      client-control: *api-body-limit
+      coraza-filter:
+        conf: *waf-api
+      cors: *cors
+      openid-connect:
+        client_id: dxos-gateway
+        client_secret: $env://KC_GATEWAY_CLIENT_SECRET
+        discovery: http://keycloak:8080/realms/${{KEYCLOAK_REALM:=disaster}}/.well-known/openid-configuration
+        bearer_only: true
+        use_jwks: true
+        set_userinfo_header: false
+        # Scorpio không đọc token: không chuyển tiếp (proxy-rewrite bỏ cả header Authorization)
+        set_access_token_header: false
+      proxy-rewrite:
+        headers:
+          set:
+            Link: '<${{GW_NGSI_LD_CONTEXT_URL:=http://workflow-api:8000/ngsi-ld/context.jsonld}}>; rel="http://www.w3.org/ns/json-ld#context"; type="application/ld+json"'
+          remove:
+            - Authorization
+            - NGSILD-Tenant
+      limit-count: *rate-limit
+
+  - id: ngsi-ld-deny
+    uri: /ngsi-ld/*
+    plugins:
+      serverless-pre-function:
+        phase: rewrite
+        functions:
+          - "return function(conf, ctx) local core = require('apisix.core'); core.response.exit(403, {message = 'Forbidden: NGSI-LD qua gateway chỉ đọc entities/types/attributes'}) end"
+
   # ---------------- /workflow/* → API workflow của ứng dụng (#29) ----------------
   # /workflow/<đường dẫn> → <app>-api:8000/<đường dẫn>. Gateway kiểm JWT + WAF + rate limit rồi chuyển
   # nguyên Bearer token: API kiểm lại chữ ký và đọc vai trò (vd chỉ dieu-phoi được khởi chạy phân công).
@@ -439,6 +512,46 @@ routes:
       proxy-rewrite:
         uri: /realms/${{KEYCLOAK_REALM:=disaster}}/protocol/openid-connect/userinfo
       limit-count: *rate-limit
+
+  # ---------------- /grafana/* → Grafana OSS (#92, profile bi) ----------------
+  # Dashboard điều hành cho người vận hành. Không kiểm JWT ở gateway: Grafana tự đăng nhập (tài khoản admin,
+  # mật khẩu trong OpenBao; không đăng ký, không ẩn danh) và tự bảo vệ phiên (cookie SameSite strict).
+  # Grafana phục vụ dưới đường /grafana/ (GF_SERVER_SERVE_FROM_SUB_PATH). WAF kiểm URI, tham số, header nhưng
+  # KHÔNG đọc body: truy vấn của panel (POST /grafana/api/ds/query) mang SQL trong body, luật SQLi của CRS sẽ
+  # chặn nhầm; SQL chạy bằng role chỉ đọc <schema>_bi nên có giới hạn ở CSDL. WebSocket cho Grafana Live.
+  # Giới hạn tần suất như route web (một lần mở dashboard tải nhiều tệp + truy vấn).
+  - id: grafana
+    uris: [/grafana, /grafana/*]
+    priority: 10
+    methods: [GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS]
+    upstream_id: grafana
+    enable_websocket: true
+    plugins:
+      request-id: {}
+      client-control:
+        max_body_size: 1048576
+      coraza-filter:
+        conf:
+          directives_map:
+            grafana:
+              - Include @recommended-conf
+              - SecRuleEngine On
+              - SecRequestBodyAccess Off
+              - SecResponseBodyAccess Off
+              - Include @crs-setup-conf
+              - Include @owasp_crs/*.conf
+          default_directives: grafana
+      proxy-rewrite:
+        headers:
+          remove:
+            # Giữ Authorization (đăng nhập API của Grafana); bỏ header auth-proxy để không ai giả danh người dùng
+            - X-WEBAUTH-USER
+      limit-count:
+        count: ${{GW_WEB_RATE_LIMIT_COUNT:=600}}
+        time_window: ${{GW_RATE_LIMIT_WINDOW:=60}}
+        key_type: var
+        key: remote_addr
+        rejected_code: 429
 
   # ---------------- /* → web Tầng 2 của ứng dụng (#64), CHỈ GET/HEAD ----------------
   # Trang web (SPA) và tệp tĩnh: /, /auth/callback, /_nuxt/*, /logo/*... Mọi route khác có đường dẫn

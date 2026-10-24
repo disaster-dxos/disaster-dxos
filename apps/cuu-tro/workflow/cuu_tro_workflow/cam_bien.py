@@ -5,7 +5,9 @@ Quy ước topic MQTT:  cuu-tro/cam-bien/<ma_tram>/<dai_luong>   (vd cuu-tro/cam
 NATS đổi "/" thành ".":  cuu-tro.cam-bien.<ma_tram>.<dai_luong>
 Payload JSON:  {"ma_tram": "AL-MN-01", "gia_tri": 382.5, "don_vi": "cm",
                 "thoi_diem": "2026-10-20T08:00:00+07:00"}
-Sự kiện cảnh báo:  cuu-tro.canh-bao.cam-bien.<ma_tram>  (xem su_kien_canh_bao)
+Sự kiện cảnh báo:  cuu-tro.canh-bao.cam-bien.<ma_tram>  (xem su_kien_canh_bao, su_kien_ve_duoi_nguong)
+Mỗi sự kiện mang "dot" = thời điểm (UTC) của lần đo đầu tiên trên ngưỡng trong đợt, để luồng thông báo
+(#87, canh_bao.py) gom vượt ngưỡng → lên cấp → về dưới ngưỡng của cùng một đợt vào một workflow.
 Giá trị kind/unit/level khớp CHECK của bảng cuu_tro.sensors / sensor_readings (db/migrations).
 """
 
@@ -159,6 +161,16 @@ def can_phat_canh_bao(muc_truoc: str | None, muc_moi: str, la_moi_nhat: bool) ->
     return THU_TU_MUC[muc_moi] > THU_TU_MUC[muc_truoc or BINH_THUONG]
 
 
+def can_phat_ve_duoi_nguong(muc_truoc: str | None, muc_moi: str, la_moi_nhat: bool) -> bool:
+    """Lần đo mới nhất về binh_thuong sau khi đang canh_bao/nguy_hiem: kết thúc một đợt (#87)."""
+    return la_moi_nhat and muc_moi == BINH_THUONG and (muc_truoc or BINH_THUONG) != BINH_THUONG
+
+
+def chuoi_dot(dot: datetime) -> str:
+    """Mã đợt: thời điểm lần đo đầu tiên trên ngưỡng, UTC, ISO 8601 có mili giây."""
+    return dot.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
 def su_kien_canh_bao(
     bt: BanTin,
     ten_tram: str,
@@ -166,8 +178,9 @@ def su_kien_canh_bao(
     muc_moi: str,
     nguong_canh_bao: Decimal | None,
     nguong_nguy_hiem: Decimal | None,
+    dot: datetime | None = None,
 ) -> dict:
-    """Payload JSON của sự kiện cảnh báo (khung cho agent cảnh báo tuần 4–5)."""
+    """Payload JSON của sự kiện vượt ngưỡng / lên cấp. `dot`: lần đo đầu tiên trên ngưỡng của đợt."""
     nguong = nguong_nguy_hiem if muc_moi == NGUY_HIEM else nguong_canh_bao
     return {
         "loai": "vuot_nguong",
@@ -180,6 +193,26 @@ def su_kien_canh_bao(
         "nguong": None if nguong is None else float(nguong),
         "don_vi": bt.don_vi,
         "thoi_diem": bt.thoi_diem.isoformat(),
+        "dot": chuoi_dot(dot or bt.thoi_diem),
+    }
+
+
+def su_kien_ve_duoi_nguong(
+    bt: BanTin, ten_tram: str, muc_truoc: str, nguong_canh_bao: Decimal | None, dot: datetime
+) -> dict:
+    """Payload JSON của sự kiện về dưới ngưỡng (kết thúc đợt `dot`), cùng subject với cảnh báo."""
+    return {
+        "loai": "ve_duoi_nguong",
+        "ma_tram": bt.ma_tram,
+        "ten_tram": ten_tram,
+        "dai_luong": bt.kind,
+        "muc": BINH_THUONG,
+        "muc_truoc": muc_truoc,
+        "gia_tri": float(bt.gia_tri),
+        "nguong": None if nguong_canh_bao is None else float(nguong_canh_bao),
+        "don_vi": bt.don_vi,
+        "thoi_diem": bt.thoi_diem.isoformat(),
+        "dot": chuoi_dot(dot),
     }
 
 

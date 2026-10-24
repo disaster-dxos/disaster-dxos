@@ -255,11 +255,13 @@ def test_khoi_chay_loi_nats_khong_chan_phan_cong():
 def test_consumer_realtime_chi_nhan_su_kien_moi():
     streams, consumers = doc_khai_bao(str(STREAMS_JSON))
     rt = {c.durable_name: (s, c) for s, c in consumers if c.durable_name.startswith(TIEN_TO_CONSUMER)}
-    assert set(rt) == {"realtime-dieu-phoi", "realtime-canh-bao"}
+    # #87: realtime-canh-bao bỏ; web nhận thông báo cảnh báo đã khử trùng lặp qua cuu-tro.dieu-phoi.canh-bao.*
+    assert set(rt) == {"realtime-dieu-phoi"}
     s, c = rt["realtime-dieu-phoi"]
     assert s == "CUU_TRO_DIEU_PHOI" and c.filter_subject == "cuu-tro.dieu-phoi.>"
-    assert rt["realtime-canh-bao"][0] == "CUU_TRO_CANH_BAO"
     assert all(c.deliver_policy.value == "new" for _, c in rt.values())
+    (s, c), = [(s, c) for s, c in consumers if c.durable_name == "canh-bao-temporal"]
+    assert s == "CUU_TRO_CANH_BAO" and c.deliver_policy.value == "new"
     ghi = [c for _, c in consumers if c.durable_name == "ghi-csdl"]
     assert ghi and ghi[0].deliver_policy.value == "all"
     # Subject các loại thông báo nằm trong stream đã khai báo

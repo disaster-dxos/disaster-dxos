@@ -17,6 +17,9 @@
 #   - Thông báo realtime (#68): Centrifugo của lõi kiểm token HS256 iss "cuu-tro-api"; cuu-tro-api cấp
 #     token (GET /workflow/realtime/token), cuu-tro-thong-bao đẩy sự kiện NATS lên kênh dieu-phoi;
 #     bí mật secret/app/cuu-tro/realtime. Web mở WebSocket qua APISIX /realtime/websocket.
+#   - Bản sao số NGSI-LD (#85): cuu-tro-ban-sao-so ghi thực thể trạm đo lên Scorpio của lõi (scorpio:9090);
+#     cuu-tro-api phục vụ @context (apps/cuu-tro/ngsi-ld/context.jsonld) cho route APISIX /ngsi-ld/v1/*
+#     (GW_NGSI_LD_CONTEXT_URL). Người dùng đọc thực thể qua gateway, không ghi được.
 # Không mở cổng nào ra máy host: client gọi API và mở web qua gateway, worker chỉ kéo việc từ Temporal,
 # consumer cảm biến chỉ kéo bản tin từ NATS. Thiết bị gửi MQTT vào cổng của lõi (nats:1883).
 
@@ -54,13 +57,18 @@ services:
       - secrets-cuu-tro-thiet-bi:/out/cuu-tro-thiet-bi
       - secrets-cuu-tro-api:/out/cuu-tro-api
       - secrets-cuu-tro-thong-bao:/out/cuu-tro-thong-bao
+      - secrets-cuu-tro-worker:/out/cuu-tro-worker
+      - secrets-cuu-tro-luu-tru:/out/cuu-tro-luu-tru
     healthcheck:
       test:
         - CMD-SHELL
         - >-
           for f in cuu-tro/APP_DB_URL cuu-tro/NATS_URL cuu-tro-thiet-bi/MQTT_PASSWORD cuu-tro-api/S3_SECRET_KEY
           cuu-tro-api/LEDGER_WRITE_TOKEN cuu-tro-api/REALTIME_TOKEN_SECRET cuu-tro-thong-bao/CENTRIFUGO_API_KEY
-          cuu-tro-thong-bao/NATS_URL; do test -s /out/$$f || exit 1; done
+          cuu-tro-thong-bao/NATS_URL cuu-tro-worker/APP_DB_URL cuu-tro-worker/NATS_URL cuu-tro-worker/LEDGER_WRITE_TOKEN
+          cuu-tro-luu-tru/BI_DB_URL cuu-tro-luu-tru/S3_SECRET_KEY;
+          do test -s /out/$$f || exit 1; done;
+          test -e /out/cuu-tro-worker/TELEGRAM_BOT_TOKEN
       interval: 5s
       timeout: 3s
       retries: 24
@@ -71,12 +79,16 @@ services:
     # "build" (hai dịch vụ cùng build một tên image thì BuildKit báo "already exists")
     build:
       context: ./apps/cuu-tro/workflow
-    image: disaster-dxos/cuu-tro-workflow:0.2.0
+    image: disaster-dxos/cuu-tro-workflow:0.3.0
     restart: unless-stopped
     profiles: [app]
     # APP_DB_URL (role cuu_tro_app) do bao agent render, env-from-files.sh export rồi exec worker.
     # Cùng tiến trình: bộ khởi chạy tự động (#67) LISTEN cuu_tro_tin_moi + quét outbox assignment_queue;
     # NATS_URL để báo điều phối (stream CUU_TRO_DIEU_PHOI, worker tự khai báo stream khi khởi động).
+    # Cảnh báo vượt ngưỡng (#87): consumer canh-bao-temporal → workflow CanhBaoVuotNguong → activity
+    # gui_canh_bao, kênh CANH_BAO_KENH (gia-lap: hộp thư nội bộ + web; telegram: thêm Bot API). Token bot
+    # (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID) chỉ trong volume riêng secrets-cuu-tro-worker.
+    # Sổ cái (#89): bộ niêm phong bù trong worker, LEDGER_WRITE_TOKEN cùng volume riêng đó.
     entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos"]
     command: ["python", "-m", "cuu_tro_workflow.worker"]
     depends_on:
@@ -95,10 +107,19 @@ services:
       NATS_STREAMS_FILE: /app/nats/streams.json
       PHAN_CONG_TU_DONG: ${PHAN_CONG_TU_DONG:-1}
       PHAN_CONG_QUET_GIAY: ${PHAN_CONG_QUET_GIAY:-30}
+      CANH_BAO_KENH: ${CANH_BAO_KENH:-gia-lap}
+      CANH_BAO_HAN_DOT_GIAY: ${CANH_BAO_HAN_DOT_GIAY:-604800}
+      TELEGRAM_API_URL: ${TELEGRAM_API_URL:-https://api.telegram.org}
+      # Liên kết "Web điều phối" trong nội dung tin
+      GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL:-http://localhost:9080}
+      # Bộ niêm phong bù sổ cái (#89): ghi lá cho phiếu kho / bút toán tiền chưa niêm phong (core/ledger nội bộ)
+      LEDGER_URL: http://ledger:8090
+      SO_CAI_QUET_GIAY: ${SO_CAI_QUET_GIAY:-10}
+      SO_CAI_CHO_GIAY: ${SO_CAI_CHO_GIAY:-5}
     volumes:
       - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
       - ./apps/cuu-tro/nats/streams.json:/app/nats/streams.json:ro
-      - secrets-cuu-tro:/run/secrets/dxos:ro
+      - secrets-cuu-tro-worker:/run/secrets/dxos:ro
     healthcheck:
       # Worker ghi lại /tmp/worker-alive mỗi 10 giây khi đang nhận việc từ Temporal
       test: ["CMD", "python", "-c", "import os,sys,time; sys.exit(time.time() - os.path.getmtime('/tmp/worker-alive') > 30)"]
@@ -110,7 +131,7 @@ services:
 
   cuu-tro-api:
     # Dùng lại image do cuu-tro-worker build (image cục bộ, không kéo từ registry)
-    image: disaster-dxos/cuu-tro-workflow:0.2.0
+    image: disaster-dxos/cuu-tro-workflow:0.3.0
     pull_policy: never
     restart: unless-stopped
     profiles: [app]
@@ -165,8 +186,11 @@ services:
       LEDGER_VERIFIER_KEY: ${LEDGER_VERIFIER_KEY:-}
       # Hạn token kết nối Centrifugo (#68), 30-3600 giây; web tự xin token mới trước khi hết hạn
       REALTIME_TOKEN_HAN_GIAY: ${REALTIME_TOKEN_HAN_GIAY:-300}
+      # Bản sao số (#85): phục vụ @context NGSI-LD ở /ngsi-ld/context.jsonld cho Scorpio tải (mạng nội bộ)
+      NGSI_LD_CONTEXT_FILE: /app/ngsi-ld/context.jsonld
     volumes:
       - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - ./apps/cuu-tro/ngsi-ld/context.jsonld:/app/ngsi-ld/context.jsonld:ro
       - secrets-cuu-tro-api:/run/secrets/dxos:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
@@ -179,7 +203,7 @@ services:
   cuu-tro-cam-bien:
     # Consumer luồng cảm biến (#30): tạo stream/consumer JetStream theo apps/cuu-tro/nats/streams.json,
     # ghi chuỗi đo vào sensor_readings, cập nhật sensors.last_*, phát cảnh báo vượt ngưỡng lên NATS.
-    image: disaster-dxos/cuu-tro-workflow:0.2.0
+    image: disaster-dxos/cuu-tro-workflow:0.3.0
     pull_policy: never
     restart: unless-stopped
     profiles: [app]
@@ -211,12 +235,53 @@ services:
       start_period: 20s
     mem_limit: 128m
 
+  cuu-tro-ban-sao-so:
+    # Bản sao số trạm đo (#85): consumer bền thứ hai "ban-sao-so" trên stream CUU_TRO_CAM_BIEN (độc lập với
+    # ghi-csdl), upsert thực thể NGSI-LD của trạm lên Scorpio của lõi (scorpio:9090, mạng nội bộ); bản tin
+    # cũ hơn lần đo đang có thì bỏ qua, Scorpio lỗi thì giao lại có hẹn giờ. Đọc tên, tọa độ, ngưỡng của
+    # trạm bằng role cuu_tro_app (migration 0009, chỉ đọc). @context: apps/cuu-tro/ngsi-ld/context.jsonld.
+    image: disaster-dxos/cuu-tro-workflow:0.3.0
+    pull_policy: never
+    restart: unless-stopped
+    profiles: [app]
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos"]
+    command: ["python", "-m", "cuu_tro_workflow.ban_sao_so"]
+    depends_on:
+      nats:
+        condition: service_healthy
+      scorpio:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      bao-agent-cuu-tro:
+        condition: service_healthy
+      # Stream CUU_TRO_CAM_BIEN do cuu-tro-cam-bien khai báo trước (consumer này cũng khai báo nếu chưa có)
+      cuu-tro-cam-bien:
+        condition: service_started
+    environment:
+      SECRETS_REQUIRED: APP_DB_URL NATS_URL
+      NATS_STREAMS_FILE: /app/nats/streams.json
+      NGSI_LD_URL: http://scorpio:9090
+      NGSI_LD_CONTEXT_FILE: /app/ngsi-ld/context.jsonld
+    volumes:
+      - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - ./apps/cuu-tro/nats/streams.json:/app/nats/streams.json:ro
+      - ./apps/cuu-tro/ngsi-ld/context.jsonld:/app/ngsi-ld/context.jsonld:ro
+      - secrets-cuu-tro:/run/secrets/dxos:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,sys,time; sys.exit(time.time() - os.path.getmtime('/tmp/ban-sao-so-alive') > 30)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+    mem_limit: 96m
+
   cuu-tro-thong-bao:
-    # Cầu nối thông báo realtime (#68): kéo từ consumer bền realtime-* (stream CUU_TRO_DIEU_PHOI:
-    # cần xử lý + tin mới; CUU_TRO_CANH_BAO: vượt ngưỡng), chỉ chép trường không định danh, POST
+    # Cầu nối thông báo realtime (#68): kéo từ consumer bền realtime-* (stream CUU_TRO_DIEU_PHOI: cần xử
+    # lý, tin mới, thông báo cảnh báo trạm đo do workflow #87 đã gửi), chỉ chép trường không định danh, POST
     # /api/publish của Centrifugo (idempotency_key = Nats-Msg-Id), Centrifugo nhận mới ack.
     # Bí mật: NATS_URL + CENTRIFUGO_API_KEY (volume riêng), không có mật khẩu DB.
-    image: disaster-dxos/cuu-tro-workflow:0.2.0
+    image: disaster-dxos/cuu-tro-workflow:0.3.0
     pull_policy: never
     restart: unless-stopped
     profiles: [app]
@@ -252,7 +317,7 @@ services:
     #   docker compose --profile core --profile app run --rm --no-deps cuu-tro-gia-lap python -m cuu_tro_workflow.gia_lap --mot-lan
     # Chạy liên tục: docker compose --profile core --profile app --profile gia-lap up -d cuu-tro-gia-lap
     # Chỉ có mật khẩu thiết bị (MQTT, chỉ được gửi vào cuu-tro.>), không có bí mật nào khác.
-    image: disaster-dxos/cuu-tro-workflow:0.2.0
+    image: disaster-dxos/cuu-tro-workflow:0.3.0
     pull_policy: never
     restart: unless-stopped
     profiles: [gia-lap]
@@ -275,6 +340,30 @@ services:
       - secrets-cuu-tro-thiet-bi:/run/secrets/dxos:ro
     mem_limit: 64m
 
+  cuu-tro-luu-tru:
+    # Lưu trữ lịch sử (#91), profile riêng "luu-tru", chạy một lần (make luu-tru, make luu-tru-truy-van):
+    # đọc CSDL bằng role CHỈ ĐỌC cuu_tro_bi (migration 0012: không có cột định danh), ghi Parquet phân vùng
+    # theo tháng lên bucket cuu-tro-lakehouse của SeaweedFS (khóa S3 của ứng dụng), truy vấn bằng DuckDB.
+    # Bí mật riêng (volume secrets-cuu-tro-luu-tru): BI_DB_URL, S3_ACCESS_KEY, S3_SECRET_KEY.
+    image: disaster-dxos/cuu-tro-workflow:0.3.0
+    pull_policy: never
+    restart: "no"
+    profiles: [luu-tru]
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos"]
+    command: ["python", "-m", "cuu_tro_workflow.luu_tru", "xuat"]
+    depends_on:
+      bao-agent-cuu-tro:
+        condition: service_healthy
+    environment:
+      SECRETS_REQUIRED: BI_DB_URL S3_ACCESS_KEY S3_SECRET_KEY
+      S3_ENDPOINT: http://seaweedfs:8333
+      LUU_TRU_BUCKET: cuu-tro-lakehouse
+    volumes:
+      - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - secrets-cuu-tro-luu-tru:/run/secrets/dxos:ro
+    # DuckDB giữ một phân vùng trong bộ nhớ khi ghi; tệp tạm trong /tmp của container
+    mem_limit: 512m
+
   cuu-tro-web:
     # Web điều phối (#59, #64): Nuxt build từ mã nguồn (apps/cuu-tro/web/Dockerfile), chạy Nitro node
     # server, user không phải root. Mở qua APISIX (route /*, có Coraza WAF), không mở cổng ra host:
@@ -285,7 +374,7 @@ services:
       # Bộ logo của repo nằm ngoài thư mục web (nuxt.config.ts phục vụ ở /logo)
       additional_contexts:
         logo: ./docs/images/logo
-    image: disaster-dxos/cuu-tro-web:0.2.0
+    image: disaster-dxos/cuu-tro-web:0.3.0
     restart: unless-stopped
     profiles: [app]
     environment:
@@ -322,6 +411,18 @@ volumes:
       device: tmpfs
       o: "uid=100,gid=1000,mode=0755,size=1m"
   secrets-cuu-tro-thong-bao:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "uid=100,gid=1000,mode=0755,size=1m"
+  secrets-cuu-tro-luu-tru:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "uid=100,gid=1000,mode=0755,size=1m"
+  secrets-cuu-tro-worker:
     driver: local
     driver_opts:
       type: tmpfs

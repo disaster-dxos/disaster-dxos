@@ -24,6 +24,15 @@ Mọi cấu hình qua biến môi trường trong `.env`, có giải thích tron
 | `REALTIME_TOKEN_HAN_GIAY` | `300` | Hạn token kết nối Centrifugo do `cuu-tro-api` cấp (30–3600 giây, #68) |
 | `CENTRIFUGO_ALLOWED_ORIGINS` | `GATEWAY_PUBLIC_URL` | Origin được mở WebSocket tới Centrifugo, cách nhau bởi dấu cách (#68) |
 | `GW_REALTIME_RATE_LIMIT_COUNT` | `60` | Số lần mở WebSocket `/realtime/websocket` mỗi IP trong `GW_RATE_LIMIT_WINDOW` giây (#68) |
+| `SCORPIO_DB`, `SCORPIO_DB_USER` | `scorpio`, `scorpio` | CSDL và role của Scorpio NGSI-LD trên PostgreSQL của lõi; mật khẩu trong OpenBao `secret/core/scorpio-db` (#85) |
+| `SCORPIO_PLATFORM` | `linux/amd64` | Image Scorpio chỉ có amd64 (như PostGIS) |
+| `SCORPIO_DB_POOL` | `8` | Số kết nối PostgreSQL tối đa của Scorpio (role `scorpio` có `CONNECTION LIMIT 20`); hết thì request xếp hàng |
+| `CANH_BAO_KENH` | `gia-lap` | Kênh thông báo cảnh báo vượt ngưỡng (#87): `gia-lap` (hộp thư nội bộ + web) hoặc `telegram` (token + chat id trong OpenBao `secret/app/cuu-tro/telegram`, cách bật: `apps/cuu-tro/README.md`) |
+| `APP_BI_DB_USER` | `cuu_tro_bi` | Role chỉ đọc của ứng dụng cho Grafana và bộ xuất Parquet (#91, #92); đổi khi `DXOS_APP` khác `cuu-tro` |
+| `SO_CAI_QUET_GIAY`, `SO_CAI_CHO_GIAY` | `10`, `5` | Worker quét mỗi ngần ấy giây các phiếu kho / bút toán tiền chưa niêm phong cũ hơn ngần ấy giây và ghi bù lên sổ cái (#89) |
+| `CANH_BAO_HAN_DOT_GIAY` | `604800` | Đợt vượt ngưỡng không có sự kiện về dưới ngưỡng thì workflow tự kết thúc sau ngần này giây |
+| `TELEGRAM_API_URL` | `https://api.telegram.org` | Địa chỉ Telegram Bot API (đổi khi dùng máy chủ Bot API riêng) |
+| `GW_NGSI_LD_CONTEXT_URL` | `http://<DXOS_APP>-api:8000/ngsi-ld/context.jsonld` | `@context` NGSI-LD mà gateway đặt vào header `Link` của route `/ngsi-ld/v1/*`; Scorpio tải trong mạng nội bộ (#85) |
 
 Thêm biến mới thì thêm vào `.env.example` kèm chú thích.
 
@@ -49,8 +58,10 @@ apps/<tên>/
 ├── hasura/metadata/           # bảng lộ ra GraphQL, quyền theo vai trò
 ├── compose.yaml               # backend của ứng dụng, profile app; API tên <tên>-api cổng 8000
 ├── openbao/policies/*.hcl     # quyền đọc bí mật secret/app/<tên>/*
+├── openbao/secrets.conf       # bí mật riêng của ứng dụng (tạo trống/ngẫu nhiên nếu chưa có, #87)
 ├── s3/buckets.conf            # bucket, bắt buộc tiền tố <tên>-
-└── nats/streams.json          # stream JetStream, subject <tên>.>
+├── nats/streams.json          # stream JetStream, subject <tên>.>
+└── ngsi-ld/context.jsonld     # @context NGSI-LD nếu ứng dụng ghi thực thể lên Scorpio (#85); <tên>-api phục vụ ở /ngsi-ld/context.jsonld
 ```
 
 Các bước:
@@ -109,4 +120,4 @@ docker compose logs centrifugo cuu-tro-thong-bao
 
 Khóa ký token và API key nằm trong OpenBao `secret/app/<DXOS_APP>/realtime`; `make bao-init` tạo nếu còn thiếu (máy đã chạy bản trước #68: chạy `make up` như thường, script tự thêm). Thiết kế và lý do chọn token riêng thay vì JWT Keycloak: [`architecture.md`](architecture.md) mục 3.5.
 
-Build riêng image web: `docker compose --profile '*' build cuu-tro-web`, hoặc `docker build --build-context logo=docs/images/logo -t disaster-dxos/cuu-tro-web:0.2.0 apps/cuu-tro/web`.
+Build riêng image web: `docker compose --profile '*' build cuu-tro-web`, hoặc `docker build --build-context logo=docs/images/logo -t disaster-dxos/cuu-tro-web:0.3.0 apps/cuu-tro/web`.

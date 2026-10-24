@@ -122,6 +122,18 @@ class KhoAnh:
         if ma != 200:
             raise LoiS3(f"S3 PUT {key} trả HTTP {ma}")
 
+    async def doc(self, key: str) -> bytes | None:
+        """GET một object; None nếu không có (404)."""
+        host = urlsplit(self.endpoint).netloc
+        h = ky_header(method="GET", host=host, path=self._path(key), payload_sha256=SHA256_RONG,
+                      access_key=self.access_key, secret_key=self.secret_key, region=self.region)
+        r = await self.http.get(self.endpoint + _ma_hoa(self._path(key), True), headers=h)
+        if r.status_code == 404:
+            return None
+        if r.status_code != 200:
+            raise LoiS3(f"S3 GET {key} trả HTTP {r.status_code}")
+        return r.content
+
     async def xoa(self, key: str) -> None:
         ma = await self._goi("DELETE", key)
         if ma not in (200, 204):

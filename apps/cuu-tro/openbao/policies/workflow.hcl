@@ -29,3 +29,14 @@ path "secret/data/app/cuu-tro/ledger" {
 path "secret/data/app/cuu-tro/realtime" {
   capabilities = ["read"]
 }
+
+# Thông báo cảnh báo (#87): token bot Telegram + chat id (trống = chỉ kênh gia-lap). bao-agent-cuu-tro render
+# cho cuu-tro-worker (volume riêng secrets-cuu-tro-worker), không cho dịch vụ nào khác.
+path "secret/data/app/cuu-tro/telegram" {
+  capabilities = ["read"]
+}
+
+# Lưu trữ lịch sử (#91): mật khẩu role chỉ đọc cuu_tro_bi, render cho cuu-tro-luu-tru (volume riêng)
+path "secret/data/app/cuu-tro/bi-db" {
+  capabilities = ["read"]
+}

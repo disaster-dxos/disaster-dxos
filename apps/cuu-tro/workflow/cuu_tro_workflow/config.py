@@ -72,6 +72,22 @@ class Config:
     # Tiếp nhận tin kêu cứu qua API (#66): vùng phục vụ (kinh_do_min,vi_do_min,kinh_do_max,vi_do_max).
     # Bán kính và khoảng thời gian chặn trùng nằm trong CSDL (bảng incident_dedup_config, #25).
     keu_cuu_vung: VungPhucVu = field(default_factory=lambda: vung_tu_chuoi(VUNG_VIET_NAM))
+    # Bản sao số trạm đo (#85): Scorpio NGSI-LD của lõi trong mạng nội bộ (consumer ban-sao-so ghi thẳng,
+    # người dùng đọc qua APISIX /ngsi-ld/v1/*) và @context của ứng dụng (mount từ apps/cuu-tro/ngsi-ld)
+    ngsi_ld_url: str = "http://scorpio:9090"
+    ngsi_ld_context_file: str = "/app/ngsi-ld/context.jsonld"
+    # Thông báo cảnh báo vượt ngưỡng (#87): kênh ngoài "gia-lap" (chỉ hộp thư nội bộ + web) | "telegram".
+    # Token bot + chat id do bao agent render từ OpenBao secret/app/cuu-tro/telegram (không ở .env).
+    canh_bao_kenh: str = "gia-lap"
+    telegram_api_url: str = "https://api.telegram.org"
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+    # Đợt không có sự kiện về dưới ngưỡng thì workflow tự kết thúc sau hạn này (giây)
+    canh_bao_han_dot_giay: int = 7 * 24 * 3600
+    # Bộ niêm phong bù sổ cái trong worker (#89): quét mỗi so_cai_quet_giay giây các phiếu/bút toán chưa
+    # niêm phong cũ hơn so_cai_cho_giay giây (API niêm phong ngay khi lập; bộ này ghi bù phần sót)
+    so_cai_quet_giay: int = 10
+    so_cai_cho_giay: int = 5
 
 
 def load() -> Config:
@@ -110,6 +126,15 @@ def load() -> Config:
         realtime_token_secret=os.environ.get("REALTIME_TOKEN_SECRET", ""),
         realtime_token_han_giay=min(3600, max(30, _int("REALTIME_TOKEN_HAN_GIAY", 300))),
         keu_cuu_vung=vung_tu_chuoi(os.environ.get("KEU_CUU_VUNG_PHUC_VU") or VUNG_VIET_NAM),
+        ngsi_ld_url=os.environ.get("NGSI_LD_URL", "http://scorpio:9090"),
+        ngsi_ld_context_file=os.environ.get("NGSI_LD_CONTEXT_FILE", "/app/ngsi-ld/context.jsonld"),
+        canh_bao_kenh=os.environ.get("CANH_BAO_KENH", "gia-lap").strip().lower() or "gia-lap",
+        telegram_api_url=os.environ.get("TELEGRAM_API_URL", "https://api.telegram.org"),
+        telegram_bot_token=os.environ.get("TELEGRAM_BOT_TOKEN", "").strip(),
+        telegram_chat_id=os.environ.get("TELEGRAM_CHAT_ID", "").strip(),
+        canh_bao_han_dot_giay=max(60, _int("CANH_BAO_HAN_DOT_GIAY", 7 * 24 * 3600)),
+        so_cai_quet_giay=max(1, _int("SO_CAI_QUET_GIAY", 10)),
+        so_cai_cho_giay=max(0, _int("SO_CAI_CHO_GIAY", 5)),
     )
 
 

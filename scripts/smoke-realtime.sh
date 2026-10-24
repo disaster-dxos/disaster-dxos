@@ -11,7 +11,8 @@
 #     cuu-tro.dieu-phoi.tin-moi.<id> → web nhận "tin_moi" đúng id, không có SĐT/mô tả;
 # (5) phát một sự kiện thử cuu-tro.dieu-phoi.can-xu-ly.<id> lên JetStream (kèm trường SĐT/tên giả) →
 #     web nhận "can_xu_ly", trường ngoài danh sách trắng bị bỏ; phát lại cùng Nats-Msg-Id → không nhận lần 2;
-# (6) make gia-lap-vuot-nguong (trạm AL-MN-02) → web nhận "canh_bao" trong 2 giây (tiêu chí #68).
+# (6) make gia-lap-vuot-nguong (trạm AL-MN-02) → web nhận "canh_bao" trong 2 giây (tiêu chí #68). Từ #87
+#     đường đi là NATS → workflow CanhBaoVuotNguong (Temporal) → cuu-tro.dieu-phoi.canh-bao.* → Centrifugo.
 # Dùng: make up && bash scripts/smoke-realtime.sh   (cần python3 trên máy host, không cần thư viện ngoài)
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -152,7 +153,8 @@ check "không nhận thông báo trùng" None "$(jf 'd.get("nhan")' <"$TMP/trung
 
 # ---------- (6) Vượt ngưỡng → canh_bao trong 2 giây ----------
 gia_lap --mot-lan --tram "$TRAM" >/dev/null   # đưa trạm về bình thường trước (lần chạy trước có thể còn nguy hiểm)
-sleep 1
+# Từ #87 thông báo đi qua workflow cảnh báo: chờ thông báo "về dưới ngưỡng" của đợt cũ (nếu có) qua hết
+sleep 3
 cho_su_kien "$TMP/canh-bao" "canh_bao:$TRAM" 20
 doi_ket_noi
 bt=$(gia_lap --mot-lan --kich-ban vuot-nguong --tram "$TRAM")

@@ -19,15 +19,15 @@ Trạng thái: Đã xác minh 17/10/2026 (D-004) — đọc LICENSE ở repo ch�
 | Workflow | Temporal + Python SDK | `temporalio/auto-setup:1.29.7`, `temporalio/ui:2.56.0`; `temporalio` 1.34.0 (PyPI) | MIT |
 | Backend Python `apps/cuu-tro/workflow` | FastAPI, Uvicorn, asyncpg, PyJWT, cryptography, HTTPX, nats-py, paho-mqtt (EPL-2.0 OR BSD-3-Clause, dùng theo BSD-3-Clause) và phụ thuộc gián tiếp (danh sách đủ: DEPENDENCIES.md mục 2) | PyPI, ghim trong `uv.lock`; image nền `python:3.12.13-slim-bookworm` | MIT / BSD-3-Clause / Apache-2.0 / PSF-2.0 / MPL-2.0 (certifi) |
 | Event + IoT | NATS JetStream (MQTT tích hợp, bắt buộc xác thực) | `nats:2.15.1-alpine` | Apache-2.0 |
-| NGSI-LD broker | Scorpio Broker (chạy với `postgis/postgis`) | ghim tag ở tuần 4 | BSD-3-Clause |
+| NGSI-LD broker | Scorpio Broker (dịch vụ riêng của lõi, image gốc không sửa, bản native all-in-one; CSDL riêng trên `postgis/postgis` của lõi, không MongoDB; #85) | `scorpiobroker/all-in-one-runner:linux-amd64-6.0.2` | BSD-3-Clause |
 | Sổ cái minh bạch | Tessera (transparency-dev/tessera, Apache-2.0) – đã chốt D-007, thư viện Go khai báo qua go.mod, nhúng trong dịch vụ `core/ledger`; kèm transparency-dev/formats, transparency-dev/merkle (Apache-2.0), golang.org/x/mod (BSD-3-Clause) và phụ thuộc gián tiếp Apache-2.0/BSD-3-Clause/MIT/MPL-2.0 (danh sách đủ: DEPENDENCIES.md mục 2, kiểm bằng `go-licenses` trong CI); thay immudb (BSL 1.1, không OSI) | `disaster-dxos/ledger:0.1.0` build từ nguồn (`core/ledger`, Tessera v1.0.4; bước build `golang:1.26.10-alpine3.24`, image chạy `scratch`) | Apache-2.0 |
 | Quét mã độc | ClamAV (dịch vụ riêng) | ghim tag ở tuần 2+ | GPL-2.0 |
 | Web điều phối `apps/cuu-tro/web` | Vue 3 / Nuxt 4 + Nuxt UI + Tailwind CSS 4 + MapLibre GL JS, biểu tượng Lucide, và phụ thuộc gián tiếp (danh sách và ngoại lệ: DEPENDENCIES.md mục 2, kiểm bằng `npm run licenses`); font Be Vietnam Pro tự host, không sửa (`apps/cuu-tro/web/public/fonts/be-vietnam-pro/OFL.txt`, #77) | npm, ghim trong `package-lock.json`: nuxt 4.6.2, @nuxt/ui 4.12.0, @iconify-json/lucide 1.2.147, maplibre-gl 5.24.0, tailwindcss 4.3.3, graphql-ws 6.3.0 (+ graphql 17.0.2, MIT, #60); image `disaster-dxos/cuu-tro-web:0.1.0` build từ nguồn (bước build `node:22.22.3-bookworm-slim`, image chạy `node:22.22.3-alpine3.22`, #64, #77) | MIT / BSD-3-Clause / ISC (Lucide) / OFL-1.1 (font) |
 | Bản đồ nền (dịch vụ ngoài, không đóng gói) | Ô vector OpenFreeMap (mã MIT), dữ liệu © những người đóng góp OpenStreetMap; dự phòng ô ảnh tile.openstreetmap.org | gọi lúc chạy, đổi bằng `NUXT_PUBLIC_MAP_STYLE_URL` | Dữ liệu ODbL-1.0 (ghi công trên bản đồ) |
 | App hiện trường | Flutter, offline-first | pub | BSD-3-Clause |
 | Realtime | Centrifugo OSS (không dùng Centrifugo PRO), dịch vụ riêng của lõi, image gốc không sửa (#68); client centrifuge-js trong web điều phối (kéo theo protobufjs BSD-3-Clause, long Apache-2.0, events MIT) | `centrifugo/centrifugo:v6.9.7`; npm `centrifuge` 5.7.4 | Apache-2.0 / MIT |
-| Dữ liệu lịch sử | Parquet trên SeaweedFS + DuckDB | PyPI | MIT |
-| Dashboard | Grafana (dịch vụ riêng) | ghim tag ở tuần 4 | AGPL-3.0 |
+| Dữ liệu lịch sử | Parquet trên SeaweedFS (bucket `cuu-tro-lakehouse`) + DuckDB, thư viện Python trong `cuu-tro-workflow` (#91) | PyPI `duckdb` 2.0.0, ghim trong `uv.lock` | MIT |
+| Dashboard | Grafana OSS (dịch vụ riêng của lõi, profile `bi`, image gốc không sửa mã, không nhúng vào mã dự án; chỉ thêm tệp cấu hình provisioning và dashboard JSON của dự án, mount vào container) (#92) | `grafana/grafana-oss:13.0.2` | AGPL-3.0 |
 | AI | Ollama + Qwen2.5 7B/14B (không dùng 3B), FastAPI + LangGraph, Qdrant | ghim tag ở tuần 5 | MIT / Apache-2.0 (Qwen2.5 7B/14B: Apache-2.0) |
 
 Không dùng: immudb (BSL 1.1 từ 12/2023), Stellio (image DB kèm TimescaleDB TSL),
