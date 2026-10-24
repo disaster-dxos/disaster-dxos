@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+# Bút toán tiền cứu trợ thu/chi (#89), không chứa dữ liệu cá nhân (D-007).
+#   dieu-phoi   chỉ đọc. Lập bút toán đi qua API cuu-tro-api (POST /workflow/quy/khoan), KHÔNG qua Hasura,
+#               để mọi bút toán đều có trong outbox niêm phong sổ cái. Không sửa, không xóa (trigger 0011).
+# Người dân xem qua trang công khai /workflow/minh-bach/* (không cần đăng nhập), không qua GraphQL.
+table:
+  name: relief_fund_entries
+  schema: cuu_tro
+configuration:
+  custom_name: relief_fund_entries
+  column_config: {}
+  custom_column_names: {}
+  custom_root_fields: {}
+object_relationships:
+  - name: shelter
+    using:
+      foreign_key_constraint_on: shelter_id
+  - name: supply_movement
+    using:
+      foreign_key_constraint_on: supply_movement_id
+select_permissions:
+  - role: dieu-phoi
+    permission:
+      columns: [id, direction, amount, currency, category, purpose, shelter_id, supply_movement_id, created_at,
+                ledger_index, ledger_leaf_hash, ledger_logged_at]
+      filter: {}
+      allow_aggregations: true

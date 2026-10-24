@@ -56,7 +56,7 @@ Miền Trung mỗi năm hứng nhiều cơn bão và lũ. Trong vài giờ nư�
 | **Kêu cứu** có tọa độ, chặn tin trùng | ✅ Đã có ở v0.1 (API GraphQL, phân quyền theo vai trò) |
 | **Phân công cứu hộ** đội gần nhất, chờ xác nhận | ✅ Đã có ở v0.1 (workflow Temporal, API `/workflow`); từ #67 (chưa phát hành): tự khởi chạy khi có tin mới, ưu tiên theo mức khẩn, đội không nhận trong hạn thì phân công lại |
 | **Cảnh báo mực nước** từ trạm đo | ✅ Đã có ở v0.1: trạm đo (giả lập) → MQTT → phát sự kiện vượt ngưỡng · từ #84, #85 (chưa phát hành): 9 trạm ở Quảng Nam, Đà Nẵng với trận lũ mẫu 48 giờ (giả lập), mỗi trạm là một bản sao số NGSI-LD trên Scorpio, đọc qua gateway `/ngsi-ld/v1/*` · từ #87 (chưa phát hành): mỗi đợt vượt ngưỡng là một workflow Temporal, báo đúng 1 lần khi vượt ngưỡng, khi lên nguy hiểm và khi về dưới ngưỡng, vào hộp thư nội bộ + web điều phối, hoặc Telegram khi đặt token bot |
-| **Sổ cái minh bạch** tiền và hàng cứu trợ | ✅ Đã có ở v0.1 (Tessera, trang công khai, CLI tự kiểm) |
+| **Sổ cái minh bạch** tiền và hàng cứu trợ | ✅ Đã có ở v0.1 cho hàng (Tessera, trang công khai, CLI tự kiểm) · từ #89 (chưa phát hành): tiền cứu trợ thu/chi lên sổ cái, worker tự niêm phong bù khi sổ cái tạm dừng, API xác minh chung theo mã phiếu hoặc mã bút toán kèm bằng chứng, danh sách và tổng hợp quỹ công khai |
 | **Bản đồ thời gian thực** cho người điều phối | 🔜 Tuần 3 (web Nuxt + MapLibre; dữ liệu và GraphQL đã sẵn) |
 | **AI bóc tách tin kêu cứu** tự do, người duyệt lại | 🔜 Tuần 5 (Ollama + Qwen2.5 7B/14B) |
 

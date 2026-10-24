@@ -7,6 +7,8 @@ apps/cuu-tro/nats/streams.json khi khởi động. Cùng tiến trình chạy b�
 khoi_chay.py) trừ khi PHAN_CONG_TU_DONG=0; bộ khởi chạy phát thông báo tin mới lên NATS (#68).
 Cảnh báo vượt ngưỡng (#87): consumer canh-bao-temporal (canh_bao_khoi_chay.py) signal-with-start workflow
 CanhBaoVuotNguong; activity gui_canh_bao gửi theo CANH_BAO_KENH (gia-lap | telegram).
+Sổ cái minh bạch (#89): bộ niêm phong bù so_cai_niem_phong.py ghi lá cho phiếu kho / bút toán tiền chưa
+niêm phong (LEDGER_WRITE_TOKEN trống thì không chạy).
 Healthcheck: file HEALTH_FILE được ghi lại mỗi 10 giây khi worker chạy.
 """
 
@@ -17,17 +19,19 @@ import signal
 import time
 
 import asyncpg
+import httpx
 import nats
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from . import config
+from . import config, so_cai
 from .activities import HoatDong, chao
 from .cam_bien_consumer import doc_khai_bao, khai_bao_jetstream
 from .canh_bao_gui import CauHinhGui, GuiCanhBao
 from .canh_bao_khoi_chay import CONSUMER as CONSUMER_CANH_BAO
 from .canh_bao_khoi_chay import BoKhoiChayCanhBao
 from .khoi_chay import BoKhoiChay
+from .so_cai_niem_phong import BoNiemPhong
 from .workflows import CanhBaoVuotNguong, Hello, PhanCongCuuHo
 
 HEALTH_FILE = os.environ.get("HEALTH_FILE", "/tmp/worker-alive")
@@ -81,11 +85,19 @@ async def main() -> None:
         tu_dong = asyncio.create_task(BoKhoiChay(pool, client, cfg, js).chay(dung)) if cfg.tu_dong else None
         canh = asyncio.create_task(BoKhoiChayCanhBao(client, cfg).chay(js, dung)) if js is not None else None
         log.info("cảnh báo vượt ngưỡng gửi qua kênh %s", cfg.canh_bao_kenh)
-        await dung.wait()
-        nhip.cancel()
-        for t in (tu_dong, canh):
-            if t is not None:
-                await t
+        async with httpx.AsyncClient(base_url=cfg.ledger_url, timeout=20) as http_ledger:
+            niem_phong = None
+            if cfg.ledger_write_token:
+                bo = BoNiemPhong(pool, so_cai.SoCai(http_ledger, cfg.ledger_write_token),
+                                 cfg.so_cai_cho_giay, cfg.so_cai_quet_giay)
+                niem_phong = asyncio.create_task(bo.chay(dung))
+            else:
+                log.warning("LEDGER_WRITE_TOKEN trống: không chạy bộ niêm phong bù sổ cái")
+            await dung.wait()
+            nhip.cancel()
+            for t in (tu_dong, canh, niem_phong):
+                if t is not None:
+                    await t
     if nc is not None:
         await nc.drain()
     await pool.close()

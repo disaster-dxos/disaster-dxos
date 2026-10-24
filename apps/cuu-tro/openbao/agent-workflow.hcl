@@ -119,3 +119,10 @@ template {
   perms       = "0444"
   contents    = "{{ with secret \"secret/data/app/cuu-tro/telegram\" }}{{ .Data.data.chat_id }}{{ end }}"
 }
+
+# Worker (#89): token ghi sổ cái cho bộ niêm phong bù phiếu kho / bút toán tiền chưa lên sổ cái
+template {
+  destination = "/out/cuu-tro-worker/LEDGER_WRITE_TOKEN"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/ledger\" }}{{ .Data.data.write_token }}{{ end }}"
+}

@@ -84,6 +84,10 @@ class Config:
     telegram_chat_id: str = ""
     # Đợt không có sự kiện về dưới ngưỡng thì workflow tự kết thúc sau hạn này (giây)
     canh_bao_han_dot_giay: int = 7 * 24 * 3600
+    # Bộ niêm phong bù sổ cái trong worker (#89): quét mỗi so_cai_quet_giay giây các phiếu/bút toán chưa
+    # niêm phong cũ hơn so_cai_cho_giay giây (API niêm phong ngay khi lập; bộ này ghi bù phần sót)
+    so_cai_quet_giay: int = 10
+    so_cai_cho_giay: int = 5
 
 
 def load() -> Config:
@@ -129,6 +133,8 @@ def load() -> Config:
         telegram_bot_token=os.environ.get("TELEGRAM_BOT_TOKEN", "").strip(),
         telegram_chat_id=os.environ.get("TELEGRAM_CHAT_ID", "").strip(),
         canh_bao_han_dot_giay=max(60, _int("CANH_BAO_HAN_DOT_GIAY", 7 * 24 * 3600)),
+        so_cai_quet_giay=max(1, _int("SO_CAI_QUET_GIAY", 10)),
+        so_cai_cho_giay=max(0, _int("SO_CAI_CHO_GIAY", 5)),
     )
 
 
