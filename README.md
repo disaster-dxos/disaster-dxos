@@ -58,6 +58,7 @@ Miền Trung mỗi năm hứng nhiều cơn bão và lũ. Trong vài giờ nư�
 | **Cảnh báo mực nước** từ trạm đo | ✅ Đã có ở v0.1: trạm đo (giả lập) → MQTT → phát sự kiện vượt ngưỡng · từ #84, #85 (chưa phát hành): 9 trạm ở Quảng Nam, Đà Nẵng với trận lũ mẫu 48 giờ (giả lập), mỗi trạm là một bản sao số NGSI-LD trên Scorpio, đọc qua gateway `/ngsi-ld/v1/*` · từ #87 (chưa phát hành): mỗi đợt vượt ngưỡng là một workflow Temporal, báo đúng 1 lần khi vượt ngưỡng, khi lên nguy hiểm và khi về dưới ngưỡng, vào hộp thư nội bộ + web điều phối, hoặc Telegram khi đặt token bot |
 | **Sổ cái minh bạch** tiền và hàng cứu trợ | ✅ Đã có ở v0.1 cho hàng (Tessera, trang công khai, CLI tự kiểm) · từ #89 (chưa phát hành): tiền cứu trợ thu/chi lên sổ cái, worker tự niêm phong bù khi sổ cái tạm dừng, API xác minh chung theo mã phiếu hoặc mã bút toán kèm bằng chứng, danh sách và tổng hợp quỹ công khai |
 | **Bản đồ thời gian thực** cho người điều phối | 🔜 Tuần 3 (web Nuxt + MapLibre; dữ liệu và GraphQL đã sẵn) |
+| **Dashboard điều hành, dữ liệu lịch sử** | Từ #91, #92 (chưa phát hành): Grafana OSS (`make up-bi`, mở http://localhost:9080/grafana/) với tin kêu cứu theo trạng thái, thời gian phản hồi, mực nước, tồn kho, quỹ cứu trợ, đọc bằng role chỉ đọc không thấy SĐT/họ tên; dữ liệu cũ xuất ra Parquet theo tháng trên SeaweedFS (`make luu-tru`), truy vấn bằng DuckDB (`make luu-tru-truy-van`) |
 | **AI bóc tách tin kêu cứu** tự do, người duyệt lại | 🔜 Tuần 5 (Ollama + Qwen2.5 7B/14B) |
 
 Ngoài ra đã có: tải và xem ảnh hiện trường qua link ngắn hạn. Ánh xạ từng yêu cầu của đề vào mã nguồn: [`docs/de-thi-mapping.md`](docs/de-thi-mapping.md).
@@ -84,7 +85,8 @@ Sơ đồ chi tiết, luồng JWT, route gateway, quản lý bí mật: [`docs/a
 | Bản sao số (NGSI-LD) | Scorpio Broker 6.0 (dùng PostgreSQL + PostGIS, không MongoDB) | BSD-3-Clause |
 | Bí mật | OpenBao | MPL-2.0 |
 | Backend ứng dụng | Python 3.12, FastAPI | PSF-2.0, MIT |
-| Sắp có | Nuxt 4 + Nuxt UI + MapLibre, Flutter, Centrifugo, Ollama + Qwen2.5, Qdrant, Grafana, ClamAV | MIT, BSD-3, Apache-2.0, AGPL-3.0/GPL-2.0 (dịch vụ riêng) |
+| Dữ liệu lịch sử, dashboard | Parquet trên SeaweedFS + DuckDB (#91); Grafana OSS 13 dịch vụ riêng, profile `bi` (#92) | MIT; AGPL-3.0 (dịch vụ riêng, image gốc) |
+| Sắp có | Nuxt 4 + Nuxt UI + MapLibre, Flutter, Centrifugo, Ollama + Qwen2.5, Qdrant, ClamAV | MIT, BSD-3, Apache-2.0, AGPL-3.0/GPL-2.0 (dịch vụ riêng) |
 
 Phiên bản và giấy phép từng image, thư viện: [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
@@ -116,7 +118,7 @@ API và lệnh mẫu của từng bước: [`apps/cuu-tro/README.md`](apps/cuu-t
 Theo [`docs/PLAN.md`](docs/PLAN.md):
 
 - **Tuần 3:** web điều phối Nuxt 4 + Nuxt UI với bản đồ MapLibre thời gian thực, màn hình phân công; tự khởi chạy phân công khi có tin mới; thông báo realtime qua Centrifugo.
-- **Tuần 4:** trạm đo thành bản sao số NGSI-LD trên Scorpio (đã có, #85); cảnh báo vượt ngưỡng qua Temporal, gửi Telegram (đã có, #87, cần token bot thật); dữ liệu cũ ra Parquet + DuckDB; dashboard Grafana; lên VPS có HTTPS.
+- **Tuần 4:** trạm đo thành bản sao số NGSI-LD trên Scorpio (đã có, #85); cảnh báo vượt ngưỡng qua Temporal, gửi Telegram (đã có, #87, cần token bot thật); dữ liệu cũ ra Parquet + DuckDB (đã có, #91); dashboard Grafana điều hành (đã có, #92); lên VPS có HTTPS.
 - **Tuần 5:** AI bóc tách tin kêu cứu tự do thành dữ liệu có cấu trúc, người điều phối duyệt lại; app hiện trường Flutter chạy được khi mất mạng; demo công khai.
 - **Tuần 6–7:** sửa theo phản hồi người dùng thật, module mẫu cho `apps/`, phát hành v1.0.0.
 
@@ -157,7 +159,7 @@ Sau `make up`, mở web điều phối qua gateway: **http://localhost:9080/** (
 
 **Giữ kín `.data/openbao/`.** Lần đầu `make up` ghi unseal key và root token vào đây (đã nằm trong `.gitignore`); mất thư mục này thì không mở khóa được dữ liệu OpenBao. Sau khi khởi động lại máy, nếu OpenBao còn khóa: `make bao-unseal`.
 
-Lệnh khác: `make ps`, `make logs`, `make down` (dừng, giữ dữ liệu), `make seed` (nạp lại dữ liệu giả), `make gia-lap`, `make gia-lap-vuot-nguong` và `make gia-lap-tran-lu` (giả lập trạm đo gửi MQTT; trận lũ mẫu 48 giờ, #84), `make bao-status`, `make bao-init`. Danh sách đầy đủ trong [`Makefile`](Makefile).
+Lệnh khác: `make ps`, `make logs`, `make down` (dừng, giữ dữ liệu), `make seed` (nạp lại dữ liệu giả), `make gia-lap`, `make gia-lap-vuot-nguong` và `make gia-lap-tran-lu` (giả lập trạm đo gửi MQTT; trận lũ mẫu 48 giờ, #84), `make up-bi` (Grafana, #92), `make luu-tru` và `make luu-tru-truy-van SQL="..."` (Parquet + DuckDB, #91), `make bao-status`, `make bao-init`. Danh sách đầy đủ trong [`Makefile`](Makefile).
 
 Cấu hình qua biến môi trường, lệnh OpenBao, cách thêm ứng dụng mới vào `apps/`, kiểm thử và lint: [`docs/cai-dat.md`](docs/cai-dat.md).
 
@@ -222,7 +224,7 @@ Mở issue tại [GitHub Issues](https://github.com/disaster-dxos/disaster-dxos/
 Mã nguồn phát hành theo [Apache-2.0](LICENSE). Bản quyền và ghi nhận thành phần bên thứ ba: [`NOTICE`](NOTICE). Phiên bản và giấy phép từng image, thư viện: [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
 - Chỉ dùng thành phần có giấy phép được OSI công nhận.
-- Thành phần copyleft (PostGIS GPL-2.0; sắp có ClamAV GPL-2.0, Grafana AGPL-3.0) chạy như dịch vụ riêng bằng image gốc, không sửa, không nhúng vào mã của dự án.
+- Thành phần copyleft (PostGIS GPL-2.0, Grafana AGPL-3.0; sắp có ClamAV GPL-2.0) chạy như dịch vụ riêng bằng image gốc, không sửa, không nhúng vào mã của dự án.
 - Ảnh minh họa trong `docs/images/` do đội tạo bằng công cụ AI, sơ đồ SVG do đội vẽ; cấp phép cùng repo. Biểu tượng trong ảnh kiến trúc là hình minh họa, không phải logo chính thức ([`docs/images/README.md`](docs/images/README.md)).
 
 ## 📝 CHANGELOG

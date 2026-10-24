@@ -10,6 +10,8 @@
 #   <schema>_app  role dịch vụ của ứng dụng Tầng 2 đang chọn (DXOS_APP cuu-tro → cuu_tro_app, #29).
 #             Tạo ra KHÔNG có quyền gì trên schema ứng dụng: migration của ứng dụng tự GRANT đúng
 #             bảng/cột backend của nó cần (vd apps/cuu-tro/db/migrations/0003). Lõi không biết bảng nào.
+#   <schema>_bi   role CHỈ ĐỌC cho phân tích/dashboard (#91, #92: Grafana, xuất Parquet). Tạo ra không có quyền
+#             gì; migration của ứng dụng GRANT SELECT đúng các cột không định danh (vd 0012).
 # Mật khẩu lấy từ OpenBao (bao-agent-postgres → env-from-files.sh), ALTER ROLE mỗi lần chạy nên
 # đổi mật khẩu trong OpenBao rồi `make up` là PostgreSQL khớp theo. Không dịch vụ nào dùng superuser.
 set -euo pipefail
@@ -34,6 +36,15 @@ sync_role "$TEMPORAL_DB_USER" "$TEMPORAL_DB_PASSWORD" NOCREATEDB
 sync_role "$SCORPIO_DB_USER" "$SCORPIO_DB_PASSWORD" "NOCREATEDB CONNECTION LIMIT ${SCORPIO_DB_CONNECTION_LIMIT:-20}"
 APP_DB_USER=${APP_DB_USER:-${DXOS_APP//-/_}_app}
 sync_role "$APP_DB_USER" "$APP_DB_PASSWORD" "NOCREATEDB CONNECTION LIMIT ${APP_DB_CONNECTION_LIMIT:-10}"
+APP_BI_DB_USER=${APP_BI_DB_USER:-${DXOS_APP//-/_}_bi}
+sync_role "$APP_BI_DB_USER" "$APP_BI_DB_PASSWORD" "NOCREATEDB CONNECTION LIMIT ${APP_BI_DB_CONNECTION_LIMIT:-10}"
+# Role chỉ đọc: mặc định mọi phiên của nó là read-only (ghi bị từ chối kể cả khi lỡ được cấp quyền)
+psql_db postgres -v u="$APP_BI_DB_USER" <<'SQL'
+SELECT format('ALTER ROLE %I SET default_transaction_read_only = on', :'u')
+\gexec
+SELECT format('ALTER ROLE %I SET statement_timeout = %L', :'u', '30s')
+\gexec
+SQL
 
 # Hasura: quyền tối thiểu theo tài liệu Hasura ("Postgres permissions"), thêm quyền tạo schema
 # để migration của ứng dụng (apps/<app>/) chạy bằng chính role hasura.

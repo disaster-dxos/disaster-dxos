@@ -35,3 +35,8 @@ path "secret/data/app/cuu-tro/realtime" {
 path "secret/data/app/cuu-tro/telegram" {
   capabilities = ["read"]
 }
+
+# Lưu trữ lịch sử (#91): mật khẩu role chỉ đọc cuu_tro_bi, render cho cuu-tro-luu-tru (volume riêng)
+path "secret/data/app/cuu-tro/bi-db" {
+  capabilities = ["read"]
+}

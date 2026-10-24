@@ -28,6 +28,7 @@ Mọi cấu hình qua biến môi trường trong `.env`, có giải thích tron
 | `SCORPIO_PLATFORM` | `linux/amd64` | Image Scorpio chỉ có amd64 (như PostGIS) |
 | `SCORPIO_DB_POOL` | `8` | Số kết nối PostgreSQL tối đa của Scorpio (role `scorpio` có `CONNECTION LIMIT 20`); hết thì request xếp hàng |
 | `CANH_BAO_KENH` | `gia-lap` | Kênh thông báo cảnh báo vượt ngưỡng (#87): `gia-lap` (hộp thư nội bộ + web) hoặc `telegram` (token + chat id trong OpenBao `secret/app/cuu-tro/telegram`, cách bật: `apps/cuu-tro/README.md`) |
+| `APP_BI_DB_USER` | `cuu_tro_bi` | Role chỉ đọc của ứng dụng cho Grafana và bộ xuất Parquet (#91, #92); đổi khi `DXOS_APP` khác `cuu-tro` |
 | `SO_CAI_QUET_GIAY`, `SO_CAI_CHO_GIAY` | `10`, `5` | Worker quét mỗi ngần ấy giây các phiếu kho / bút toán tiền chưa niêm phong cũ hơn ngần ấy giây và ghi bù lên sổ cái (#89) |
 | `CANH_BAO_HAN_DOT_GIAY` | `604800` | Đợt vượt ngưỡng không có sự kiện về dưới ngưỡng thì workflow tự kết thúc sau ngần này giây |
 | `TELEGRAM_API_URL` | `https://api.telegram.org` | Địa chỉ Telegram Bot API (đổi khi dùng máy chủ Bot API riêng) |

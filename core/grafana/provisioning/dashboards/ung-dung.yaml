@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+# Dashboard nạp từ tệp JSON của ứng dụng đang chọn (apps/<DXOS_APP>/grafana/dashboards, mount vào
+# /etc/dxos/dashboards). Lõi không biết dashboard nào; sửa trên giao diện không lưu được (sửa tệp JSON).
+apiVersion: 1
+providers:
+  - name: ung-dung
+    folder: Điều hành
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 60
+    options:
+      path: /etc/dxos/dashboards
+      foldersFromFilesStructure: false

@@ -1,6 +1,6 @@
 # Kiến trúc Disaster DX-OS
 
-> Phiên bản tài liệu: v0.2.0 (cập nhật 24/10/2026, thêm Scorpio NGSI-LD #85, cảnh báo vượt ngưỡng qua Temporal #87, tiền cứu trợ trên sổ cái #89). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
+> Phiên bản tài liệu: v0.2.0 (cập nhật 24/10/2026, thêm Scorpio NGSI-LD #85, cảnh báo vượt ngưỡng qua Temporal #87, tiền cứu trợ trên sổ cái #89, Parquet + DuckDB #91, Grafana #92). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
 
 Disaster DX-OS gồm hai tầng, đúng mô hình Open-Core của đề:
 
@@ -308,8 +308,11 @@ flowchart LR
   subgraph later["profile sau"]
     sec["sec · ClamAV"]
     ai["ai · Ollama + Qwen2.5 7B/14B, Qdrant, agent"]
-    bi["bi · Grafana"]
   end
+  subgraph bi["profile bi (#92)"]
+    gf[grafana OSS<br/>qua apisix /grafana/]
+  end
+  core --> bi
   core --> later
 ```
 
@@ -319,7 +322,7 @@ flowchart LR
 | ~~`gis`~~ | Gộp vào `core` ở #85: Scorpio (CSDL riêng trên postgis của lõi). Bộ giả lập cảm biến ở profile `gia-lap` của ứng dụng (#30) | – | Scorpio ~150 MiB (đo ở bảng dưới) |
 | `sec` | ClamAV | tuần 2–4 | ClamAV ~1,5 GB. `ledger` (Tessera) đã vào `core` (#28) |
 | `ai` | Ollama, Qdrant, agent | tuần 5 | Qwen2.5 7B ~5 GB |
-| `bi` | Grafana | tuần 4 | |
+| `bi` (#92) | bao-agent-grafana, grafana (Grafana OSS 13.0.2, AGPL-3.0, image gốc) | `make up-bi` (`make smoke` tự bật) | grafana ~150 MiB (đo ở mục 7.6) |
 
 RAM từng dịch vụ của `core` (MiB; "sau smoke" = sau khi chạy `make smoke` khoảng 10 phút):
 
@@ -822,6 +825,59 @@ flowchart LR
 
 API ghi S3 thẳng `seaweedfs:8333` trong mạng nội bộ, giống worker gọi Temporal/PostgreSQL thẳng (mục 7.3): đó là dịch vụ nền của ứng dụng, có định danh riêng, không dùng quyền người dùng. Mọi thứ người dùng gọi vẫn qua APISIX. Chi tiết API, bảng quyền: `apps/cuu-tro/README.md` mục "Ảnh hiện trường".
 
+### 7.6. Tách dữ liệu nóng / lịch sử và dashboard điều hành (#91, #92, nguyên lý B1)
+
+PostgreSQL giữ dữ liệu **nóng** cho nghiệp vụ (GraphQL, workflow). Dữ liệu **lịch sử** được xuất ra Parquet trên SeaweedFS để phân tích bằng DuckDB mà không tải lên CSDL đang phục vụ. Grafana OSS là bảng điều hành cho người vận hành. Cả hai đọc bằng cùng một role **chỉ đọc**, không thấy dữ liệu định danh.
+
+```mermaid
+flowchart LR
+  subgraph core["Tầng 1: lõi"]
+    pg[("PostgreSQL<br/>role &lt;schema&gt;_bi: chỉ đọc,<br/>phiên read-only, statement_timeout 30s")]
+    s3[("SeaweedFS S3<br/>bucket cuu-tro-lakehouse")]
+    gf["Grafana OSS (profile bi)<br/>provisioning từ tệp"]
+    gw["APISIX /grafana/*<br/>WAF (không đọc body)"]
+    bao[("OpenBao<br/>core/grafana, app/&lt;APP&gt;/bi-db")]
+  end
+  subgraph app["Tầng 2: apps/cuu-tro"]
+    mig["migration 0012<br/>GRANT SELECT cột không định danh"]
+    lt["cuu-tro-luu-tru (make luu-tru)<br/>luu_tru.py + DuckDB"]
+    dash["grafana/dashboards/dieu-hanh.json"]
+  end
+  mig -.-> pg
+  pg -->|"đọc bằng cuu_tro_bi"| lt -->|"Parquet thang=YYYY-MM<br/>+ _manifest.json"| s3
+  s3 -->|"make luu-tru-truy-van"| lt
+  pg -->|"datasource chỉ đọc"| gf
+  dash -.->|"mount, chỉ đọc"| gf
+  bao -.-> gf
+  bao -.-> lt
+  nv["Người vận hành"] --> gw --> gf
+```
+
+| Quyết định | Cách làm | Vì sao |
+|---|---|---|
+| Một role chỉ đọc cho phân tích | `postgres-roles` tạo `<schema>_bi` (không quyền gì, `default_transaction_read_only = on`, `statement_timeout = 30s`, `CONNECTION LIMIT 10`), mật khẩu `secret/app/<APP>/bi-db`; migration 0012 của ứng dụng `GRANT SELECT` đúng các cột không định danh | Khử định danh bằng **quyền**, không chỉ bằng câu SQL: kể cả SQL viết sai trong Grafana cũng không đọc được SĐT, họ tên, mô tả, địa chỉ, người lập; không ghi được gì |
+| Parquet trên SeaweedFS, không trên volume | Bucket `cuu-tro-lakehouse` (khai báo ở `apps/cuu-tro/s3/buckets.conf`), khóa S3 của ứng dụng | Đúng mô hình lakehouse của stack (D-003): object storage tách khỏi máy chạy CSDL, sao lưu/chia sẻ bằng công cụ S3 chuẩn, sau này DuckDB/Spark đọc thẳng qua S3. Volume cục bộ thì gắn chặt với một máy |
+| Phân vùng theo tháng (giờ Việt Nam), không theo tỉnh | `<bảng>/thang=YYYY-MM/du-lieu.parquet` (Hive) | Truy vấn lịch sử chủ yếu theo thời gian (mùa lũ, so sánh trận lũ); dữ liệu hiện chỉ một xã, chưa có cột tỉnh. Thêm phân vùng tỉnh là thêm một cấp thư mục |
+| Bảng xuất | `su_co` (tin đã xong, thời gian phản hồi, tọa độ **làm tròn 2 chữ số ~1 km**), `so_do` (chuỗi đo), `phan_phoi` (phiếu xuất kho), `khoan_tien` (bút toán tiền, #89) | Đủ cho phân tích sau trận lũ; tọa độ chính xác của nhà người dân là dữ liệu định danh gián tiếp |
+| Idempotent | Mỗi lần dựng lại mọi phân vùng trước mốc `--den` (mặc định đầu tháng hiện tại), sắp xếp cố định → cùng dữ liệu cùng tệp; `_manifest.json` ghi số dòng + SHA-256; tệp không đổi thì không ghi, phân vùng mất thì xóa | Chạy lại (cron, tay, CI) an toàn; DuckDB kiểm SHA-256 với manifest trước khi đọc, tệp bị sửa thì từ chối |
+| Không xóa dữ liệu nóng | Xuất là sao chép | Xóa/giữ bao lâu trong PostgreSQL là chính sách của người vận hành (việc sau) |
+| DuckDB trong tiến trình | Thư viện Python (wheel có sẵn Parquet), không tải extension lúc chạy; `make luu-tru-truy-van` tải tệp về thư mục tạm rồi tạo view `su_co`, `so_do`, `phan_phoi`, `khoan_tien` | Không thêm dịch vụ; chạy được offline |
+| Grafana là dịch vụ riêng (AGPL-3.0) | Image gốc `grafana/grafana-oss:13.0.2`, không sửa mã, không nhúng; dự án chỉ cung cấp tệp provisioning (datasource lõi `core/grafana/provisioning`, dashboard của ứng dụng `apps/cuu-tro/grafana/dashboards`) | Tuân thủ giấy phép (CLAUDE.md quy tắc 3); lõi không biết dashboard nào (D-005) |
+| Provisioning từ tệp | Datasource `dxos-app-pg` (mật khẩu `$__file{…}` do bao agent render), dashboard `cuu-tro-dieu-hanh` (`editable: false`, `allowUiUpdates: false`) | Không cấu hình tay; dashboard là mã, review được trong PR |
+| Đăng nhập | Tài khoản `admin`, mật khẩu `secret/core/grafana` (`GF_SECURITY_ADMIN_PASSWORD__FILE`); tắt đăng ký, tắt ẩn danh, cookie SameSite strict. SSO Keycloak (generic OAuth) để sau | Realm Keycloak chỉ import lần đầu: thêm client mới buộc mọi máy đã chạy phải sửa tay; bản đầu giữ đơn giản |
+| Qua gateway | APISIX `/grafana/*` (Grafana `serve_from_sub_path`), WAF kiểm URI/tham số/header nhưng **không đọc body** | Truy vấn panel (`POST /api/ds/query`) mang SQL trong body, luật SQLi của CRS chặn nhầm; giới hạn thật nằm ở role chỉ đọc |
+| Không gọi Internet | `GF_PLUGINS_PREINSTALL_DISABLED`, tắt kiểm cập nhật, tin tức, thống kê, Gravatar | Chạy offline được; không gửi dữ liệu ra ngoài |
+
+Ví dụ truy vấn DuckDB (chạy `make luu-tru` trước):
+
+```bash
+make luu-tru-truy-van SQL="SELECT thang, count(*) AS so_tin, round(median(phan_hoi_giay)/60, 1) AS phan_hoi_phut FROM su_co GROUP BY 1 ORDER BY 1"
+make luu-tru-truy-van SQL="SELECT ma_tram, max(gia_tri) AS dinh, arg_max(thoi_diem, gia_tri) AS luc_dinh FROM so_do WHERE dai_luong = 'muc_nuoc' GROUP BY 1 ORDER BY 2 DESC"
+make luu-tru-truy-van SQL="SELECT thang, chieu, sum(so_tien) AS tong FROM khoan_tien GROUP BY ALL ORDER BY 1, 2"
+```
+
+RAM đo 24/10/2026: grafana 149 MiB sau khởi động, 158 MiB sau `make smoke` (`mem_limit` 384 MiB); image 1,38 GB trên ổ (nén khoảng 350 MB). Kiểm thử: `tests/test_cuu_tro_luu_tru.py`, `db/tests/0012`, `scripts/smoke-luu-tru.sh`, `scripts/smoke-grafana.sh` (cả hai trong `make smoke`).
+
 ## 8. Quản lý bí mật: OpenBao (#14)
 
 OpenBao 2.7.1 (MPL-2.0, nhánh nguồn mở của Vault) chạy như dịch vụ riêng bằng image gốc trong profile `core`, **chế độ server** (không `-dev`): lưu trữ raft trên volume `baodata`, tắt UI (Tầng 1 headless), chỉ mở cổng `127.0.0.1:8200`. Cấu hình: `core/openbao/openbao.hcl`. TLS tắt trên laptop; bật khi lên VPS (tuần 4).
@@ -838,6 +894,8 @@ OpenBao 2.7.1 (MPL-2.0, nhánh nguồn mở của Vault) chạy như dịch vụ
 | `secret/core/hasura` | `admin_secret` | Hasura (`HASURA_GRAPHQL_ADMIN_SECRET`) | ✔ (#11) |
 | `secret/core/temporal-db` | `password` | Temporal (`POSTGRES_PWD`), `postgres-roles` (role `temporal`) | ✔ (#11) |
 | `secret/core/scorpio-db` | `password` | Scorpio (`DBPASS`), `postgres-roles` (role `scorpio`) | ✔ (#85) |
+| `secret/core/grafana` | `admin_password` | Grafana (`GF_SECURITY_ADMIN_PASSWORD__FILE`, profile `bi`) | ✔ (#92) |
+| `secret/app/<DXOS_APP>/bi-db` | `password` | `postgres-roles` (role chỉ đọc `<schema>_bi`), Grafana (datasource), `cuu-tro-luu-tru` (`BI_DB_URL`) | ✔ (#91, #92) |
 | `secret/core/s3` | `access_key`, `secret_key` | SeaweedFS (`-s3.config` do agent render) | ✔ (#11) |
 | `secret/core/ledger` | `signing_key`, `verifier_key` | `core/ledger` (khóa ký checkpoint Ed25519 dạng note, D-007); `scripts/openbao-init.sh` sinh một lần. `verifier_key` là khóa công khai, chỉ để tra cứu | ✔ (#28) |
 | `secret/app/<DXOS_APP>/ledger` | `write_token` | `core/ledger` (file `writers`: dịch vụ được ghi) và `cuu-tro-api` (`LEDGER_WRITE_TOKEN`) | ✔ (#28) |
@@ -860,6 +918,7 @@ Container một lần `postgres-roles` (image postgis có sẵn, script `core/po
 | `hasura` | Chủ schema `hdb_catalog` (metadata); `CONNECT, CREATE, TEMPORARY` trên CSDL `disaster`; `USAGE, CREATE` trên `public`; đọc `information_schema`, `pg_catalog`, `spatial_ref_sys` | Quyền tối thiểu theo tài liệu Hasura. Migration ứng dụng không chạy bằng role này (mục 7.1, #25): trên schema ứng dụng `hasura` chỉ có quyền DML. Bảng `hdb_catalog` có sẵn từ trước thì chuyển chủ sở hữu |
 | `temporal` | Chủ CSDL `temporal`, `temporal_visibility` (script tạo sẵn) | Không cần `CREATEDB`: Temporal chạy với `SKIP_DB_CREATE=true`, auto-setup chỉ tạo schema |
 | `scorpio` (#85) | Chủ CSDL `scorpio` (script tạo sẵn, bật PostGIS), `CONNECTION LIMIT 20` | Scorpio tự tạo bảng bằng Flyway trong schema `public` của CSDL riêng |
+| `<schema>_bi` (`cuu_tro_bi`, #91, #92) | `LOGIN`, `CONNECTION LIMIT 10`, phiên mặc định read-only, `statement_timeout 30s`; lúc tạo không có quyền gì | Role chỉ đọc cho Grafana và bộ xuất Parquet. Migration 0012 của ứng dụng cấp `SELECT` theo cột không định danh (mục 7.6) |
 | `<schema>_app` (`cuu_tro_app`) | `LOGIN`, `CONNECTION LIMIT 10`, lúc tạo **không có quyền gì** trên schema ứng dụng | Role dịch vụ cho backend của ứng dụng (#29). Mật khẩu `secret/app/<DXOS_APP>/db`. Migration của ứng dụng tự `GRANT` bảng/cột cần (mục 7.3) |
 
 Không role nào là superuser hay có `CREATEROLE`. `make smoke` kiểm Hasura kết nối bằng `hasura` (`rolsuper = false`) và 2 CSDL Temporal thuộc `temporal`.
@@ -876,6 +935,7 @@ Mỗi dịch vụ một AppRole, mỗi AppRole một policy **chỉ đọc** đ�
 | `hasura` | `core-hasura` | `core/hasura-db`, `core/hasura` |
 | `temporal` | `core-temporal` | `core/temporal-db` |
 | `scorpio` | `core-scorpio` | `core/scorpio-db` (#85) |
+| `grafana` | `core-grafana` | `core/grafana`, `app/+/bi-db` (#92) |
 | `seaweedfs` | `core-seaweedfs` | `core/s3`, `app/+/s3` (#27) |
 | `ledger` | `core-ledger` | `core/ledger`, `app/+/ledger` (#28) |
 | `nats` | `core-nats` | `app/+/nats` (#30) |

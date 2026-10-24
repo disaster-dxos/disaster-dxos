@@ -26,8 +26,8 @@ Trạng thái: Đã xác minh 17/10/2026 (D-004) — đọc LICENSE ở repo ch�
 | Bản đồ nền (dịch vụ ngoài, không đóng gói) | Ô vector OpenFreeMap (mã MIT), dữ liệu © những người đóng góp OpenStreetMap; dự phòng ô ảnh tile.openstreetmap.org | gọi lúc chạy, đổi bằng `NUXT_PUBLIC_MAP_STYLE_URL` | Dữ liệu ODbL-1.0 (ghi công trên bản đồ) |
 | App hiện trường | Flutter, offline-first | pub | BSD-3-Clause |
 | Realtime | Centrifugo OSS (không dùng Centrifugo PRO), dịch vụ riêng của lõi, image gốc không sửa (#68); client centrifuge-js trong web điều phối (kéo theo protobufjs BSD-3-Clause, long Apache-2.0, events MIT) | `centrifugo/centrifugo:v6.9.7`; npm `centrifuge` 5.7.4 | Apache-2.0 / MIT |
-| Dữ liệu lịch sử | Parquet trên SeaweedFS + DuckDB | PyPI | MIT |
-| Dashboard | Grafana (dịch vụ riêng) | ghim tag ở tuần 4 | AGPL-3.0 |
+| Dữ liệu lịch sử | Parquet trên SeaweedFS (bucket `cuu-tro-lakehouse`) + DuckDB, thư viện Python trong `cuu-tro-workflow` (#91) | PyPI `duckdb` 2.0.0, ghim trong `uv.lock` | MIT |
+| Dashboard | Grafana OSS (dịch vụ riêng của lõi, profile `bi`, image gốc không sửa mã, không nhúng vào mã dự án; chỉ thêm tệp cấu hình provisioning và dashboard JSON của dự án, mount vào container) (#92) | `grafana/grafana-oss:13.0.2` | AGPL-3.0 |
 | AI | Ollama + Qwen2.5 7B/14B (không dùng 3B), FastAPI + LangGraph, Qdrant | ghim tag ở tuần 5 | MIT / Apache-2.0 (Qwen2.5 7B/14B: Apache-2.0) |
 
 Không dùng: immudb (BSL 1.1 từ 12/2023), Stellio (image DB kèm TimescaleDB TSL),

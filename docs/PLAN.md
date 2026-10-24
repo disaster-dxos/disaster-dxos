@@ -50,8 +50,8 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [x] [V2] NATS → Scorpio: thực thể trạm đo NGSI-LD (bản sao số) (#85: consumer `ban-sao-so` trên `CUU_TRO_CAM_BIEN`, Scorpio trong `core`, đọc qua `/ngsi-ld/v1/*`)
 - [x] [V1] Cảnh báo vượt ngưỡng → Temporal → thông báo Telegram (#87: workflow `CanhBaoVuotNguong` mỗi đợt, báo 1 lần mỗi bước; kênh `gia-lap` mặc định, `telegram` khi đặt token trong OpenBao)
 - [x] [V2] Sổ cái minh bạch: niêm phong nhập/xuất hàng, tiền cứu trợ + endpoint xác minh (#89: bút toán thu/chi, outbox + worker niêm phong bù, `/workflow/minh-bach/xac-minh/{mã}`, `so-cai`, `quy`; trang web là #63)
-- [ ] [V2] Xuất dữ liệu cũ ra Parquet + truy vấn DuckDB
-- [ ] [V2] Grafana dashboard điều hành
+- [x] [V2] Xuất dữ liệu cũ ra Parquet + truy vấn DuckDB (#91: `make luu-tru`, `make luu-tru-truy-van`, bucket `cuu-tro-lakehouse`, phân vùng theo tháng, khử định danh, idempotent)
+- [x] [V2] Grafana dashboard điều hành (#92: Grafana OSS profile `bi`, provisioning từ tệp, role chỉ đọc `cuu_tro_bi`, `/grafana/` qua APISIX; SSO Keycloak để sau)
 - [ ] [V1] Thuê VPS + tên miền, HTTPS, CI tự triển khai từ `main`
 - [ ] [V3] Cuối tuần: mời 3–5 người dùng thật thử, ghi phản hồi thành issue `user-feedback`
 - [ ] [V1] Release v0.2.0

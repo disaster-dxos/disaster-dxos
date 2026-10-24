@@ -126,3 +126,22 @@ template {
   perms       = "0444"
   contents    = "{{ with secret \"secret/data/app/cuu-tro/ledger\" }}{{ .Data.data.write_token }}{{ end }}"
 }
+
+# Lưu trữ lịch sử (#91): role chỉ đọc cuu_tro_bi + khóa S3 của ứng dụng cho cuu-tro-luu-tru (volume riêng)
+template {
+  destination = "/out/cuu-tro-luu-tru/BI_DB_URL"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/bi-db\" }}postgres://cuu_tro_bi:{{ .Data.data.password | urlquery }}@postgres:5432/{{ env \"POSTGRES_DB\" }}{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro-luu-tru/S3_ACCESS_KEY"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/s3\" }}{{ .Data.data.access_key }}{{ end }}"
+}
+
+template {
+  destination = "/out/cuu-tro-luu-tru/S3_SECRET_KEY"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/s3\" }}{{ .Data.data.secret_key }}{{ end }}"
+}
