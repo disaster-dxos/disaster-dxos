@@ -3,7 +3,9 @@
 
 Ứng dụng Tầng 2 cho người điều phối của xã (bản đồ lớn + danh sách tin kêu cứu bên cạnh, màn phân công cứu hộ) và cho đội cứu hộ ngoài hiện trường (nhận nhiệm vụ, xác nhận đã cứu trên điện thoại). Nuxt 4 + TypeScript + Nuxt UI (Tailwind CSS 4), bản đồ MapLibre GL JS, font Be Vietnam Pro tự host. Chạy thuần phía trình duyệt (`ssr: false`), không có bí mật nào trong mã web.
 
-![Web điều phối: bản đồ và danh sách tin kêu cứu thời gian thực](../../../docs/images/web-dieu-phoi.png)
+![GIF demo: đăng nhập, bản đồ tin kêu cứu và trạm đo, phân công, trang Minh bạch tự kiểm sổ cái](../../../docs/images/web-demo-dieu-phoi.gif)
+
+Ảnh sáng/tối và cách chụp lại (Playwright, `scripts/chup-anh/`): `README.md` mục "Sản phẩm", `docs/images/README.md`.
 
 > Trạng thái: khung web, đăng nhập Keycloak, bố cục, logo (#59); chạy trong stack qua gateway (#64); thông báo realtime qua Centrifugo (#68); bản đồ và danh sách tin kêu cứu **dữ liệu thật, thời gian thực** qua GraphQL subscription (#60); màn phân công cứu hộ cho 2 vai điều phối, cứu hộ (#61); lớp trạm đo mực nước trên bản đồ (#62); trang Minh bạch công khai cho phiếu kho và bút toán tiền, trình duyệt tự kiểm sổ cái (#63).
 

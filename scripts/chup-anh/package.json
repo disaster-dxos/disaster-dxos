@@ -1,0 +1,13 @@
+{
+  "name": "chup-anh-readme",
+  "private": true,
+  "description": "Chụp ảnh và GIF demo web điều phối cho README (#65) bằng Playwright",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "chup": "node chup.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.64.0"
+  }
+}

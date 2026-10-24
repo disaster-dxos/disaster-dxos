@@ -63,6 +63,24 @@ Miền Trung mỗi năm hứng nhiều cơn bão và lũ. Trong vài giờ nư�
 
 Ngoài ra đã có: tải và xem ảnh hiện trường qua link ngắn hạn. Ánh xạ từng yêu cầu của đề vào mã nguồn: [`docs/de-thi-mapping.md`](docs/de-thi-mapping.md).
 
+## 📸 Sản phẩm · Product demo
+
+Web điều phối chạy trên stack thật, dữ liệu trên màn hình là dữ liệu giả. Quy trình demo: đăng nhập (Keycloak, vai điều phối có MFA), xem bản đồ tin kêu cứu và trạm đo mực nước, phân công cứu hộ, rồi tra trang Minh bạch công khai để trình duyệt tự kiểm sổ cái.
+*The coordination web app running on the real stack with fake data: sign in (Keycloak, MFA for coordinators) → live map of SOS reports and water-level stations → rescue assignment → public transparency page where the browser verifies the ledger by itself.*
+
+![GIF demo: đăng nhập, bản đồ tin kêu cứu và trạm đo, phân công, trang Minh bạch tự kiểm sổ cái](docs/images/web-demo-dieu-phoi.gif)
+
+| Sáng · Light | Tối · Dark |
+|---|---|
+| ![Bản đồ điều phối: tin kêu cứu, trạm đo mực nước, popup mực nước và biểu đồ 24 giờ](docs/images/web-ban-do-tram-do.webp) | ![Bản đồ điều phối ở chế độ tối](docs/images/web-ban-do-tram-do-toi.webp) |
+| Bản đồ: tin kêu cứu theo mức khẩn, trạm đo theo cấp báo động, popup mực nước 24 giờ · *Map: SOS reports by urgency, stations by alert level, 24-hour water-level popup* | |
+| ![Màn phân công cứu hộ: Cần xử lý, Chờ phân công, Đang phân công, Đang cứu](docs/images/web-phan-cong.webp) | ![Màn phân công ở chế độ tối](docs/images/web-phan-cong-toi.webp) |
+| Phân công: đội gần nhất, đồng hồ hạn nhận · *Assignment board: nearest team, acceptance countdown* | |
+| ![Trang Minh bạch cứu trợ: máy chủ xác minh, trình duyệt tự kiểm 5 bước](docs/images/web-minh-bach.webp) | ![Trang Minh bạch ở chế độ tối](docs/images/web-minh-bach-toi.webp) |
+| Minh bạch: không cần đăng nhập, trình duyệt tự kiểm sổ cái · *Public transparency page: no login, in-browser ledger verification* | |
+
+Chụp lại khi giao diện đổi: [`scripts/chup-anh/`](scripts/chup-anh/) (Playwright, xem [`docs/images/README.md`](docs/images/README.md)).
+
 ## 🗺️ Kiến trúc
 
 ![Kiến trúc tổng quan: người dùng đi qua APISIX và Keycloak vào Hasura, SeaweedFS, Temporal, sổ cái; dữ liệu trên PostgreSQL + PostGIS; OpenBao giữ bí mật; trạm đo gửi MQTT vào NATS](docs/images/kien-truc-tong-quan.webp)
