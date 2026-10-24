@@ -118,7 +118,7 @@ khoi_dong_worker() { # khoi_dong_worker <kênh>: chạy lại worker với CANH_
     sleep 2
   done
 }
-# shellcheck disable=SC2329 # gọi qua trap EXIT
+# shellcheck disable=SC2317,SC2329 # gọi qua trap EXIT (bản shellcheck cũ báo SC2317, bản mới SC2329)
 reset() {
   rm -rf "$TMP"
   # Luôn trả worker về kênh trong .env (mặc định gia-lap) kể cả khi smoke dừng giữa chừng ở bước (6)
