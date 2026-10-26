@@ -5,8 +5,8 @@
 
 | Thư mục | Nội dung | Trạng thái |
 |---|---|---|
-| `keycloak/realm.json` | Realm `disaster`: vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen`; client `dxos-gateway`, `dxos-web`, `dxos-dev-cli` (chỉ dev); 3 người dùng mẫu, mật khẩu lấy từ `.env` | Có |
-| `db/migrations/` | Schema `cuu_tro`: `incidents`, `rescue_teams`, `shelters`, `supplies`, `supply_movements`, `sensors` (PostGIS); `team_members` (#26); `sensor_readings` chuỗi đo cảm biến (#30); `incident_media` ảnh hiện trường (#27); quyền lập phiếu + ghi sổ cái cho `cuu_tro_app` (#28); quyền tạo tin kêu cứu cho `cuu_tro_app` (#66); hàm kiểm trước tin trùng (#102); hàng chờ duyệt tin AI + vết duyệt `ai_intake_reviews` (#104) | Có (#25, #26, #30, #27, #28, #66, #102, #104) |
+| `keycloak/realm.json` | Realm `disaster`: vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen`; client `dxos-gateway`, `dxos-web`, `dxos-mobile` (app hiện trường, PKCE, #106), `dxos-dev-cli` (chỉ dev); 3 người dùng mẫu, mật khẩu lấy từ `.env` | Có |
+| `db/migrations/` | Schema `cuu_tro`: `incidents`, `rescue_teams`, `shelters`, `supplies`, `supply_movements`, `sensors` (PostGIS); `team_members` (#26); `sensor_readings` chuỗi đo cảm biến (#30); `incident_media` ảnh hiện trường (#27); quyền lập phiếu + ghi sổ cái cho `cuu_tro_app` (#28); quyền tạo tin kêu cứu cho `cuu_tro_app` (#66); hàm kiểm trước tin trùng (#102); hàng chờ duyệt tin AI + vết duyệt `ai_intake_reviews` (#104); khóa `Idempotency-Key` `idempotency_keys` (#106) | Có (#25, #26, #30, #27, #28, #66, #102, #104, #106) |
 | `db/seed/` | Dữ liệu giả xã An Lạc (giả định) | Có (#25) |
 | `db/tests/` | Kiểm thử ràng buộc (Poka-yoke, CHECK, quyền theo search_path, quyền role `cuu_tro_app`, chuỗi đo cảm biến, ảnh hiện trường, phiếu kho + sổ cái, tạo tin bằng role của API kêu cứu, hàng chờ duyệt tin AI) | Có (#25, #26, #29, #30, #27, #28, #66, #104) |
 | `hasura/metadata/` | Metadata Hasura: bảng track, quan hệ, quyền theo vai trò JWT | Có (#26) |
@@ -16,7 +16,7 @@
 | `s3/buckets.conf` | Bucket S3 của ứng dụng (`cuu-tro-media`), lõi tạo khi `make up` | Có (#27) |
 | `nats/streams.json` | Khai báo stream/consumer JetStream của ứng dụng (`cuu-tro-cam-bien` tạo consumer `ghi-csdl`, `cuu-tro-thong-bao` tạo consumer `realtime-*`) | Có (#30, #68) |
 | `web/` | Web điều phối Nuxt 4 + Nuxt UI + MapLibre: đăng nhập Keycloak OIDC + PKCE (client `dxos-web`), bản đồ + danh sách tin kêu cứu thời gian thực qua GraphQL subscription (gom cụm, lọc, chi tiết theo quyền); dịch vụ `cuu-tro-web`, mở qua gateway http://localhost:9080/; xem `web/README.md` | Khung (#59), trong stack (#64), bản đồ realtime (#60), nền Nuxt UI (#77), hàng chờ duyệt tin AI (#104) |
-| `mobile/` | App hiện trường Flutter | Tuần 5 |
+| `mobile/` | App hiện trường React Native 0.80 (D-011): gửi kêu cứu (form, GPS, bản đồ MapLibre, dán tin để AI điền sẵn), chuyển tin cho điều phối duyệt, ảnh hiện trường, vị trí đội; hàng đợi offline mã hóa, mỗi bản ghi một khóa idempotency; đăng nhập Keycloak PKCE (client `dxos-mobile`); xem `mobile/README.md` | Có (#106) |
 
 ## Dữ liệu (`db/`, #25)
 
@@ -445,6 +445,31 @@ query HangCho { ai_intake_reviews(where: {status: {_eq: "cho_duyet"}}, order_by:
 - Tab **Đã duyệt / Đã hủy**: vết duyệt (người duyệt, thời điểm, tin đã tạo, bảng trường đã sửa AI → người duyệt, lý do hủy).
 
 Kiểm thử: `tests/test_cuu_tro_hang_cho.py` (so trường sửa, kiểm body, endpoint với CSDL + Hasura giả, quyền, tin trùng, hai người duyệt cùng lúc); `db/tests/0014_hang_cho_duyet.sql` (quyền theo cột, ràng buộc trạng thái, vết bất biến, khóa ngoại, outbox); `web/tests/hang-cho.test.ts`; `scripts/smoke-hang-cho.sh` (trong `make smoke`, gọi thật qua gateway).
+
+## Idempotency-Key: gửi lại không tạo trùng (`workflow/cuu_tro_workflow/idempotency.py`, #106)
+
+App hiện trường (`mobile/`) gửi mọi thao tác ghi từ hàng đợi offline và gửi lại khi mạng chập chờn. API nhận header **`Idempotency-Key`** (8–128 ký tự `A-Z a-z 0-9 _ -`, nên dùng UUID) trên:
+
+| Đường | Khi gửi lại cùng khóa |
+|---|---|
+| `POST /workflow/keu-cuu` | Trả lại đúng `201` + body cũ (cùng mã tin), không tạo tin thứ hai, không bị chốt chặn trùng trả `409` |
+| `POST /workflow/tai-len/su-co/{id}/anh` | Trả lại ảnh đã tải (cùng `id`) kèm link xem **mới**; không ghi S3/CSDL lần nữa. Phát lại trước bước kiểm quyền theo trạng thái tin (tình nguyện viên gửi lại sau khi tin đã được phân công vẫn nhận kết quả cũ) |
+| `POST /workflow/ai/boc-tach` có `vao_hang_cho: true` | Trả lại mục hàng chờ cũ (`hang_cho`, `ai`, `poka_yoke.hop_le`, `phat_lai_rut_gon: true`), không gọi lại mô hình, không thêm mục. Phản hồi phát lại **không có** đề xuất (có SĐT, tên). Không có `vao_hang_cho` thì header bị bỏ qua (chỉ đọc) |
+
+Phản hồi phát lại có header `Idempotent-Replayed: true`. Khóa theo người dùng (`sub`): người khác dùng trùng khóa được xử lý như yêu cầu mới. Cùng khóa mà khác đường dẫn hoặc nội dung → `422 {"ma": "khoa_idempotency_dung_lai"}`; khóa sai dạng → `422 {"ma": "khoa_idempotency_sai"}`. Chỉ phản hồi `2xx` được lưu: lỗi (`409` tin trùng, `422`) không giữ khóa, gửi lại cho cùng lỗi. Khóa hết hạn sau 72 giờ (API dọn khi khởi động và khi gặp lại khóa cũ).
+
+**Cách giữ khóa** (bảng `cuu_tro.idempotency_keys`, migration `0015`; chỉ `cuu_tro_app`, Hasura không track):
+1. Tìm khóa đã xong (còn hạn) → phát lại.
+2. Chưa có: trong MỘT transaction, `INSERT` khóa (chưa có phản hồi) **trước**, làm việc nghiệp vụ bằng cùng kết nối, ghi phản hồi, `COMMIT`. Yêu cầu đồng thời cùng khóa chờ ở khóa chính tới khi yêu cầu đầu `COMMIT` rồi phát lại kết quả của nó. Yêu cầu đầu lỗi thì rollback, khóa cũng mất.
+
+```bash
+K=$(python3 -c 'import uuid; print(uuid.uuid4())')
+for i in 1 2; do curl -s -i -X POST -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: $K" -H 'Content-Type: application/json' \
+  -d '{"lat": 15.85, "lon": 108.10, "reporter_phone": "0900 000 098", "description": "Ngập tới mái"}' \
+  http://localhost:9080/workflow/keu-cuu | grep -iE '^HTTP|idempotent-replayed|"id"'; done
+```
+
+Kiểm thử: `tests/test_cuu_tro_idempotency.py` (dạng khóa, ba đường, khóa dùng lại, lỗi không giữ khóa, đồng thời, khóa theo người dùng); `db/tests/0015_khoa_idempotency.sql`; `scripts/smoke-mobile.sh`.
 
 ## Ảnh hiện trường (`workflow/cuu_tro_workflow/anh.py`, `s3.py`, #27)
 

@@ -17,7 +17,7 @@ Sơ đồ dưới vẽ những gì đang chạy thật trong `make up`: Tầng 2
 flowchart TB
   subgraph T2["Tầng 2 · Ứng dụng (H-P-D-I)"]
     WEB["Web điều phối<br/>Nuxt 4 + Nuxt UI + MapLibre"]
-    APP["App hiện trường<br/>Flutter offline-first"]
+    APP["App hiện trường<br/>React Native, offline-first (#106)"]
     BOT["Bot Telegram"]
     SENSOR["Cảm biến mực nước<br/>(mô phỏng)"]
   end
@@ -684,6 +684,44 @@ sequenceDiagram
 | Trường đã sửa | API tính `{trường: {ai, nguoi}}` trên giá trị đã chuẩn hóa; web đánh dấu trường khác đề xuất ngay khi gõ | Đo được chất lượng AI trên dữ liệu thật (tỷ lệ duyệt nguyên đề xuất, trường hay phải sửa) để chọn mô hình/bộ luật; không coi gõ lại SĐT có dấu cách là sửa |
 | `created_by` của tin | Người đưa tin vào hàng chờ | Tình nguyện viên chuyển tin vẫn theo dõi được tin của mình (Hasura lọc theo `created_by`), tải ảnh hiện trường lúc tin còn `tiep_nhan` như tin tự gửi |
 
+### 6.6. App hiện trường React Native, hàng đợi offline và khóa idempotency (#106, D-011)
+
+App `apps/cuu-tro/mobile/` (React Native 0.80, TypeScript strict) cho tình nguyện viên và đội cứu hộ. App là client Tầng 2 như web điều phối: chỉ gọi lõi qua APISIX (`/workflow/*`, `/graphql`), đăng nhập Keycloak bằng OIDC + PKCE với client công khai `dxos-mobile` (redirect `org.disasterdxos.cuutro:/oauthredirect`, PKCE S256 bắt buộc, không có client secret, không đăng nhập mật khẩu trực tiếp). Màn hình, cách build: `apps/cuu-tro/mobile/README.md`.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant A as App (hàng đợi trong Keychain/Keystore)
+  participant GW as APISIX (JWT, WAF)
+  participant API as cuu-tro-api
+  participant PG as PostgreSQL (cuu_tro)
+  Note over A: Bản ghi mới: khóa = UUID v4, sinh một lần
+  A->>GW: POST /workflow/keu-cuu, Idempotency-Key: K
+  GW->>API: (JWT hợp lệ)
+  API->>PG: tìm (sub, K) đã xong? → chưa
+  API->>PG: BEGIN · INSERT idempotency_keys (sub, K, đường dẫn, SHA-256 yêu cầu) · INSERT incidents · UPDATE khóa ← phản hồi · COMMIT
+  API--xA: 201 (mất giữa đường)
+  A->>GW: gửi lại, CÙNG K
+  API->>PG: tìm (sub, K) → đã xong
+  API-->>A: 201 phản hồi cũ + Idempotent-Replayed: true
+```
+
+| Quyết định | Chọn | Vì sao |
+|---|---|---|
+| Ghi dữ liệu từ app | Mọi thao tác ghi (kêu cứu, chuyển tin cho điều phối, ảnh, vị trí đội) vào **hàng đợi trên máy** trước rồi mới gửi; đọc dữ liệu bằng TanStack Query (giữ dữ liệu cũ khi mất mạng) | Lúc bão lũ mạng chập chờn: người dùng bấm gửi là xong, không phải chờ mạng hay nhập lại. Hàng đợi gửi lại khi có mạng (NetInfo), khi app trở lại, theo lịch lùi 5 s → 10 phút |
+| Không tạo trùng khi gửi lại | Header **`Idempotency-Key`** trên `POST /workflow/keu-cuu`, `POST /workflow/tai-len/su-co/{id}/anh`, `POST /workflow/ai/boc-tach` (khi `vao_hang_cho`). Bảng `idempotency_keys` (migration `0015`, khóa chính `(owner_sub, key)`), giữ khóa **trong cùng transaction** với bản ghi nghiệp vụ | Mất phản hồi sau khi máy chủ đã tạo tin là chuyện thường trên mạng yếu. Không có khóa: gửi lại tin kêu cứu bị chốt chặn trùng trả 409 (app không biết tin của chính mình đã vào), gửi lại ảnh tạo ảnh thứ hai. Khóa giữ trước khi làm việc nên hai yêu cầu đồng thời cùng khóa: yêu cầu sau chờ ở khóa chính rồi phát lại kết quả của yêu cầu trước |
+| Phạm vi khóa | Theo người dùng (sub Keycloak), băm đường dẫn + nội dung; cùng khóa khác nội dung → 422; chỉ lưu phản hồi 2xx; hết hạn 72 giờ | Không ai phát lại được kết quả của người khác; client dùng lại khóa sai bị báo ngay. Lỗi (422, 409) không lưu nên gửi lại cho cùng kết quả, không giả thành công |
+| Dữ liệu cá nhân trong khóa | Phản hồi lưu không có SĐT, tên, văn bản tin (chuyển tin: chỉ mã hàng chờ + kết luận Poka-yoke); ảnh: không lưu link (ký link mới khi phát lại) | Bảng khóa không thành bản sao thứ hai của dữ liệu cá nhân; link presigned cũ đã hết hạn |
+| Phát lại ảnh trước khi kiểm quyền | Gửi lại cùng khóa trả kết quả cũ ngay, trước khi hỏi Hasura quyền theo trạng thái tin | Tình nguyện viên chỉ được tải ảnh khi tin còn `tiep_nhan`; tin đã sang `phan_cong` sau lần gửi đầu thì lần gửi lại vẫn phải nhận kết quả cũ, không phải 403. Khóa chỉ thuộc chính người gửi nên không lộ gì |
+| Lưu trên máy | Hàng đợi và token trong Keychain (iOS) / Keystore (Android) qua react-native-keychain; ảnh chép vào thư mục riêng của app; cài đặt (không có dữ liệu cá nhân) trong AsyncStorage | Bản ghi có SĐT, tên, vị trí người cần cứu: không để dạng rõ trên máy. Tệp tạm của camera có thể bị hệ điều hành dọn khi chờ mạng lâu |
+| Poka-yoke trên máy | Cùng luật với API (`utils/kiemTra.ts` ↔ `keu_cuu.py`): tọa độ bắt buộc, SĐT di động Việt Nam, độ dài, số người | Báo lỗi theo trường ngay khi chưa có mạng, thay vì để bản ghi lỗi 422 khi có mạng. API vẫn là chốt chặn (vùng phục vụ, tin trùng) |
+| Ảnh kèm tin chưa gửi | Bản ghi ảnh trỏ tới bản ghi tin trong hàng đợi; gửi sau khi tin có mã thật trên máy chủ | Tình nguyện viên chụp ảnh ngay lúc báo tin, kể cả khi mất mạng |
+| Vị trí đội | GraphQL `update_rescue_teams` với điều kiện `location_updated_at < lúc đo`; đội chưa có vị trí thì ghi lần đầu | Bản ghi cũ gửi muộn không đè vị trí mới. Không dùng `_is_null` trong điều kiện: WAF (OWASP CRS) ở gateway coi là SQL injection và chặn 403 |
+| AI bóc tách trong app | "Bóc tách bằng AI" (cần mạng) chỉ điền sẵn form, người dùng soát rồi gửi; "Chuyển cho điều phối duyệt" (không cần mạng) vào hàng chờ HITL của web (#104) | Giữ nguyên tắc AI không tự tạo tin (mục 6.4, 6.5) |
+| Bản đồ | MapLibre React Native (MIT) + kiểu nền OpenFreeMap như web; không react-native-maps (bản đồ Google/Apple) | D-011: không phụ thuộc dịch vụ độc quyền; cùng nguồn bản đồ với web |
+
+Kiểm thử: Jest trong `apps/cuu-tro/mobile/__tests__/` (job CI `mobile` chạy typecheck, lint, Jest, giấy phép; không build native); `tests/test_cuu_tro_idempotency.py`; `db/tests/0015_khoa_idempotency.sql`; `scripts/smoke-mobile.sh` (trong `make smoke`): đăng nhập PKCE thật với `dxos-mobile` rồi gửi đúng các request của app qua gateway.
+
 ## 7. Vì sao lõi độc lập với nghiệp vụ (`core/` và `apps/`)
 
 Đề yêu cầu dịch vụ Tầng 1 **độc lập hoàn toàn với nghiệp vụ cụ thể**, chỉ cung cấp dịch vụ cơ bản (xác thực, lưu trữ, workflow…) cho người phát triển ứng dụng Tầng 2. Vì vậy repo chia hai phần:
@@ -691,7 +729,7 @@ sequenceDiagram
 | Thư mục | Chứa | Không chứa |
 |---|---|---|
 | `core/` (Tầng 1) | Cấu hình dịch vụ dùng chung: bí mật (`core/openbao/`), gateway (`core/apisix/`), khởi tạo CSDL dùng chung + PostGIS (`core/postgres/init/`), sự kiện/MQTT (`core/nats/`); sau này: cơ chế tự sinh API, lưu trữ, workflow engine, sổ cái `core/ledger` | Bảng, vai trò, quy trình, dữ liệu mẫu hay giao diện của đề tài thiên tai |
-| `apps/cuu-tro/` (Tầng 2) | Realm Keycloak với vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen` (`keycloak/realm.json`); từ tuần 2: migration bảng `incidents`, `rescue_teams`, `shelters`, `supplies`, `sensors`, workflow Temporal, seed, web Nuxt, app Flutter | Cấu hình dịch vụ lõi |
+| `apps/cuu-tro/` (Tầng 2) | Realm Keycloak với vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen` (`keycloak/realm.json`); từ tuần 2: migration bảng `incidents`, `rescue_teams`, `shelters`, `supplies`, `sensors`, workflow Temporal, seed, web Nuxt (`web/`), app hiện trường React Native (`mobile/`, D-011) | Cấu hình dịch vụ lõi |
 
 ```mermaid
 flowchart LR

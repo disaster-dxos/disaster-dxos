@@ -60,15 +60,15 @@
   <text class="b" x="272" y="143">tra phiếu kho, tự kiểm sổ cái</text>
   <text class="b" x="272" y="159">không cần đăng nhập</text>
 
-  <rect class="soon" x="470" y="104" width="190" height="64" rx="8"/>
+  <rect class="t2" x="470" y="104" width="190" height="64" rx="8"/>
   <text class="bt" x="482" y="125">Web điều phối + bản đồ</text>
-  <text class="b" x="482" y="143">Nuxt 3 + MapLibre GL JS</text>
-  <text class="m" x="482" y="159">sắp có (tuần 3)</text>
+  <text class="b" x="482" y="143">Nuxt 4 + MapLibre GL JS</text>
+  <text class="m" x="482" y="159">có từ tuần 3</text>
 
-  <rect class="soon" x="680" y="104" width="170" height="64" rx="8"/>
+  <rect class="t2" x="680" y="104" width="170" height="64" rx="8"/>
   <text class="bt" x="692" y="125">App hiện trường</text>
-  <text class="b" x="692" y="143">Flutter, offline-first</text>
-  <text class="m" x="692" y="159">sắp có</text>
+  <text class="b" x="692" y="143">React Native, offline</text>
+  <text class="m" x="692" y="159">có từ tuần 5 (#106)</text>
 
   <rect class="t2" x="870" y="104" width="280" height="64" rx="8"/>
   <text class="bt" x="882" y="125">Hiện nay: curl, make smoke</text>

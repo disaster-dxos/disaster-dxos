@@ -60,6 +60,7 @@ Miền Trung mỗi năm hứng nhiều cơn bão và lũ. Trong vài giờ nư�
 | **Bản đồ thời gian thực** cho người điều phối | ✅ Đã có ở v0.2 (web Nuxt 4 + Nuxt UI + MapLibre, GraphQL subscription qua gateway, màn phân công cho điều phối và đội cứu hộ, thông báo Centrifugo) |
 | **Dashboard điều hành, dữ liệu lịch sử** | ✅ Đã có ở v0.3 (#91, #92): Grafana OSS (`make up-bi`, mở http://localhost:9080/grafana/) với tin kêu cứu theo trạng thái, thời gian phản hồi, mực nước, tồn kho, quỹ cứu trợ, đọc bằng role chỉ đọc không thấy SĐT/họ tên; dữ liệu cũ xuất ra Parquet theo tháng trên SeaweedFS (`make luu-tru`), truy vấn bằng DuckDB (`make luu-tru-truy-van`) |
 | **AI bóc tách tin kêu cứu** tự do, người duyệt lại | ✅ Từ tuần 5 (#102): SMS, tin Zalo dán vào, viết không dấu → đề xuất có địa chỉ, tọa độ (nếu tin có), SĐT, số người, mức khẩn cấp, nhu cầu; qua cùng Poka-yoke và chặn trùng của API kêu cứu; AI không tự tạo tin. Chọn mô hình bằng `LLM_PROVIDER`: Qwen2.5 7B qua Ollama (`make up-ai`), API ngoài, hoặc bộ luật không cần mô hình (mặc định) · từ tuần 5 (#104): **hàng chờ duyệt** trên web điều phối (trang "Duyệt tin AI"): đề xuất hiện cạnh văn bản gốc, người duyệt sửa, chọn vị trí trên bản đồ rồi duyệt mới tạo tin; lưu vết AI đề xuất gì, người sửa trường nào, ai duyệt, lúc nào · *AI review queue: a human approves or edits every AI suggestion before it becomes a rescue request; full audit trail* |
+| **App hiện trường** cho tình nguyện viên, đội cứu hộ | ✅ Từ tuần 5 (#106): app React Native (Android, iOS) gửi kêu cứu bằng form + GPS hoặc chọn trên bản đồ, dán tin để AI điền sẵn, chuyển tin cho điều phối duyệt, gửi ảnh hiện trường và vị trí đội. **Mất mạng vẫn dùng được**: mọi thứ vào hàng đợi mã hóa trên máy, có mạng thì tự gửi; mỗi bản ghi một khóa idempotency nên gửi lại không tạo trùng. Đăng nhập Keycloak (PKCE) · *field app: works offline, resends safely with idempotency keys* ([`apps/cuu-tro/mobile/`](apps/cuu-tro/mobile/README.md)) |
 
 Ngoài ra đã có: tải và xem ảnh hiện trường qua link ngắn hạn. Ánh xạ từng yêu cầu của đề vào mã nguồn: [`docs/de-thi-mapping.md`](docs/de-thi-mapping.md).
 
@@ -105,7 +106,8 @@ Sơ đồ chi tiết, luồng JWT, route gateway, quản lý bí mật: [`docs/a
 | Backend ứng dụng | Python 3.12, FastAPI | PSF-2.0, MIT |
 | Dữ liệu lịch sử, dashboard | Parquet trên SeaweedFS + DuckDB (#91); Grafana OSS 13 dịch vụ riêng, profile `bi` (#92) | MIT; AGPL-3.0 (dịch vụ riêng, image gốc) |
 | AI (Tầng [I]) | Ollama 0.40 dịch vụ riêng, profile `ai` + Qwen2.5 7B Instruct; hoặc API ngoài chuẩn OpenAI; mặc định bộ luật không cần mô hình (#102) | MIT; Apache-2.0 |
-| Sắp có | Flutter, Qdrant, ClamAV | BSD-3, Apache-2.0, GPL-2.0 (dịch vụ riêng) |
+| App hiện trường (#106) | React Native 0.80 + TypeScript, React Navigation, TanStack Query, Zustand, i18next, MapLibre React Native, react-native-app-auth (PKCE) | MIT |
+| Sắp có | Qdrant, ClamAV | Apache-2.0, GPL-2.0 (dịch vụ riêng) |
 
 Phiên bản và giấy phép từng image, thư viện: [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
@@ -138,7 +140,7 @@ Theo [`docs/PLAN.md`](docs/PLAN.md):
 
 - **Tuần 3:** web điều phối Nuxt 4 + Nuxt UI với bản đồ MapLibre thời gian thực, màn hình phân công; tự khởi chạy phân công khi có tin mới; thông báo realtime qua Centrifugo.
 - **Tuần 4:** trạm đo thành bản sao số NGSI-LD trên Scorpio (đã có, #85); cảnh báo vượt ngưỡng qua Temporal, gửi Telegram (đã có, #87, cần token bot thật); dữ liệu cũ ra Parquet + DuckDB (đã có, #91); dashboard Grafana điều hành (đã có, #92); lên VPS có HTTPS.
-- **Tuần 5:** AI bóc tách tin kêu cứu tự do thành dữ liệu có cấu trúc (đã có, #102), hàng chờ duyệt trên web điều phối (đã có, #104); app hiện trường Flutter chạy được khi mất mạng; demo công khai.
+- **Tuần 5:** AI bóc tách tin kêu cứu tự do thành dữ liệu có cấu trúc (đã có, #102), hàng chờ duyệt trên web điều phối (đã có, #104); app hiện trường React Native chạy được khi mất mạng (đã có, #106); demo công khai.
 - **Tuần 6–7:** sửa theo phản hồi người dùng thật, module mẫu cho `apps/`, phát hành v1.0.0.
 
 ## 🛠️ Cài đặt từ máy sạch
