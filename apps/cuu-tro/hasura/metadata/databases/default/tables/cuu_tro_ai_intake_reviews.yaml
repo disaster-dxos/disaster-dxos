@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: Apache-2.0
+# Hàng chờ duyệt tin do AI bóc tách + vết duyệt (#104, HITL). Chỉ cuu-tro-api (role DB cuu_tro_app) thêm dòng
+# (POST /workflow/ai/boc-tach với vao_hang_cho) và đổi trạng thái (POST /workflow/hang-cho/{id}/duyet|huy);
+# KHÔNG vai trò nào thêm/sửa/xóa qua GraphQL (nếu cho, người dùng tự khai được "AI đã đề xuất gì" hay tự đánh
+# dấu đã duyệt mà không qua Poka-yoke).
+#   dieu-phoi   đọc mọi dòng, mọi cột: văn bản gốc, đề xuất của AI, nội dung tin cuối, trường đã sửa, người duyệt.
+#               API đọc đề xuất bằng JWT của người duyệt qua đây (cuu_tro_app không đọc được cột có SĐT)
+#   tinh-nguyen chỉ dòng mình gửi, chỉ trạng thái (đã duyệt chưa, mã tin đã tạo): KHÔNG có văn bản gốc, đề xuất,
+#               nội dung tin, người duyệt (tình nguyện viên chuyển tin hộ người khác, không xem lại dữ liệu cá nhân)
+#   cuu-ho      không có quyền
+table:
+  name: ai_intake_reviews
+  schema: cuu_tro
+configuration:
+  custom_name: ai_intake_reviews
+  column_config: {}
+  custom_column_names: {}
+  custom_root_fields: {}
+object_relationships:
+  - name: incident
+    using:
+      foreign_key_constraint_on: incident_id
+select_permissions:
+  - role: dieu-phoi
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+  - role: tinh-nguyen
+    permission:
+      columns:
+        - id
+        - text_source
+        - status
+        - created_at
+        - reviewed_at
+        - incident_id
+      filter:
+        submitted_by:
+          _eq: x-hasura-user-id
+      limit: 100

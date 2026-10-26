@@ -527,22 +527,39 @@ def tao(cfg: Any, http: httpx.AsyncClient) -> BocTach:
 
 
 # ---------------- Đầu vào endpoint ----------------
-def kiem_dau_vao(d: Any) -> tuple[str, str] | list[keu_cuu.LoiTruong]:
-    """Body {"van_ban": "...", "nguon": "sms|zalo|…"} → (văn bản, nguồn) hoặc lỗi theo trường."""
+@dataclass(frozen=True)
+class DauVao:
+    van_ban: str
+    nguon: str
+    # Lưu kết quả vào hàng chờ duyệt của điều phối (#104) thay vì chỉ trả đề xuất về cho người gọi
+    vao_hang_cho: bool = False
+
+
+def kiem_dau_vao(d: Any) -> DauVao | list[keu_cuu.LoiTruong]:
+    """Body {"van_ban": "...", "nguon": "sms|zalo|…", "vao_hang_cho": true|false} → DauVao hoặc lỗi theo trường."""
     if not isinstance(d, dict):
         return [keu_cuu.LoiTruong("body", "Nội dung gửi lên phải là một đối tượng JSON.")]
     loi: list[keu_cuu.LoiTruong] = []
     for k in d:
-        if k not in ("van_ban", "nguon"):
+        if k not in ("van_ban", "nguon", "vao_hang_cho"):
             loi.append(keu_cuu.LoiTruong(str(k)[:50], "Trường không được hỗ trợ (kiểm tra lại tên trường)."))
+    hang_cho = d.get("vao_hang_cho", False)
+    if not isinstance(hang_cho, bool):
+        loi.append(keu_cuu.LoiTruong("vao_hang_cho", "vao_hang_cho phải là true hoặc false."))
     vb = d.get("van_ban")
     if not isinstance(vb, str) or not vb.strip():
         loi.append(keu_cuu.LoiTruong("van_ban", "Thiếu văn bản tin kêu cứu."))
     elif len(vb) > VAN_BAN_TOI_DA:
         loi.append(keu_cuu.LoiTruong("van_ban", f"Văn bản dài tối đa {VAN_BAN_TOI_DA} ký tự (đang có {len(vb)})."))
+    elif _KY_TU_DIEU_KHIEN.search(vb):
+        # Xuống dòng, tab giữ nguyên; NUL và ký tự điều khiển khác không lưu được vào PostgreSQL (hàng chờ)
+        loi.append(keu_cuu.LoiTruong("van_ban", "Văn bản chứa ký tự điều khiển không hợp lệ."))
     nguon = d.get("nguon", "van_ban")
     if nguon not in NGUON_VAN_BAN:
         loi.append(keu_cuu.LoiTruong("nguon", f"Nguồn phải là một trong: {', '.join(NGUON_VAN_BAN)}."))
     if loi:
         return loi
-    return vb.strip(), nguon
+    return DauVao(vb.strip(), nguon, hang_cho)
+
+
+_KY_TU_DIEU_KHIEN = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")

@@ -21,7 +21,12 @@ Tiếp nhận tin kêu cứu (#66, Poka-yoke: cuu_tro_workflow/keu_cuu.py, apps/
 AI bóc tách tin kêu cứu (#102, cuu_tro_workflow/boc_tach.py, LLM_PROVIDER):
   POST /ai/boc-tach                 văn bản tự do → đề xuất theo trường của /keu-cuu + kết quả Poka-yoke và kiểm
                                     trước tin trùng (dieu-phoi, tinh-nguyen). KHÔNG tạo tin: người duyệt quyết
-                                    định. Route gateway riêng /workflow/ai/* (rate limit riêng)
+                                    định. Route gateway riêng /workflow/ai/* (rate limit riêng).
+                                    "vao_hang_cho": true → lưu vào hàng chờ duyệt của điều phối (#104)
+Hàng chờ duyệt HITL (#104, cuu_tro_workflow/hang_cho.py; đọc hàng chờ qua /graphql, chỉ dieu-phoi):
+  POST /hang-cho/{id}/duyet         duyệt (body tùy chọn {"tin_keu_cuu": {…}} đã sửa) → tạo tin kêu cứu qua
+                                    Poka-yoke của /keu-cuu, lưu vết trường sửa + người duyệt (chỉ dieu-phoi)
+  POST /hang-cho/{id}/huy           hủy {"ly_do"}: không tạo tin (chỉ dieu-phoi)
 Ảnh hiện trường (#27, luật quyền: cuu_tro_workflow/anh.py, apps/cuu-tro/README.md):
   POST /tai-len/su-co/{incident_id}/anh   body = nội dung ảnh (route gateway /workflow/tai-len/*)
   GET  /su-co/{incident_id}/anh           liệt kê ảnh của tin kèm link xem ngắn hạn
@@ -65,7 +70,7 @@ from temporalio.common import Priority, WorkflowIDConflictPolicy, WorkflowIDReus
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError
 
-from . import anh, boc_tach, config, keu_cuu, so_cai, so_cai_csdl, thong_bao
+from . import anh, boc_tach, config, hang_cho, keu_cuu, so_cai, so_cai_csdl, thong_bao
 from .auth import VAI_TRO_CUU_HO, VAI_TRO_DIEU_PHOI, VAI_TRO_TINH_NGUYEN, NguoiDung, XacThuc, can_vai_tro
 from .s3 import KhoAnh, LoiS3
 from .logic import PhanHoi, TrangThaiPhanCong, XacNhan, YeuCauHuy, uu_tien
@@ -169,15 +174,7 @@ class SoTin:
         self._pool = pool
 
     async def them(self, tin: keu_cuu.TinKeuCuu, created_by: str) -> dict[str, Any]:
-        row = await self._pool.fetchrow(
-            """INSERT INTO cuu_tro.incidents
-                 (description, location, address_text, people_count, urgency, reporter_phone, reporter_name,
-                  source, created_by)
-               VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, $4, $5, $6, $7, $8, $9, $10)
-               RETURNING id, status, urgency, people_count, created_at""",
-            tin.description, tin.lon, tin.lat, tin.address_text, tin.people_count, tin.urgency,
-            tin.reporter_phone, tin.reporter_name, tin.source, created_by,
-        )
+        row = await self._pool.fetchrow(keu_cuu.SQL_THEM_TIN, *keu_cuu.tham_so_them_tin(tin, created_by))
         return dict(row)
 
     async def tim_trung(self, sdt: str, lon: float, lat: float) -> dict[str, Any] | None:
@@ -212,6 +209,8 @@ async def lifespan(app: FastAPI):
             st.so_khoan = so_cai_csdl.SoKhoanTien(pool)
         if not hasattr(st, "so_cai_cong_khai"):
             st.so_cai_cong_khai = so_cai_csdl.SoCaiCongKhai(pool)
+        if not hasattr(st, "so_hang_cho"):
+            st.so_hang_cho = hang_cho.SoHangCho(pool)
     try:
         async with httpx.AsyncClient(base_url=cfg.gateway_url, timeout=10) as http, \
                 httpx.AsyncClient(timeout=30) as http_s3, \
@@ -361,12 +360,7 @@ async def keu_cuu_moi(request: Request, nd: NguoiDungDep, response: Response) ->
     try:
         dong = await st.so_tin.them(kq, nd.sub)
     except asyncpg.UniqueViolationError as e:
-        trung = keu_cuu.tin_trung_tu_detail(e.detail) if e.constraint_name == "incidents_no_duplicate" else None
-        if trung is None:
-            raise
-        # Chỉ ghi mã tin đang mở; không ghi SĐT
-        log.info("tin kêu cứu trùng tin đang mở %s, không tạo mới", trung["incident_id"])
-        raise HTTPException(409, keu_cuu.loi_409(trung)) from None
+        raise _loi_tin_trung(e) from None
     except (asyncpg.CheckViolationError, asyncpg.NotNullViolationError) as e:
         # API đã kiểm trước; tới đây là lệch giữa API và ràng buộc CSDL. Không ghi thông điệp (có thể chứa giá trị)
         log.error("CSDL từ chối tin kêu cứu: %s %s", type(e).__name__, e.constraint_name)
@@ -404,9 +398,8 @@ async def ai_boc_tach(request: Request, nd: NguoiDungDep, response: Response) ->
         keu_cuu.LoiTruong("body", "Nội dung gửi lên không phải JSON hợp lệ.")]
     if isinstance(vao, list):
         raise HTTPException(422, {**keu_cuu.loi_422(vao), "thong_bao": "Chưa bóc tách được: kiểm tra lại các trường."})
-    van_ban, nguon = vao
-    kq = await st.boc_tach.boc_tach(van_ban)
-    body = kq.de_xuat.body_keu_cuu(boc_tach.NGUON_TIN[nguon])
+    kq = await st.boc_tach.boc_tach(vao.van_ban)
+    body = kq.de_xuat.body_keu_cuu(boc_tach.NGUON_TIN[vao.nguon])
     pk = keu_cuu.kiem_tra(body, st.cfg.keu_cuu_vung)
     loi = pk if isinstance(pk, list) else []
     trung = None
@@ -417,7 +410,7 @@ async def ai_boc_tach(request: Request, nd: NguoiDungDep, response: Response) ->
     if kq.de_xuat.people_count is None:
         canh_bao.append("Tin không nói rõ số người: tạm tính 1, cần hỏi lại.")
     response.headers["Cache-Control"] = "no-store"
-    return {
+    ket_qua = {
         "de_xuat": asdict(kq.de_xuat),
         "tin_keu_cuu": body,
         "poka_yoke": {
@@ -429,6 +422,105 @@ async def ai_boc_tach(request: Request, nd: NguoiDungDep, response: Response) ->
                "du_phong": kq.du_phong},
         "canh_bao": canh_bao,
     }
+    if vao.vao_hang_cho:
+        # HITL (#104): lưu nguyên văn bản + đề xuất do chính API vừa tạo; điều phối duyệt mới thành tin thật
+        ket_qua["hang_cho"] = await st.so_hang_cho.them(
+            van_ban=vao.van_ban, nguon=vao.nguon, ket_qua=ket_qua, nguoi_gui=nd.sub,
+            ten_nguoi_gui=nd.ten_dang_nhap,
+            vai_tro=VAI_TRO_DIEU_PHOI if nd.co(VAI_TRO_DIEU_PHOI) else VAI_TRO_TINH_NGUYEN,
+        )
+        log.info("đã đưa tin vào hàng chờ duyệt %s", ket_qua["hang_cho"]["id"])
+    return ket_qua
+
+
+def _loi_tin_trung(e: asyncpg.UniqueViolationError) -> HTTPException:
+    """Lỗi trùng của trigger incidents_no_duplicate → 409 kèm mã tin đang mở; lỗi khác đi tiếp (500)."""
+    trung = keu_cuu.tin_trung_tu_detail(e.detail) if e.constraint_name == "incidents_no_duplicate" else None
+    if trung is None:
+        raise e
+    # Chỉ ghi mã tin đang mở; không ghi SĐT
+    log.info("tin kêu cứu trùng tin đang mở %s, không tạo mới", trung["incident_id"])
+    return HTTPException(409, keu_cuu.loi_409(trung))
+
+
+# ---------------- Hàng chờ duyệt tin do AI bóc tách (#104, HITL) ----------------
+# Khai báo trước GET /{workflow_id}; mọi path dưới đều có nhiều đoạn. Đọc hàng chờ: /graphql (Hasura).
+
+def _json_body(raw: bytes) -> Any:
+    """Body rỗng = {} (duyệt nguyên đề xuất / hủy không lý do); không phải JSON → 422."""
+    if not raw.strip():
+        return {}
+    try:
+        return json.loads(raw)
+    except ValueError:
+        raise HTTPException(422, keu_cuu.loi_422(
+            [keu_cuu.LoiTruong("body", "Nội dung gửi lên không phải JSON hợp lệ.")])) from None
+
+
+@app.post("/hang-cho/{ma}/duyet", status_code=201)
+async def duyet_hang_cho(request: Request, ma: uuid.UUID, nd: NguoiDungDep, response: Response) -> dict[str, Any]:
+    """Điều phối duyệt (có thể đã sửa) đề xuất của AI → tạo tin kêu cứu thật, lưu vết người duyệt + trường sửa."""
+    can_vai_tro(nd, VAI_TRO_DIEU_PHOI)
+    st = request.app.state
+    d = _json_body(await doc_body_gioi_han(request, hang_cho.BODY_TOI_DA, "Nội dung duyệt"))
+    muc = (await hoi_hasura(request, nd, VAI_TRO_DIEU_PHOI, hang_cho.Q_MUC, {"id": str(ma)}))["ai_intake_reviews_by_pk"]
+    if muc is None:
+        raise HTTPException(404, {"ma": "khong_co", "thong_bao": "Không có tin này trong hàng chờ."})
+    if muc["status"] != "cho_duyet":
+        raise HTTPException(409, hang_cho.loi_da_xu_ly(muc))
+    ai_body = (muc.get("ai_result") or {}).get("tin_keu_cuu") or {}
+    body = hang_cho.kiem_duyet(d, ai_body)
+    if isinstance(body, list):
+        raise HTTPException(422, keu_cuu.loi_422(body))
+    tin = keu_cuu.kiem_tra(body, st.cfg.keu_cuu_vung)
+    if isinstance(tin, list):
+        raise HTTPException(422, keu_cuu.loi_422(tin))
+    sua = hang_cho.truong_da_sua(ai_body, hang_cho.body_cuoi(tin))
+    try:
+        kq = await st.so_hang_cho.duyet(str(ma), tin, sua=sua, nguoi_duyet=nd.sub, ten_nguoi_duyet=nd.ten_dang_nhap)
+    except hang_cho.KhongCo:
+        raise HTTPException(404, {"ma": "khong_co", "thong_bao": "Không có tin này trong hàng chờ."}) from None
+    except hang_cho.DaXuLy as e:
+        # Người khác vừa duyệt/hủy giữa lúc đọc và lúc khóa dòng
+        raise HTTPException(409, hang_cho.loi_da_xu_ly(e.dong)) from None
+    except asyncpg.UniqueViolationError as e:
+        raise _loi_tin_trung(e) from None
+    except (asyncpg.CheckViolationError, asyncpg.NotNullViolationError) as e:
+        log.error("CSDL từ chối tin duyệt từ hàng chờ: %s %s", type(e).__name__, e.constraint_name)
+        raise HTTPException(422, keu_cuu.loi_422(
+            [keu_cuu.LoiTruong("body", "Dữ liệu không qua được ràng buộc của CSDL.")])) from None
+    t = kq["tin"]
+    log.info("đã duyệt tin trong hàng chờ %s → tin kêu cứu %s", ma, t["id"])
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "id": str(ma),
+        "trang_thai": "da_duyet",
+        "reviewed_at": kq["reviewed_at"].isoformat(),
+        "truong_da_sua": sorted(sua),
+        "incident_id": str(t["id"]),
+        "tin": {"id": str(t["id"]), "status": t["status"], "urgency": t["urgency"], "people_count": t["people_count"],
+                "lat": tin.lat, "lon": tin.lon, "created_at": t["created_at"].isoformat()},
+        "phan_cong": "tu_dong",
+    }
+
+
+@app.post("/hang-cho/{ma}/huy")
+async def huy_hang_cho(request: Request, ma: uuid.UUID, nd: NguoiDungDep, response: Response) -> dict[str, Any]:
+    """Điều phối hủy một tin trong hàng chờ (tin rác, trùng, không đủ thông tin): không tạo tin kêu cứu."""
+    can_vai_tro(nd, VAI_TRO_DIEU_PHOI)
+    st = request.app.state
+    ly_do = hang_cho.kiem_huy(_json_body(await doc_body_gioi_han(request, keu_cuu.BODY_TOI_DA, "Nội dung hủy")))
+    if isinstance(ly_do, list):
+        raise HTTPException(422, {**keu_cuu.loi_422(ly_do), "thong_bao": "Chưa hủy được: kiểm tra lại các trường."})
+    try:
+        luc = await st.so_hang_cho.huy(str(ma), ly_do, nguoi_duyet=nd.sub, ten_nguoi_duyet=nd.ten_dang_nhap)
+    except hang_cho.KhongCo:
+        raise HTTPException(404, {"ma": "khong_co", "thong_bao": "Không có tin này trong hàng chờ."}) from None
+    except hang_cho.DaXuLy as e:
+        raise HTTPException(409, hang_cho.loi_da_xu_ly(e.dong)) from None
+    log.info("đã hủy tin trong hàng chờ %s", ma)
+    response.headers["Cache-Control"] = "no-store"
+    return {"id": str(ma), "trang_thai": "da_huy", "reviewed_at": luc.isoformat(), "ly_do": ly_do}
 
 
 @app.post("/hello")

@@ -5,6 +5,7 @@
 - "!include cuu_tro_incidents.yaml"
 - "!include cuu_tro_incident_media.yaml"
 - "!include cuu_tro_incident_assignments.yaml"
+- "!include cuu_tro_ai_intake_reviews.yaml"
 - "!include cuu_tro_rescue_teams.yaml"
 - "!include cuu_tro_team_members.yaml"
 - "!include cuu_tro_shelters.yaml"

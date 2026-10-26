@@ -61,7 +61,7 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 
 ## Tuần 5 · 12–18/11 · Tầng [I] + demo công khai
 - [x] [V3] AI bóc tách tin kêu cứu tự do → JSON (địa chỉ, số người, mức khẩn cấp); `LLM_PROVIDER` chọn Ollama + Qwen2.5 7B hoặc API ngoài (#102)
-- [ ] [V3] Hàng chờ duyệt HITL trên web điều phối
+- [x] [V3] Hàng chờ duyệt HITL trên web điều phối (#104: `vao_hang_cho` trên `/workflow/ai/boc-tach`, bảng vết `ai_intake_reviews`, `POST /workflow/hang-cho/{id}/duyet|huy` qua Poka-yoke của #66, trang web "Duyệt tin AI" có bản đồ chọn vị trí)
 - [ ] [V3] App Flutter: gửi kêu cứu/cập nhật hiện trường, hàng đợi offline
 - [ ] [V1] Demo công khai trên tên miền, bật GitHub Discussions
 
