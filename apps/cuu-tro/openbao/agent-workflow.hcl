@@ -145,3 +145,10 @@ template {
   perms       = "0444"
   contents    = "{{ with secret \"secret/data/app/cuu-tro/s3\" }}{{ .Data.data.secret_key }}{{ end }}"
 }
+
+# API (#102): khóa API mô hình ngoài (LLM_PROVIDER=openai-compatible); trống với gia-lap/ollama
+template {
+  destination = "/out/cuu-tro-api/LLM_API_KEY"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/app/cuu-tro/llm\" }}{{ .Data.data.api_key }}{{ end }}"
+}

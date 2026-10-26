@@ -68,7 +68,7 @@ services:
           cuu-tro-thong-bao/NATS_URL cuu-tro-worker/APP_DB_URL cuu-tro-worker/NATS_URL cuu-tro-worker/LEDGER_WRITE_TOKEN
           cuu-tro-luu-tru/BI_DB_URL cuu-tro-luu-tru/S3_SECRET_KEY;
           do test -s /out/$$f || exit 1; done;
-          test -e /out/cuu-tro-worker/TELEGRAM_BOT_TOKEN
+          test -e /out/cuu-tro-worker/TELEGRAM_BOT_TOKEN && test -e /out/cuu-tro-api/LLM_API_KEY
       interval: 5s
       timeout: 3s
       retries: 24
@@ -188,6 +188,12 @@ services:
       REALTIME_TOKEN_HAN_GIAY: ${REALTIME_TOKEN_HAN_GIAY:-300}
       # Bản sao số (#85): phục vụ @context NGSI-LD ở /ngsi-ld/context.jsonld cho Scorpio tải (mạng nội bộ)
       NGSI_LD_CONTEXT_FILE: /app/ngsi-ld/context.jsonld
+      # AI bóc tách tin kêu cứu (#102): gia-lap | ollama (dịch vụ ollama của profile ai) | openai-compatible | tat.
+      # LLM_API_KEY (openai-compatible) do bao agent render từ secret/app/cuu-tro/llm, không ở .env
+      LLM_PROVIDER: ${LLM_PROVIDER:-gia-lap}
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_TIMEOUT_GIAY: ${LLM_TIMEOUT_GIAY:-90}
     volumes:
       - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
       - ./apps/cuu-tro/ngsi-ld/context.jsonld:/app/ngsi-ld/context.jsonld:ro

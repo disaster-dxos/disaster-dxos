@@ -353,6 +353,34 @@ routes:
         key: remote_addr
         rejected_code: 429
 
+  # ---------------- /workflow/ai/* → tính năng AI của ứng dụng (#102) ----------------
+  # Quy ước của lõi: đường /ai/... của API ứng dụng gọi mô hình ngôn ngữ (Ollama trong mạng nội bộ hoặc API
+  # ngoài), tốn CPU/RAM gấp nhiều lần một request thường, nên có giới hạn tần suất RIÊNG
+  # (GW_AI_RATE_LIMIT_COUNT request / GW_RATE_LIMIT_WINDOW giây / IP, đếm riêng route này). Ưu tiên hơn
+  # /workflow/* (priority). Còn lại như route /workflow/keu-cuu: JWT bắt buộc, WAF đọc body JSON, body ≤ 1 MiB
+  # (API còn giới hạn riêng 8 KiB). API kiểm lại JWT, vai trò, dữ liệu.
+  - id: workflow-ai
+    uri: /workflow/ai/*
+    priority: 10
+    methods: [POST, OPTIONS]
+    upstream_id: workflow-api
+    plugins:
+      request-id: {}
+      client-control: *api-body-limit
+      serverless-pre-function: *waf-read-body
+      coraza-filter:
+        conf: *waf-api
+      cors: *cors
+      openid-connect: *oidc-pass-token
+      proxy-rewrite:
+        regex_uri: ["^/workflow/(.*)", "/$1"]
+      limit-count:
+        count: ${{GW_AI_RATE_LIMIT_COUNT:=30}}
+        time_window: ${{GW_RATE_LIMIT_WINDOW:=60}}
+        key_type: var
+        key: remote_addr
+        rejected_code: 429
+
   # ---------------- /ledger/* → sổ cái minh bạch (#28), CHỈ ĐỌC, công khai ----------------
   # tlog-tiles (C2SP): /ledger/checkpoint (đã ký Ed25519), /ledger/tile/... (tile hash + entry bundle),
   # /ledger/proof/{index} (inclusion proof), /ledger/verifier (khóa công khai). Ai cũng tải về tự kiểm

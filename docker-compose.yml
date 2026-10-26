@@ -13,7 +13,9 @@
 #   app    backend và web của ứng dụng Tầng 2 đang chọn (apps/${DXOS_APP}/compose.yaml, nạp bằng include
 #          bên dưới), vd cuu-tro-worker, cuu-tro-api (#29), cuu-tro-web (#64). make up bật cả core và app.
 #   bi     Grafana OSS (AGPL-3.0, dịch vụ riêng) dashboard điều hành (#92): make up-bi
-#   ai, sec   xem TODO cuối file
+#   ai     Ollama (MIT, dịch vụ riêng) chạy mô hình mở cho AI bóc tách tin kêu cứu (#102): make up-ai.
+#          Không bật thì ứng dụng dùng LLM_PROVIDER=gia-lap (bộ luật) hoặc API ngoài openai-compatible
+#   sec    xem TODO cuối file
 #
 # Chạy: cp .env.example .env && make up   (make up tự khởi tạo/mở khóa OpenBao lần đầu)
 # Bí mật của dịch vụ lõi nằm trong OpenBao, không nằm trong .env (#14). bao agent render
@@ -359,6 +361,8 @@ services:
       GW_REALTIME_RATE_LIMIT_COUNT: ${GW_REALTIME_RATE_LIMIT_COUNT:-60}
       # Route /workflow/keu-cuu (#66): tạo tin kêu cứu / GW_RATE_LIMIT_WINDOW giây / IP, chống spam
       GW_KEU_CUU_RATE_LIMIT_COUNT: ${GW_KEU_CUU_RATE_LIMIT_COUNT:-20}
+      # Route /workflow/ai/* (#102): gọi mô hình AI tốn CPU/RAM / GW_RATE_LIMIT_WINDOW giây / IP
+      GW_AI_RATE_LIMIT_COUNT: ${GW_AI_RATE_LIMIT_COUNT:-30}
       # Route /ngsi-ld/v1/* (#85): URL @context NGSI-LD của ứng dụng mà gateway đặt vào header Link (Scorpio tải
       # trong mạng nội bộ). Quy ước <DXOS_APP>-api:8000/ngsi-ld/context.jsonld (cuu-tro-api)
       GW_NGSI_LD_CONTEXT_URL: ${GW_NGSI_LD_CONTEXT_URL:-http://${DXOS_APP:-cuu-tro}-api:8000/ngsi-ld/context.jsonld}
@@ -839,9 +843,55 @@ services:
       start_period: 20s
     mem_limit: 384m
 
+  # ======================= profile: ai (#102) =======================
+  ollama:
+    # Máy chạy mô hình ngôn ngữ mở (Ollama, MIT), dịch vụ riêng của lõi: lõi không biết nghiệp vụ, ứng dụng
+    # gọi http://ollama:11434/api/chat trong mạng nội bộ (LLM_PROVIDER=ollama). Không mở cổng ra máy host,
+    # không đi qua gateway: người dùng chỉ gọi API của ứng dụng (/workflow/ai/*) có JWT + giới hạn tần suất.
+    # Trọng số mô hình nằm trong volume ollamadata (tải bằng ollama-pull), KHÔNG nằm trong repo.
+    # Docker trên macOS không dùng được GPU Apple: mô hình chạy CPU (đo được: docs/architecture.md mục 4).
+    <<: *restart
+    image: ollama/ollama:${OLLAMA_VERSION:-0.40.3}
+    profiles: [ai]
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      # Một mô hình, một yêu cầu một lúc: giữ RAM trong giới hạn laptop; giữ mô hình trong RAM 30 phút
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_KEEP_ALIVE: 30m
+      OLLAMA_CONTEXT_LENGTH: "4096"
+    volumes:
+      - ollamadata:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    # Qwen2.5 7B Q4_K_M ~4,7 GB trọng số + ngữ cảnh 4096; 14B cần đặt OLLAMA_MEM_LIMIT=14g
+    mem_limit: ${OLLAMA_MEM_LIMIT:-8g}
+
+  ollama-pull:
+    # Chạy một lần mỗi lần up: tải mô hình LLM_MODEL về volume (đã có thì chỉ kiểm lại). Chặn mô hình không
+    # được phép (Llama, Gemma; Qwen2.5 3B/72B không phải Apache-2.0), cùng luật với cuu_tro_workflow.config.
+    image: ollama/ollama:${OLLAMA_VERSION:-0.40.3}
+    profiles: [ai]
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        if printf '%s' "$$LLM_MODEL" | grep -Eiq 'llama|gemma|qwen2\.5[-:_]?(coder[-:_]?)?(3b|72b)'; then
+        echo "LLM_MODEL=$$LLM_MODEL không được phép (giấy phép không phải Apache-2.0/OSI)" >&2; exit 1; fi;
+        ollama pull "$$LLM_MODEL"
+
   # ===================== TODO các profile sau =====================
   # sec (tuần 2-4): ClamAV (GPL-2.0, dịch vụ riêng). Sổ cái Tessera đã vào core (#28, dịch vụ ledger)
-  # ai  (tuần 5):   Ollama + Qwen2.5 7B/14B, Qdrant, agent FastAPI + LangGraph
 
 volumes:
   pgdata:
@@ -850,6 +900,7 @@ volumes:
   natsdata:
   ledgerdata:
   grafanadata:
+  ollamadata:
   secrets-keycloak: *secrets-tmpfs
   secrets-postgres: *secrets-tmpfs
   secrets-apisix: *secrets-tmpfs
