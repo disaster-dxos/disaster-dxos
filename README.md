@@ -151,6 +151,7 @@ Theo [`docs/PLAN.md`](docs/PLAN.md):
 | Docker | Docker Engine 24+ hoặc Docker Desktop, **Docker Compose 2.20+** (cần `include`) |
 | RAM cấp cho Docker | 6 GB trở lên. Đo thật (v0.3.0, 24/10/2026): cả hệ thống khoảng 2,3 GB sau khi khởi động, khoảng 3,0 GB sau `make smoke` (gồm Grafana, profile `bi`) |
 | Ổ trống | 15 GB trở lên. Đo thật (v0.3.0): image khoảng 8,5 GB (Grafana 1,4 GB, chỉ khi bật profile `bi`), build cache khoảng 0,8 GB; lúc chạy `make smoke` trên volume trống ổ giảm thêm tới khoảng 10 GB. Chạy xong: `make down` rồi `docker image prune -a` |
+| AI bằng mô hình thật (tùy chọn, `make up-ai`) | Thêm ~12 GB ổ (image Ollama 7 GB + Qwen2.5 7B 4,7 GB) và ~5 GB RAM cho Docker. Đo trên MacBook Apple Silicon (CPU): ~11,5 giây mỗi tin. Không bật thì dùng bộ luật mặc định · *optional real model: +12 GB disk, +5 GB RAM, ~11.5 s per message on CPU* |
 | Công cụ | `git`, `make`, `bash`, `curl`, `python3`, `openssl` |
 | Cổng trống | `8080` (Keycloak), `9080` (APISIX); chỉ trên `127.0.0.1`: `8200`, `15432`, `8081`, `8333`, `7233`, `8088`, `4222`, `1883` |
 

@@ -342,6 +342,8 @@ Tin kêu cứu thật hay là SMS, tin Zalo viết vội, không dấu. `POST /w
 | `openai-compatible` | `POST {LLM_BASE_URL}/chat/completions`, `response_format: json_object`; khóa API trong OpenBao | Máy chủ GPU của xã/tỉnh (vLLM, llama.cpp server, Ollama khác) hoặc dịch vụ ngoài: `bao kv put secret/app/cuu-tro/llm api_key=<khóa>` rồi `make up` |
 | `tat` | Endpoint trả `503` | Tắt tính năng |
 
+Ollama chạy CPU: đặt `LLM_SO_LUONG` (mặc định 6) khoảng một nửa số CPU cấp cho Docker; để Ollama tự chọn (0) thì trong VM Docker trên Mac các luồng tranh nhau, chậm ~30 lần. Đo thật trên MacBook (Qwen2.5 7B, CPU): ~11,5 s mỗi tin, đúng 58/59 trường trên tin mẫu (`make danh-gia-ai`, `docs/architecture.md` mục 6.4).
+
 `LLM_MODEL` chứa `llama`, `gemma`, `qwen2.5:3b`, `qwen2.5:72b` → `cuu-tro-api` và `ollama-pull` từ chối khởi động (giấy phép không phải Apache-2.0/OSI). Mô hình lỗi, trả rác hoặc quá `LLM_TIMEOUT_GIAY` (90 s) → đề xuất do bộ luật dự phòng tạo, `ai.du_phong = true`, kèm cảnh báo.
 
 **Vai trò:** `dieu-phoi`, `tinh-nguyen` (như quyền tạo tin); `cuu-ho` → `403`; không token → `401` ở APISIX. Route gateway riêng `/workflow/ai/*`: WAF đọc body, `GW_AI_RATE_LIMIT_COUNT` (30)/60 s/IP.
@@ -358,7 +360,7 @@ Tin kêu cứu thật hay là SMS, tin Zalo viết vội, không dấu. `POST /w
 | `ai` | `nha_cung_cap`, `mo_hinh`, `thoi_gian_ms`, `du_phong` |
 | `canh_bao` | Vd mô hình đưa SĐT/tọa độ không có trong tin (đã bỏ), không rõ số người |
 
-**Chống bịa:** SĐT và tọa độ chỉ lấy từ văn bản gốc (regex; số có nhãn "SĐT", "gọi", "liên hệ" được ưu tiên; tọa độ cần ≥ 4 chữ số thập phân để không nhầm giá tiền, tự đổi chỗ khi viết "kinh độ, vĩ độ"); giá trị mô hình đưa ra mà không có trong tin thì bỏ. Địa chỉ của mô hình phải khớp ≥ 60% từ của tin, tên người báo khớp 100%. Tọa độ không suy từ địa chỉ.
+**Chống bịa:** SĐT và tọa độ chỉ lấy từ văn bản gốc (regex; số có nhãn "SĐT", "gọi", "liên hệ" được ưu tiên; tọa độ cần ≥ 4 chữ số thập phân để không nhầm giá tiền, tự đổi chỗ khi viết "kinh độ, vĩ độ"); SĐT mô hình đưa ra mà không có trong tin thì bỏ, tọa độ luôn lấy từ regex (mô hình hay đảo vĩ độ/kinh độ). Nhu cầu là hợp của mô hình và từ khóa. Địa chỉ của mô hình phải khớp ≥ 60% từ của tin, tên người báo khớp 100%. Tọa độ không suy từ địa chỉ.
 
 **Kiểm trước tin trùng:** hàm `cuu_tro.incident_find_duplicate(sđt, kinh độ, vĩ độ)` (migration `0013`) dùng đúng điều kiện của trigger `incidents_no_duplicate`, chạy `SECURITY DEFINER`, chỉ trả mã tin + khoảng cách; chỉ `cuu_tro_app` được gọi. Không khóa, không ghi: trigger vẫn là chốt chặn cuối khi tạo tin.
 

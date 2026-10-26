@@ -177,16 +177,17 @@ async def test_ollama_goi_dung_va_ghep():
         return httpx.Response(200, json={"message": {"role": "assistant", "content": json.dumps(noi_dung)}})
 
     async with may_chu(handler) as http:
-        bt = boc_tach.BocTach("ollama", boc_tach.Ollama(http, "http://ollama:11434/", "qwen2.5:7b", 30))
+        bt = boc_tach.BocTach("ollama", boc_tach.Ollama(http, "http://ollama:11434/", "qwen2.5:7b", 30, 6))
         kq = await bt.boc_tach(TIN)
     assert nhan["url"] == "http://ollama:11434/api/chat"
     b = nhan["body"]
     assert b["model"] == "qwen2.5:7b" and b["stream"] is False and b["format"] == boc_tach.SCHEMA
-    assert b["options"]["temperature"] == 0
+    assert b["options"]["temperature"] == 0 and b["options"]["num_thread"] == 6
     assert b["messages"][0]["role"] == "system" and b["messages"][1]["content"].startswith("<tin>\n")
     d = kq.de_xuat
     assert (d.lat, d.lon, d.reporter_phone, d.people_count, d.urgency) == (16.0712, 108.1503, "0935111222", 3, "cao")
     assert d.address_text == "tổ 5 phường Hòa Khánh" and d.reporter_name == "Nguyễn Văn An"
+    # Hợp với từ khóa bộ luật ("kẹt" → cuu_nguoi, "thuốc" → y_te); "bay" không thuộc danh sách thì bỏ
     assert d.nhu_cau == ["y_te", "cuu_nguoi"]
     # Tóm tắt của mô hình làm mô tả, SĐT trong đó cũng bị che
     assert d.description == "3 người già bị kẹt ở tổ 5, cần thuốc. Gọi [SĐT]"
@@ -207,7 +208,7 @@ async def test_chong_bia():
     d, luat = kq.de_xuat, boc_tach.bo_luat(TIN)
     assert d.reporter_phone == "0935111222" and (d.lat, d.lon) == (16.0712, 108.1503)
     assert d.address_text == luat.address_text and d.reporter_name == luat.reporter_name
-    assert d.people_count == 3 and d.urgency == luat.urgency and d.nhu_cau == luat.nhu_cau
+    assert d.people_count == 3 and d.urgency == luat.urgency and set(d.nhu_cau) == {"cuu_nguoi"} | set(luat.nhu_cau)
     assert len(kq.canh_bao) == 3 and any("SĐT" in c for c in kq.canh_bao) and not kq.du_phong
 
 
@@ -227,6 +228,22 @@ async def test_openai_compatible():
     assert nhan["url"] == "https://llm.example/v1/chat/completions" and nhan["auth"] == "Bearer k-gia"
     assert nhan["body"]["response_format"] == {"type": "json_object"} and nhan["body"]["temperature"] == 0
     assert kq.de_xuat.reporter_phone == "0935111222" and kq.nha_cung_cap == "openai-compatible"
+
+
+@chay
+async def test_toa_do_mo_hinh_dao_cho_dung_regex():
+    """Qwen2.5 7B đo thật: tin viết "108.2021, 16.0544", mô hình trả vi_do 108.2021 → dùng tọa độ regex đã đổi chỗ."""
+    tin = "108.2021, 16.0544 ba người mắc kẹt, gọi 0777000111"
+
+    def handler(_req):
+        return httpx.Response(200, json={"message": {"content": json.dumps(
+            tra_loi(vi_do=108.2021, kinh_do=16.0544, so_dien_thoai="0777000111", nhu_cau=["y_te"]))}})
+
+    async with may_chu(handler) as http:
+        kq = await boc_tach.BocTach("ollama", boc_tach.Ollama(http, "http://o", "qwen2.5:7b", 30)).boc_tach(tin)
+    assert (kq.de_xuat.lat, kq.de_xuat.lon) == (16.0544, 108.2021)
+    assert kq.de_xuat.nhu_cau == ["y_te", "cuu_nguoi"]
+    assert any("tọa độ khác" in c for c in kq.canh_bao)
 
 
 @pytest.mark.parametrize("handler", [

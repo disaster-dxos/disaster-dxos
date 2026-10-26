@@ -318,14 +318,6 @@ def _json_tu_noi_dung(noi_dung: str) -> dict[str, Any]:
     return d
 
 
-def _so_trong_van_ban(x: float, van_ban: str) -> bool:
-    """Số tọa độ x có viết trong văn bản không (so tới 3 chữ số thập phân, bỏ qua số 0 cuối)."""
-    for m in re.finditer(r"-?\d{1,3}\.\d+", van_ban):
-        if abs(float(m.group(0)) - x) < 0.0005:
-            return True
-    return False
-
-
 def _ty_le_tu_co_trong(cum: str, khong_dau_van_ban: str) -> float:
     tu = [t for t in re.findall(r"[0-9a-z]+", bo_dau(cum)) if len(t) > 1 or t.isdigit()]
     if not tu:
@@ -351,16 +343,15 @@ def ghep_ket_qua(van_ban: str, d: dict[str, Any], canh_bao: list[str]) -> DeXuat
             canh_bao.append("Mô hình đưa ra SĐT không có trong tin gốc: đã bỏ.")
         dx.reporter_phone = sdt_vb[0] if sdt_vb else None
 
-    # Tọa độ: chỉ nhận khi cả hai số đều viết trong văn bản
+    # Tọa độ: CHỈ lấy bằng regex trên văn bản gốc (tự đổi chỗ khi viết "kinh độ, vĩ độ"). Mô hình hay đảo vĩ độ
+    # với kinh độ dù cả hai số đều có trong tin (đo với Qwen2.5 7B), nên không dùng tọa độ của mô hình
+    dx.lat, dx.lon = luat.lat, luat.lon
     lat, lon = d.get("vi_do"), d.get("kinh_do")
     if (isinstance(lat, (int, float)) and isinstance(lon, (int, float)) and not isinstance(lat, bool)
-            and not isinstance(lon, bool)):
-        if _so_trong_van_ban(float(lat), van_ban) and _so_trong_van_ban(float(lon), van_ban):
-            dx.lat, dx.lon = float(lat), float(lon)
-        else:
-            canh_bao.append("Mô hình đưa ra tọa độ không có trong tin gốc: đã bỏ, cần chọn vị trí trên bản đồ.")
-    if dx.lat is None and luat.lat is not None:
-        dx.lat, dx.lon = luat.lat, luat.lon
+            and not isinstance(lon, bool)
+            and (dx.lat is None or abs(float(lat) - dx.lat) > 0.0005 or abs(float(lon) - dx.lon) > 0.0005)):
+        canh_bao.append("Mô hình đưa ra tọa độ khác với số trong tin gốc: đã bỏ"
+                        + ("." if dx.lat is not None else ", cần chọn vị trí trên bản đồ."))
 
     so_nguoi = d.get("so_nguoi")
     if isinstance(so_nguoi, int) and not isinstance(so_nguoi, bool) and 1 <= so_nguoi <= keu_cuu.SO_NGUOI_TOI_DA:
@@ -371,12 +362,12 @@ def ghep_ket_qua(van_ban: str, d: dict[str, Any], canh_bao: list[str]) -> DeXuat
     muc = d.get("muc_khan_cap")
     dx.urgency = muc if muc in keu_cuu.URGENCY else luat.urgency
 
+    # Nhu cầu: hợp của mô hình và từ khóa của bộ luật (mô hình hay bỏ sót, từ khóa ít khi sai); "khac" chỉ khi
+    # không còn nhu cầu nào khác
     nhu_cau = d.get("nhu_cau")
-    if isinstance(nhu_cau, list):
-        nc = [x for x in nhu_cau if x in NHU_CAU]
-        dx.nhu_cau = list(dict.fromkeys(nc)) or luat.nhu_cau
-    else:
-        dx.nhu_cau = luat.nhu_cau
+    nc = [x for x in nhu_cau if x in NHU_CAU] if isinstance(nhu_cau, list) else []
+    nc = [x for x in dict.fromkeys(nc + luat.nhu_cau) if x != "khac"]
+    dx.nhu_cau = nc or ["khac"]
 
     dia_chi = d.get("dia_chi")
     if isinstance(dia_chi, str) and dia_chi.strip():
@@ -418,16 +409,21 @@ class Ollama:
 
     ten = "ollama"
 
-    def __init__(self, http: httpx.AsyncClient, base_url: str, mo_hinh: str, timeout: float) -> None:
+    def __init__(self, http: httpx.AsyncClient, base_url: str, mo_hinh: str, timeout: float, so_luong: int = 0) -> None:
         self._http, self._url, self.mo_hinh, self._timeout = http, base_url.rstrip("/"), mo_hinh, timeout
+        self._so_luong = so_luong
 
     async def hoi(self, van_ban: str) -> dict[str, Any]:
+        options: dict[str, Any] = {"temperature": 0, "num_ctx": 2048, "num_predict": 384}
+        if self._so_luong > 0:
+            # Ollama mặc định dùng mọi lõi; trong VM Docker (macOS) các luồng tranh nhau, đo được chậm ~30 lần
+            options["num_thread"] = self._so_luong
         body = {
             "model": self.mo_hinh,
             "stream": False,
             "format": SCHEMA,
             "keep_alive": "30m",
-            "options": {"temperature": 0, "num_ctx": 2048, "num_predict": 384},
+            "options": options,
             "messages": [{"role": "system", "content": LOI_DAN},
                          {"role": "user", "content": tin_nguoi_dung(van_ban)}],
         }
@@ -520,7 +516,8 @@ def tao(cfg: Any, http: httpx.AsyncClient) -> BocTach:
     """BocTach theo cấu hình (config.Config: llm_provider, llm_base_url, llm_model, llm_api_key, llm_timeout_giay)."""
     p = cfg.llm_provider
     if p == "ollama":
-        return BocTach(p, Ollama(http, cfg.llm_base_url or "http://ollama:11434", cfg.llm_model, cfg.llm_timeout_giay))
+        return BocTach(p, Ollama(http, cfg.llm_base_url or "http://ollama:11434", cfg.llm_model, cfg.llm_timeout_giay,
+                                 cfg.llm_so_luong))
     if p == "openai-compatible":
         if not cfg.llm_base_url:
             raise ValueError("LLM_PROVIDER=openai-compatible cần LLM_BASE_URL")

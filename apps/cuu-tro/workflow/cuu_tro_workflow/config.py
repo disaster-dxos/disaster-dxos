@@ -98,6 +98,9 @@ class Config:
     llm_model: str = "qwen2.5:7b"
     llm_api_key: str = ""
     llm_timeout_giay: float = 120.0
+    # Số luồng CPU Ollama dùng cho mỗi request (num_thread); 0 = Ollama tự chọn (mọi lõi). Đo trên Mac M-series,
+    # Docker 10 vCPU: tự chọn 0,4 token/s, 4-6 luồng 13 token/s (docs/architecture.md mục 6.4)
+    llm_so_luong: int = 6
 
 
 def _llm_provider() -> str:
@@ -163,6 +166,7 @@ def load() -> Config:
         llm_base_url=os.environ.get("LLM_BASE_URL", "").strip(),
         llm_model=_llm_model(llm),
         llm_api_key=os.environ.get("LLM_API_KEY", "").strip(),
+        llm_so_luong=max(0, _int("LLM_SO_LUONG", 6)),
         llm_timeout_giay=min(600.0, max(1.0, float(os.environ.get("LLM_TIMEOUT_GIAY", 120)))),
     )
 

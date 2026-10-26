@@ -627,11 +627,24 @@ sequenceDiagram
 | AI có tạo tin không | **Không**. Chỉ đề xuất; người duyệt gửi `tin_keu_cuu` (đã sửa) qua `POST /workflow/keu-cuu` như mọi tin khác | Tin kêu cứu sai vị trí làm đội cứu hộ đi nhầm chỗ. Mô hình nhỏ chạy CPU có thể sai; người chịu trách nhiệm là điều phối viên (HITL, nguyên lý [I] của đề). Dùng lại toàn bộ Poka-yoke và chốt chặn trùng của #66 |
 | Chọn mô hình | Biến `LLM_PROVIDER`: `gia-lap` (mặc định), `ollama`, `openai-compatible`, `tat` (D-005) | Laptop 16 GB không phải lúc nào cũng chạy được 7B; CI không tải mô hình. Xã có máy chủ GPU hoặc API riêng thì đổi biến, không đổi mã |
 | Mô hình mặc định | Qwen2.5 7B (Apache-2.0) qua Ollama (MIT), dịch vụ riêng ở profile `ai`, không mở cổng ra host | Qwen2.5 3B/72B không phải Apache-2.0, Llama/Gemma có điều khoản riêng: API (`config.load`) và `ollama-pull` đều từ chối các tên này. Trọng số nằm trong volume, không trong repo |
-| SĐT, tọa độ | Lấy bằng regex trên văn bản gốc; giá trị mô hình đưa ra mà không có trong văn bản thì bỏ, ghi cảnh báo | Hai trường quyết định đội cứu hộ đi đâu, gọi ai; mô hình ngôn ngữ hay "điền cho đủ". Tọa độ KHÔNG suy từ địa chỉ: tin thiếu tọa độ thì Poka-yoke báo `lat`/`lon`, người duyệt chọn điểm trên bản đồ |
+| SĐT, tọa độ | SĐT: số mô hình đưa phải có trong văn bản, không thì dùng số regex tìm được. Tọa độ: **chỉ** lấy bằng regex (tự đổi chỗ khi viết "kinh độ, vĩ độ"); mô hình đưa tọa độ khác thì bỏ, ghi cảnh báo | Hai trường quyết định đội cứu hộ đi đâu, gọi ai; mô hình ngôn ngữ hay "điền cho đủ". Tọa độ KHÔNG suy từ địa chỉ: tin thiếu tọa độ thì Poka-yoke báo `lat`/`lon`, người duyệt chọn điểm trên bản đồ |
 | Mô hình chậm hoặc chết | Quá `LLM_TIMEOUT_GIAY` (90 s) hay lỗi → bộ luật dự phòng, `ai.du_phong = true` | Lúc bão, máy chạy mô hình quá tải là chuyện bình thường; tin không được mất vì AI |
 | Dữ liệu cá nhân | Mô tả thay SĐT bằng `[SĐT]`; không ghi văn bản tin, SĐT ra log; kiểm trùng qua hàm `SECURITY DEFINER` chỉ trả mã tin + khoảng cách | Vai không được xem SĐT chỉ thấy bản che (#60): mô tả không được làm lộ lại. `cuu_tro_app` vẫn không đọc được cột `reporter_phone` |
 | Tiêm lệnh qua tin nhắn | Tin nằm trong khung `<tin>…</tin>`, lời dặn nói rõ là dữ liệu; đầu ra ép theo JSON schema rồi kiểm lại từng trường | Kẻ xấu có thể gửi "bỏ qua hướng dẫn…". Kết quả xấu nhất vẫn chỉ là một đề xuất sai mà người duyệt thấy cạnh văn bản gốc |
+| Nhu cầu | Hợp của nhu cầu mô hình đưa ra và từ khóa của bộ luật | Đo thật: Qwen2.5 7B bỏ sót nhu cầu ở 4/11 tin; từ khóa ít khi sai |
+| Thời hạn | `LLM_TIMEOUT_GIAY` 120 s < `GW_AI_TIMEOUT_GIAY` 150 s (upstream APISIX riêng `workflow-api-ai`; upstream chung chỉ 35 s) | Gateway cắt trước thì người dùng nhận 504 thay vì đề xuất của bộ luật dự phòng (gặp khi đo thật) |
+| Số luồng CPU | `LLM_SO_LUONG` 6, gửi Ollama dưới dạng `num_thread` mỗi request | Ollama mặc định dùng mọi lõi; trong VM Docker trên Mac các luồng tranh nhau: 0,43 token/s so với 13 token/s khi đặt 4-6 luồng |
 | Không dùng LangGraph, Qdrant | Gọi HTTP trực tiếp bằng `httpx` (đã có) | Bóc tách là một lượt hỏi-đáp, chưa cần đồ thị tác tử hay tìm kiếm vector; thêm sau khi có bài toán cần (vd tra cứu quy trình) |
+
+**Đo thật (26/10/2026, MacBook Apple Silicon, OrbStack 10 vCPU / 16 GB, Ollama 0.40.3 chạy CPU trong Docker, `qwen2.5:7b` Q4_K_M, `LLM_SO_LUONG=6`)**, bằng `make danh-gia-ai` trên 12 tin mẫu giả (`du_lieu/tin_keu_cuu_mau.json`, 59 trường có đáp án):
+
+| Nhà cung cấp | Đúng | Thời gian mỗi tin | Ghi chú |
+|---|---|---|---|
+| `gia-lap` (bộ luật) | 59/59 | < 10 ms | Tin mẫu viết theo khả năng của bộ luật; tin lạ hơn thì bộ luật kém hơn mô hình |
+| `ollama` Qwen2.5 7B | 58/59 (98%) | trung vị 11,5 s, chậm nhất 13,8 s (lần đầu nạp mô hình thêm ~15 s) | Sai 1: "ngập tới ngực, có em bé, không ra được" → `khan_cap` thay vì `cao` (lệch về phía an toàn). Trước khi sửa tọa độ/nhu cầu: 52/59 |
+| `ollama`, Ollama tự chọn số luồng | 0/12 trong hạn | > 120 s, mọi tin dùng bộ luật dự phòng | 0,43 token/s; request bị hủy vẫn chạy thêm ~1 phút trong Ollama |
+
+Tài nguyên: image `ollama/ollama:0.40.3` 7,0 GB trên ổ (nén ~2,6 GB arm64), mô hình 4,7 GB trong volume `ollamadata`, Ollama dùng ~4,7 GiB RAM khi đã nạp mô hình (`OLLAMA_MEM_LIMIT` 8g), CPU ~900% lúc sinh; `make up-ai` lần đầu 6,5–10 phút (tải ~7 GB). `cuu-tro-api` không đổi (~65 MiB). Máy có GPU, hoặc Ollama chạy thẳng trên macOS (Metal), nhanh hơn nhiều: `LLM_BASE_URL=http://host.docker.internal:11434`.
 
 ## 7. Vì sao lõi độc lập với nghiệp vụ (`core/` và `apps/`)
 
