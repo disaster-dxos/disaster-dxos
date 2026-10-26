@@ -44,7 +44,7 @@ up-ai:         ## Ollama + tải mô hình LLM_MODEL (#102, profile ai, lần đ
 danh-gia-ai:   ## Đo độ đúng AI bóc tách (#102) trên tin mẫu giả, với LLM_PROVIDER đang chạy (cần make up)
 	python3 scripts/danh-gia-ai.py
 
-smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS, ràng buộc DB, phân quyền GraphQL, workflow phân công, luồng cảm biến MQTT, ảnh hiện trường, sổ cái minh bạch, web điều phối qua gateway, thông báo realtime Centrifugo, bản đồ tin kêu cứu realtime (GraphQL subscription), màn phân công 2 vai, API kêu cứu Poka-yoke, bản sao số trạm đo NGSI-LD trên Scorpio + trận lũ mẫu, thông báo cảnh báo vượt ngưỡng qua Temporal, tiền cứu trợ + xác minh sổ cái, lưu trữ Parquet + DuckDB, Grafana dashboard điều hành (tự bật profile bi), lớp trạm đo mực nước của web, trang Minh bạch công khai tự kiểm sổ cái trong trình duyệt, hàng chờ duyệt tin AI (HITL), AI bóc tách tin kêu cứu (cần make up trước)
+smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS, ràng buộc DB, phân quyền GraphQL, workflow phân công, luồng cảm biến MQTT, ảnh hiện trường, sổ cái minh bạch, web điều phối qua gateway, thông báo realtime Centrifugo, bản đồ tin kêu cứu realtime (GraphQL subscription), màn phân công 2 vai, API kêu cứu Poka-yoke, bản sao số trạm đo NGSI-LD trên Scorpio + trận lũ mẫu, thông báo cảnh báo vượt ngưỡng qua Temporal, tiền cứu trợ + xác minh sổ cái, lưu trữ Parquet + DuckDB, Grafana dashboard điều hành (tự bật profile bi), lớp trạm đo mực nước của web, trang Minh bạch công khai tự kiểm sổ cái trong trình duyệt, hàng chờ duyệt tin AI (HITL), đường gọi của app hiện trường (PKCE dxos-mobile, Idempotency-Key), AI bóc tách tin kêu cứu (cần make up trước)
 	bash scripts/smoke-openbao.sh
 	bash scripts/smoke-jwt.sh
 	bash scripts/smoke-gateway.sh
@@ -68,8 +68,9 @@ smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/Seaweed
 	bash scripts/smoke-grafana.sh
 	bash scripts/smoke-tram-do.sh
 	bash scripts/smoke-minh-bach.sh
-	# Trước smoke-ai: smoke-ai chạy cuối ca 429 của route /workflow/ai/*, hàng chờ cũng đưa tin vào qua route đó
+	# Trước smoke-ai: smoke-ai chạy cuối ca 429 của route /workflow/ai/*; hàng chờ và app hiện trường cũng gửi qua route đó
 	bash scripts/smoke-hang-cho.sh
+	bash scripts/smoke-mobile.sh
 	bash scripts/smoke-ai.sh
 
 luu-tru:       ## Xuất dữ liệu cũ (trước đầu tháng này) ra Parquet trên SeaweedFS (#91); DEN=YYYY-MM-DD để đổi mốc

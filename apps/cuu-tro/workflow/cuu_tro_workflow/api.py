@@ -46,6 +46,9 @@ Tiền cứu trợ + xác minh chung (#89, cuu_tro_workflow/so_cai_csdl.py, apps
 Thông báo realtime (#68, cuu_tro_workflow/thong_bao.py):
   GET  /realtime/token              token kết nối Centrifugo ngắn hạn (dieu-phoi; quan-tri khi realm có),
                                     kênh server-side "dieu-phoi"; web mở WebSocket /realtime/websocket
+Idempotency-Key (#106, cuu_tro_workflow/idempotency.py): POST /keu-cuu, POST /tai-len/su-co/{id}/anh và
+  POST /ai/boc-tach có vao_hang_cho nhận header Idempotency-Key; gửi lại cùng khóa → phản hồi cũ (header
+  Idempotent-Replayed: true), không tạo trùng. App hiện trường gửi lại từ hàng đợi offline.
 "Cuu-ho của đội được gán" không viết lại luật ở đây: API hỏi Hasura qua gateway bằng chính JWT
 người dùng; luật lọc theo đội của Hasura metadata (#26) trả null thì người dùng không có quyền.
 """
@@ -70,7 +73,7 @@ from temporalio.common import Priority, WorkflowIDConflictPolicy, WorkflowIDReus
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError
 
-from . import anh, boc_tach, config, hang_cho, keu_cuu, so_cai, so_cai_csdl, thong_bao
+from . import anh, boc_tach, config, hang_cho, idempotency, keu_cuu, so_cai, so_cai_csdl, thong_bao
 from .auth import VAI_TRO_CUU_HO, VAI_TRO_DIEU_PHOI, VAI_TRO_TINH_NGUYEN, NguoiDung, XacThuc, can_vai_tro
 from .s3 import KhoAnh, LoiS3
 from .logic import PhanHoi, TrangThaiPhanCong, XacNhan, YeuCauHuy, uu_tien
@@ -112,8 +115,8 @@ class SoAnh:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
 
-    async def them(self, **d: Any) -> dict[str, Any]:
-        row = await self._pool.fetchrow(
+    async def them(self, conn: asyncpg.Connection | None = None, **d: Any) -> dict[str, Any]:
+        row = await (conn or self._pool).fetchrow(
             """INSERT INTO cuu_tro.incident_media
                  (id, incident_id, object_key, content_type, size_bytes, sha256, uploaded_by, uploader_role)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -173,8 +176,9 @@ class SoTin:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
 
-    async def them(self, tin: keu_cuu.TinKeuCuu, created_by: str) -> dict[str, Any]:
-        row = await self._pool.fetchrow(keu_cuu.SQL_THEM_TIN, *keu_cuu.tham_so_them_tin(tin, created_by))
+    async def them(self, tin: keu_cuu.TinKeuCuu, created_by: str, conn: asyncpg.Connection | None = None) -> dict[str, Any]:
+        # conn: chạy trong transaction giữ khóa idempotency (#106)
+        row = await (conn or self._pool).fetchrow(keu_cuu.SQL_THEM_TIN, *keu_cuu.tham_so_them_tin(tin, created_by))
         return dict(row)
 
     async def tim_trung(self, sdt: str, lon: float, lat: float) -> dict[str, Any] | None:
@@ -211,6 +215,12 @@ async def lifespan(app: FastAPI):
             st.so_cai_cong_khai = so_cai_csdl.SoCaiCongKhai(pool)
         if not hasattr(st, "so_hang_cho"):
             st.so_hang_cho = hang_cho.SoHangCho(pool)
+        if not hasattr(st, "so_idem"):
+            st.so_idem = idempotency.SoIdempotency(pool)
+            try:
+                log.info("đã xóa %d khóa idempotency hết hạn", await st.so_idem.don())
+            except asyncpg.PostgresError as e:  # bảng chưa có (migration chưa chạy) không chặn khởi động
+                log.warning("không dọn được khóa idempotency: %s", type(e).__name__)
     try:
         async with httpx.AsyncClient(base_url=cfg.gateway_url, timeout=10) as http, \
                 httpx.AsyncClient(timeout=30) as http_s3, \
@@ -357,8 +367,29 @@ async def keu_cuu_moi(request: Request, nd: NguoiDungDep, response: Response) ->
     kq = keu_cuu.kiem_tra(d, st.cfg.keu_cuu_vung)
     if isinstance(kq, list):
         raise HTTPException(422, keu_cuu.loi_422(kq))
+    # App hiện trường gửi lại từ hàng đợi offline với cùng Idempotency-Key (#106): không tạo tin thứ hai
+    khoa, sha = _khoa_idem(request), idempotency.bam("POST /keu-cuu", raw)
+    if (cu := await _da_xong(st, nd, khoa, "POST /keu-cuu", sha)) is not None:
+        return _tra(response, cu)
+
+    async def xu_ly(conn: asyncpg.Connection | None) -> tuple[int, dict[str, Any], dict[str, Any]]:
+        dong = await (st.so_tin.them(kq, nd.sub, conn=conn) if conn else st.so_tin.them(kq, nd.sub))
+        body = {
+            "id": str(dong["id"]),
+            "status": dong["status"],
+            "urgency": dong["urgency"],
+            "people_count": dong["people_count"],
+            "lat": kq.lat,
+            "lon": kq.lon,
+            "created_at": dong["created_at"].isoformat(),
+            # Trigger outbox (0007) đã xếp tin vào hàng phân công tự động; bản đồ thấy tin qua subscription (#60)
+            "phan_cong": "tu_dong",
+        }
+        # Không có SĐT/tên trong phản hồi nên lưu nguyên để phát lại
+        return 201, body, body
+
     try:
-        dong = await st.so_tin.them(kq, nd.sub)
+        ket_qua = await _chay_idem(st, nd, khoa, "POST /keu-cuu", sha, xu_ly)
     except asyncpg.UniqueViolationError as e:
         raise _loi_tin_trung(e) from None
     except (asyncpg.CheckViolationError, asyncpg.NotNullViolationError) as e:
@@ -366,18 +397,7 @@ async def keu_cuu_moi(request: Request, nd: NguoiDungDep, response: Response) ->
         log.error("CSDL từ chối tin kêu cứu: %s %s", type(e).__name__, e.constraint_name)
         loi = keu_cuu.LoiTruong("body", "Dữ liệu không qua được ràng buộc của CSDL.")
         raise HTTPException(422, keu_cuu.loi_422([loi])) from None
-    response.headers["Cache-Control"] = "no-store"
-    return {
-        "id": str(dong["id"]),
-        "status": dong["status"],
-        "urgency": dong["urgency"],
-        "people_count": dong["people_count"],
-        "lat": kq.lat,
-        "lon": kq.lon,
-        "created_at": dong["created_at"].isoformat(),
-        # Trigger outbox (0007) đã xếp tin vào hàng phân công tự động; bản đồ thấy tin qua subscription (#60)
-        "phan_cong": "tu_dong",
-    }
+    return _tra(response, ket_qua)
 
 
 @app.post("/ai/boc-tach")
@@ -398,6 +418,11 @@ async def ai_boc_tach(request: Request, nd: NguoiDungDep, response: Response) ->
         keu_cuu.LoiTruong("body", "Nội dung gửi lên không phải JSON hợp lệ.")]
     if isinstance(vao, list):
         raise HTTPException(422, {**keu_cuu.loi_422(vao), "thong_bao": "Chưa bóc tách được: kiểm tra lại các trường."})
+    # Idempotency-Key chỉ có nghĩa khi ghi (đưa vào hàng chờ, #106): app chuyển tin từ hàng đợi offline
+    khoa = _khoa_idem(request) if vao.vao_hang_cho else None
+    sha = idempotency.bam("POST /ai/boc-tach", raw)
+    if (cu := await _da_xong(st, nd, khoa, "POST /ai/boc-tach", sha)) is not None:
+        return _tra(response, cu)
     kq = await st.boc_tach.boc_tach(vao.van_ban)
     body = kq.de_xuat.body_keu_cuu(boc_tach.NGUON_TIN[vao.nguon])
     pk = keu_cuu.kiem_tra(body, st.cfg.keu_cuu_vung)
@@ -422,15 +447,65 @@ async def ai_boc_tach(request: Request, nd: NguoiDungDep, response: Response) ->
                "du_phong": kq.du_phong},
         "canh_bao": canh_bao,
     }
-    if vao.vao_hang_cho:
+    if not vao.vao_hang_cho:
+        return ket_qua
+
+    async def xu_ly(conn: asyncpg.Connection | None) -> tuple[int, dict[str, Any], dict[str, Any]]:
         # HITL (#104): lưu nguyên văn bản + đề xuất do chính API vừa tạo; điều phối duyệt mới thành tin thật
-        ket_qua["hang_cho"] = await st.so_hang_cho.them(
-            van_ban=vao.van_ban, nguon=vao.nguon, ket_qua=ket_qua, nguoi_gui=nd.sub,
-            ten_nguoi_gui=nd.ten_dang_nhap,
-            vai_tro=VAI_TRO_DIEU_PHOI if nd.co(VAI_TRO_DIEU_PHOI) else VAI_TRO_TINH_NGUYEN,
-        )
-        log.info("đã đưa tin vào hàng chờ duyệt %s", ket_qua["hang_cho"]["id"])
-    return ket_qua
+        tham_so: dict[str, Any] = {
+            "van_ban": vao.van_ban, "nguon": vao.nguon, "ket_qua": ket_qua, "nguoi_gui": nd.sub,
+            "ten_nguoi_gui": nd.ten_dang_nhap,
+            "vai_tro": VAI_TRO_DIEU_PHOI if nd.co(VAI_TRO_DIEU_PHOI) else VAI_TRO_TINH_NGUYEN,
+        }
+        hc = await (st.so_hang_cho.them(**tham_so, conn=conn) if conn else st.so_hang_cho.them(**tham_so))
+        # Phát lại chỉ trả phần không có dữ liệu cá nhân (đề xuất có SĐT, tên): mã hàng chờ, kết luận Poka-yoke
+        luu = {"hang_cho": hc, "ai": ket_qua["ai"], "poka_yoke": {"hop_le": ket_qua["poka_yoke"]["hop_le"]},
+               "phat_lai_rut_gon": True}
+        return 200, {**ket_qua, "hang_cho": hc}, luu
+
+    kq_hc = await _chay_idem(st, nd, khoa, "POST /ai/boc-tach", sha, xu_ly)
+    if not kq_hc.phat_lai:
+        log.info("đã đưa tin vào hàng chờ duyệt %s", kq_hc.body["hang_cho"]["id"])
+    return _tra(response, kq_hc)
+
+
+# ---------------- Idempotency-Key (#106) ----------------
+
+def _khoa_idem(request: Request) -> str | None:
+    try:
+        return idempotency.doc_khoa(request.headers.get(idempotency.HEADER))
+    except idempotency.KhoaSai:
+        raise HTTPException(422, idempotency.loi_422("sai")) from None
+
+
+async def _da_xong(st: Any, nd: NguoiDung, khoa: str | None, endpoint: str, sha: bytes) -> idempotency.KetQua | None:
+    """Khóa đã xử lý xong trước đó → phản hồi cũ để phát lại; không có khóa / chưa có → None."""
+    if khoa is None:
+        return None
+    try:
+        return await st.so_idem.tim(nd.sub, khoa, endpoint, sha)
+    except idempotency.KhoaDungLai:
+        raise HTTPException(422, idempotency.loi_422("dung_lai")) from None
+
+
+async def _chay_idem(st: Any, nd: NguoiDung, khoa: str | None, endpoint: str, sha: bytes,
+                     xu_ly: idempotency.XuLy) -> idempotency.KetQua:
+    """Chạy nghiệp vụ; có khóa thì trong transaction giữ khóa (yêu cầu đồng thời cùng khóa phát lại kết quả)."""
+    if khoa is None:
+        status, body, _ = await xu_ly(None)
+        return idempotency.KetQua(status, body, False)
+    try:
+        return await st.so_idem.chay(nd.sub, khoa, endpoint, sha, xu_ly)
+    except idempotency.KhoaDungLai:
+        raise HTTPException(422, idempotency.loi_422("dung_lai")) from None
+
+
+def _tra(response: Response, kq: idempotency.KetQua) -> dict[str, Any]:
+    response.status_code = kq.status
+    response.headers["Cache-Control"] = "no-store"
+    if kq.phat_lai:
+        response.headers[idempotency.HEADER_PHAT_LAI] = "true"
+    return kq.body
 
 
 def _loi_tin_trung(e: asyncpg.UniqueViolationError) -> HTTPException:
@@ -596,10 +671,20 @@ async def tai_anh(request: Request, incident_id: uuid.UUID, nd: NguoiDungDep, re
     khai_bao = request.headers.get("content-length")
     if khai_bao and khai_bao.isdigit() and int(khai_bao) > cfg.anh_max_bytes:
         raise HTTPException(413, f"Ảnh vượt {cfg.anh_max_bytes} byte")
+    # App gửi lại ảnh từ hàng đợi offline (#106): cùng khóa đã xong thì phát lại NGAY, trước khi kiểm quyền theo
+    # trạng thái tin (tin có thể đã sang phan_cong sau lần gửi đầu); khóa chỉ của chính người gửi
+    khoa = _khoa_idem(request)
+    endpoint = f"POST /tai-len/su-co/{incident_id}/anh"
+    du_lieu = b""
+    if khoa is not None:
+        du_lieu = await doc_body_gioi_han(request, cfg.anh_max_bytes)
+        if (cu := await _da_xong(st, nd, khoa, endpoint, idempotency.bam(endpoint, du_lieu))) is not None:
+            return _tra(response, _them_link(request, cu))
     tin = (await hoi_hasura(request, nd, vai_tro, Q_TIN_ANH, {"id": str(incident_id)}))["incidents_by_pk"]
     _tu_choi(anh.quyen_tai_len(vai_tro, tin))
 
-    du_lieu = await doc_body_gioi_han(request, cfg.anh_max_bytes)
+    if khoa is None:
+        du_lieu = await doc_body_gioi_han(request, cfg.anh_max_bytes)
     if not du_lieu:
         raise HTTPException(400, "Body rỗng: gửi nội dung ảnh trong body request")
     # Loại thật từ magic bytes; Content-Type và tên tệp của client bị bỏ qua
@@ -617,18 +702,38 @@ async def tai_anh(request: Request, incident_id: uuid.UUID, nd: NguoiDungDep, re
         raise HTTPException(502, "Không ghi được ảnh lên kho lưu trữ") from e
     ban_ghi = {"id": media_id, "incident_id": str(incident_id), "object_key": key, "content_type": loai,
                "size_bytes": len(du_lieu), "sha256": sha, "uploaded_by": nd.sub, "uploader_role": vai_tro}
-    try:
-        them = await st.so_anh.them(**ban_ghi)
-    except Exception as e:
-        # Không để object mồ côi trên S3 khi không ghi được siêu dữ liệu
-        log.error("ghi incident_media lỗi: %s", e)
+
+    async def xu_ly(conn: asyncpg.Connection | None) -> tuple[int, dict[str, Any], dict[str, Any]]:
+        them = await (st.so_anh.them(conn=conn, **ban_ghi) if conn else st.so_anh.them(**ban_ghi))
+        # Lưu không kèm link (link presigned hết hạn sau vài phút; phát lại thì ký link mới)
+        return 201, {**ban_ghi, **them}, {**ban_ghi, **them}
+
+    async def xoa_mo_coi() -> None:
         try:
             await st.kho_anh.xoa(key)
         except (LoiS3, httpx.HTTPError) as e2:
             log.error("xóa object mồ côi %s lỗi: %s", key, e2)
+
+    try:
+        kq = await _chay_idem(st, nd, khoa, endpoint, idempotency.bam(endpoint, du_lieu), xu_ly)
+    except HTTPException:
+        await xoa_mo_coi()
+        raise
+    except Exception as e:
+        # Không để object mồ côi trên S3 khi không ghi được siêu dữ liệu
+        log.error("ghi incident_media lỗi: %s", e)
+        await xoa_mo_coi()
         raise HTTPException(500, "Không ghi được thông tin ảnh") from e
-    response.headers["Cache-Control"] = "no-store"
-    return {**ban_ghi, **them, "link": _link(request, key, cfg.anh_link_han_giay)}
+    if kq.phat_lai:
+        # Yêu cầu cùng khóa chạy song song đã ghi trước: object vừa ghi của yêu cầu này thừa
+        await xoa_mo_coi()
+    return _tra(response, _them_link(request, kq))
+
+
+def _them_link(request: Request, kq: idempotency.KetQua) -> idempotency.KetQua:
+    """Phản hồi ảnh + link xem presigned mới (link trong lần trả trước có thể đã hết hạn)."""
+    link = _link(request, kq.body["object_key"], request.app.state.cfg.anh_link_han_giay)
+    return idempotency.KetQua(kq.status, {**kq.body, "link": link}, kq.phat_lai)
 
 
 @app.get("/su-co/{incident_id}/anh")

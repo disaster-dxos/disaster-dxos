@@ -121,9 +121,9 @@ class SoHangCho:
         self._pool = pool
 
     async def them(self, *, van_ban: str, nguon: str, ket_qua: dict[str, Any], nguoi_gui: str,
-                   ten_nguoi_gui: str | None, vai_tro: str) -> dict[str, Any]:
+                   ten_nguoi_gui: str | None, vai_tro: str, conn: asyncpg.Connection | None = None) -> dict[str, Any]:
         ai = ket_qua["ai"]
-        row = await self._pool.fetchrow(
+        row = await (conn or self._pool).fetchrow(
             """INSERT INTO cuu_tro.ai_intake_reviews
                  (raw_text, text_source, ai_result, ai_provider, ai_model, ai_fallback, ai_duration_ms, ai_urgency,
                   ai_valid, submitted_by, submitted_by_name, submitted_role)

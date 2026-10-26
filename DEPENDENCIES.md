@@ -58,7 +58,25 @@ Giấy phép kiểm tra ngày 17/10/2026 trên file LICENSE ở repo chính th�
 | MapLibre GL JS | 5.24.0 | BSD-3-Clause | github.com/maplibre/maplibre-gl-js | Bản đồ web điều phối (npm, #59). Chưa dùng 6.x: bản chỉ ESM, worker tách tệp, kiểu bản đồ không nạp được khi Vite đóng gói | ✔ |
 | graphql-ws | 6.3.0 | MIT | github.com/enisdenjo/graphql-ws | Client GraphQL subscription qua WebSocket (giao thức `graphql-transport-ws`) của bản đồ tin kêu cứu realtime: tự kết nối lại, ping giữ kết nối (npm, #60). Kéo theo peer `graphql` 17.0.2 (MIT, chỉ dùng kiểu); `ws`, `crossws`, `@fastify/websocket` là peer tùy chọn cho phía máy chủ, không cài | ✔ |
 | centrifuge-js (`centrifuge`) | 5.7.4 | MIT | github.com/centrifugal/centrifuge-js | Client WebSocket của web điều phối nhận thông báo realtime từ Centrifugo, tự kết nối lại và lấy bù tin (npm, #68). Kéo theo protobufjs 7.6.6 + `@protobufjs/*` (BSD-3-Clause), long 5.3.2 (Apache-2.0), events 3.3.0 (MIT); web chỉ dùng giao thức JSON | ✔ |
-| Flutter SDK | tuần 5 | BSD-3-Clause | github.com/flutter/flutter | App hiện trường (pub) | ☐ |
+| React Native | 0.80.3 | MIT | github.com/facebook/react-native | App hiện trường `apps/cuu-tro/mobile` (D-011, thay Flutter), bare, New Architecture; khung `android/`, `ios/` sinh từ `@react-native-community/template` 0.80.3 (MIT) rồi sửa (#106). Kéo theo React 19.1.0, Hermes, Metro (MIT) | ✔ |
+| React Navigation (`native`, `native-stack`, `bottom-tabs`; `elements` ghim 2.5.2 bằng `resolutions`) | 7.1.14 / 7.3.21 / 7.4.2 | MIT | github.com/react-navigation/react-navigation | Điều hướng app; kéo theo react-native-screens 4.15.0, react-native-safe-area-context 5.6.2 (MIT) (#106) | ✔ |
+| TanStack Query (`@tanstack/react-query`) | 5.90.5 | MIT | github.com/TanStack/query | Đọc dữ liệu qua gateway trong app, giữ dữ liệu cũ khi mất mạng (#106) | ✔ |
+| axios | 1.20.0 | MIT | github.com/axios/axios | Client HTTP của app qua API Gateway (#106; ≥ 1.16 vì các lỗ hổng prototype pollution/ReDoS của 1.x cũ) | ✔ |
+| Zustand | 5.0.8 | MIT | github.com/pmndrs/zustand | Trạng thái app: phiên, cài đặt, hàng đợi offline, bản nháp (#106) | ✔ |
+| i18next, react-i18next, react-native-localize | 25.5.2 / 15.7.3 / 3.5.2 | MIT | github.com/i18next | Tiếng Việt (mặc định), tiếng Anh trong app (#106) | ✔ |
+| @react-native-community/netinfo | 11.4.1 | MIT | github.com/react-native-netinfo/react-native-netinfo | Theo dõi mạng để gửi lại hàng đợi offline (#106) | ✔ |
+| @react-native-async-storage/async-storage | 2.2.0 | MIT | github.com/react-native-async-storage/async-storage | Cài đặt của app (không có dữ liệu cá nhân) (#106) | ✔ |
+| react-native-keychain | 10.0.0 | MIT | github.com/oblador/react-native-keychain | Token đăng nhập và hàng đợi offline mã hóa trong Keychain (iOS) / Keystore (Android) (#106) | ✔ |
+| react-native-app-auth | 8.0.3 | MIT | github.com/FormidableLabs/react-native-app-auth | Đăng nhập Keycloak OIDC + PKCE (client `dxos-mobile`); kéo theo AppAuth-iOS / AppAuth-Android (Apache-2.0) (#106). Chưa dùng 9.x: cần React Native ≥ 0.86 | ✔ |
+| MapLibre React Native (`@maplibre/maplibre-react-native`) | 11.5.0 | MIT | github.com/maplibre/maplibre-react-native | Bản đồ chọn vị trí trong app (thay react-native-maps, D-011); MapLibre Native Android 13.6.1 / iOS 6.31.0 (BSD-2-Clause) tải lúc build qua Gradle / Swift Package Manager, bộ định vị mặc định (không Google Play Services) (#106) | ✔ |
+| @react-native-community/geolocation | 3.4.0 | MIT | github.com/michalchudziak/react-native-geolocation | GPS khi gửi kêu cứu, cập nhật vị trí đội (#106) | ✔ |
+| react-native-image-picker | 8.2.1 | MIT | github.com/react-native-image-picker/react-native-image-picker | Chụp/chọn ảnh hiện trường (#106) | ✔ |
+| react-native-blob-util | 0.24.6 | MIT | github.com/RonRadtke/react-native-blob-util | Chép ảnh chờ gửi vào thư mục app, tải ảnh lên thẳng từ tệp (#106) | ✔ |
+| react-native-get-random-values | 1.11.0 | MIT | github.com/LinusU/react-native-get-random-values | `crypto.getRandomValues` (Hermes) cho khóa idempotency UUID v4 (#106) | ✔ |
+| lucide-react-native + react-native-svg | 0.525.0 / 15.12.1 | ISC / MIT | github.com/lucide-icons/lucide | Biểu tượng app (cùng bộ Lucide với web) (#106); react-native-svg kéo theo css-tree + mdn-data (CC0-1.0, ngoại lệ ghi trong `scripts/check-licenses.mjs`) | ✔ |
+| Công cụ dev app: TypeScript, ESLint (`@react-native/eslint-config`), Jest, `@testing-library/react-native`, Babel, babel-plugin-module-resolver | 5.8.3 / 8.57.1 / 29.7.0 / 13.2.0 / 7.28 / 5.0.2 | Apache-2.0 / MIT | — | Chỉ lúc phát triển/CI, không vào bản app (#106). Kiểm toàn bộ cây gói bằng `yarn licenses` (930 gói, ngoại lệ: caniuse-lite CC-BY-4.0 lúc build, mdn-data CC0-1.0) | ✔ |
+| Yarn (qua Corepack) | 4.10.3 | BSD-2-Clause | github.com/yarnpkg/berry | Quản lý gói của app, khóa trong `yarn.lock`; không đưa bản Yarn vào repo (#106) | ✔ |
+| Gradle Wrapper | 8.14.1 | Apache-2.0 | github.com/gradle/gradle | `android/gradlew` + `gradle-wrapper.jar` từ template React Native: tải đúng Gradle khi build Android (#106) | ✔ |
 | Tessera (đã chốt – D-007, driver POSIX + antispam BadgerDB) | v1.0.4 (`core/ledger/go.mod`) | Apache-2.0 | github.com/transparency-dev/tessera | Sổ cái minh bạch `core/ledger`: appender, tile/checkpoint tlog-tiles, gói `client` dựng inclusion proof (Go modules, #28) | ✔ |
 | transparency-dev/formats | v0.0.0-20251017110053-404c0d5b696c | Apache-2.0 | github.com/transparency-dev/formats | Đọc/kiểm checkpoint (`log.ParseCheckpoint`) trong `core/ledger` (#28) | ✔ |
 | transparency-dev/merkle | v0.0.2 | Apache-2.0 | github.com/transparency-dev/merkle | Leaf hash RFC 6962, kiểm inclusion proof (`ledger-verify`, #28) | ✔ |
@@ -66,7 +84,7 @@ Giấy phép kiểm tra ngày 17/10/2026 trên file LICENSE ở repo chính th�
 
 **Phụ thuộc Python gián tiếp của `apps/cuu-tro/workflow`** (khóa trong `uv.lock`, có hash trong `requirements.txt`; giấy phép đọc từ metadata gói ngày 20/10/2026): starlette 1.9.0, click 8.5.0, httpcore 1.0.9, idna 3.20, protobuf 7.36.2, pycparser 3.11 (BSD-3-Clause); pydantic 2.14.1, pydantic-core 2.50.1, anyio 4.15.1, h11 0.16.0, annotated-types 0.8.0, annotated-doc 0.0.5, typing-inspection 0.4.4, nexus-rpc 1.4.0 (MIT); cffi 2.1.1 (MIT-0); opentelemetry-api 1.45.1, types-protobuf 7.35.1.20260906 (Apache-2.0); typing-extensions 4.16.0 (PSF-2.0); certifi 2026.10.19 (MPL-2.0, chỉ dùng như gói, không sửa). Tất cả là giấy phép OSI. Image nền `python:3.12.13-slim-bookworm` (PSF-2.0 + gói Debian) chỉ dùng để chạy, không chép mã vào repo.
 
-Phiên bản thư viện được ghim trong file khai báo của từng ứng dụng (`requirements.txt`/`pyproject.toml`, `package-lock.json`, `pubspec.lock`, `go.mod`/`go.sum`) khi tạo. Bảng này cập nhật cùng lúc.
+Phiên bản thư viện được ghim trong file khai báo của từng ứng dụng (`requirements.txt`/`pyproject.toml`, `package-lock.json`, `yarn.lock`, `go.mod`/`go.sum`) khi tạo. Bảng này cập nhật cùng lúc.
 
 **Phụ thuộc Go của `core/ledger`** (#28). `go.mod` của Tessera khai báo cả driver AWS, GCP, Spanner…, nhưng Go chỉ biên dịch gói được import (driver POSIX), nên binary chỉ chứa các gói dưới đây. Danh sách lấy từ `go-licenses report ./...` ngày 20/10/2026; job CI `go-licenses` chạy `go-licenses check` mỗi PR và chặn giấy phép ngoài danh sách Apache-2.0, BSD-2-Clause, BSD-3-Clause, MIT, ISC, MPL-2.0. Cập nhật bảng này khi nâng Tessera (`go get github.com/transparency-dev/tessera@<bản> && go mod tidy`).
 
@@ -130,6 +148,10 @@ Không dùng ô bản đồ Google hay Mapbox (điều khoản đóng). Khi tri�
 | bpmn-js | Giấy phép bpmn.io có điều khoản hạn chế | Workflow viết bằng mã (Temporal) |
 | Hasura image không có hậu tố `-ce` | Kèm thành phần Enterprise độc quyền | Tag `-ce` |
 | Centrifugo PRO | Giấy phép thương mại | Centrifugo OSS |
+| Flutter (kế hoạch cũ) | Không phải lý do giấy phép (BSD-3-Clause): D-011 chọn React Native theo khung app VietEntry nhóm đã làm | React Native |
+| Firebase (FCM, Analytics, Crashlytics), Google/Apple Sign-in | SDK dịch vụ độc quyền, gửi dữ liệu ra dịch vụ ngoài; trái nguyên tắc chỉ gọi lõi qua API Gateway | Keycloak PKCE (react-native-app-auth); thông báo qua Centrifugo/polling |
+| react-native-maps | Gói MIT nhưng hiển thị bản đồ Google/Apple (SDK, điều khoản độc quyền) | MapLibre React Native + dữ liệu OpenStreetMap |
+| Stripe | Thanh toán thương mại, không thuộc đề tài | — |
 | Qwen2.5 3B | Giấy phép Qwen Research, không phải Apache-2.0 | Qwen2.5 7B / 14B |
 | Model Llama, Gemma | Giấy phép riêng của Meta/Google, có điều khoản hạn chế sử dụng | Qwen2.5 7B / 14B |
 | Image có tag `latest` | Không tái lập được bản build | Tag phiên bản cụ thể |

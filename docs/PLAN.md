@@ -62,7 +62,7 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 ## Tuần 5 · 12–18/11 · Tầng [I] + demo công khai
 - [x] [V3] AI bóc tách tin kêu cứu tự do → JSON (địa chỉ, số người, mức khẩn cấp); `LLM_PROVIDER` chọn Ollama + Qwen2.5 7B hoặc API ngoài (#102)
 - [x] [V3] Hàng chờ duyệt HITL trên web điều phối (#104: `vao_hang_cho` trên `/workflow/ai/boc-tach`, bảng vết `ai_intake_reviews`, `POST /workflow/hang-cho/{id}/duyet|huy` qua Poka-yoke của #66, trang web "Duyệt tin AI" có bản đồ chọn vị trí)
-- [ ] [V3] App Flutter: gửi kêu cứu/cập nhật hiện trường, hàng đợi offline
+- [x] [V3] App hiện trường React Native (D-011, thay Flutter): gửi kêu cứu/cập nhật hiện trường, hàng đợi offline (#106: `apps/cuu-tro/mobile/`, đăng nhập Keycloak PKCE client `dxos-mobile`, MapLibre, hàng đợi mã hóa trong Keychain/Keystore, API nhận `Idempotency-Key` cho kêu cứu/ảnh/chuyển tin, job CI `mobile`)
 - [ ] [V1] Demo công khai trên tên miền, bật GitHub Discussions
 
 ## Tuần 6 · 19–25/11 · Tuần UX + cộng đồng → v0.4.0
