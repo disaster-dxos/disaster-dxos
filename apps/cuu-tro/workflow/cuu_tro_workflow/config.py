@@ -91,12 +91,13 @@ class Config:
     so_cai_cho_giay: int = 5
     # AI bóc tách tin kêu cứu (#102): gia-lap (bộ luật, mặc định) | ollama | openai-compatible | tat.
     # LLM_BASE_URL trống với ollama = dịch vụ ollama của profile ai. Khóa API (openai-compatible) do bao agent
-    # render từ OpenBao secret/app/cuu-tro/llm, không ở .env. Quá hạn thì dùng bộ luật dự phòng.
+    # render từ OpenBao secret/app/cuu-tro/llm, không ở .env. Quá hạn thì dùng bộ luật dự phòng; hạn phải nhỏ
+    # hơn GW_AI_TIMEOUT_GIAY của gateway (150 s) để kịp trả lời trước khi gateway cắt.
     llm_provider: str = "gia-lap"
     llm_base_url: str = ""
     llm_model: str = "qwen2.5:7b"
     llm_api_key: str = ""
-    llm_timeout_giay: float = 60.0
+    llm_timeout_giay: float = 120.0
 
 
 def _llm_provider() -> str:
@@ -162,7 +163,7 @@ def load() -> Config:
         llm_base_url=os.environ.get("LLM_BASE_URL", "").strip(),
         llm_model=_llm_model(llm),
         llm_api_key=os.environ.get("LLM_API_KEY", "").strip(),
-        llm_timeout_giay=min(600.0, max(1.0, float(os.environ.get("LLM_TIMEOUT_GIAY", 60)))),
+        llm_timeout_giay=min(600.0, max(1.0, float(os.environ.get("LLM_TIMEOUT_GIAY", 120)))),
     )
 
 

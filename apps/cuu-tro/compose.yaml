@@ -193,7 +193,7 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER:-gia-lap}
       LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
-      LLM_TIMEOUT_GIAY: ${LLM_TIMEOUT_GIAY:-90}
+      LLM_TIMEOUT_GIAY: ${LLM_TIMEOUT_GIAY:-120}
     volumes:
       - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
       - ./apps/cuu-tro/ngsi-ld/context.jsonld:/app/ngsi-ld/context.jsonld:ro

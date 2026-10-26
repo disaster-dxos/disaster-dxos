@@ -41,6 +41,20 @@ upstreams:
       send: 35
       read: 35
 
+  - id: workflow-api-ai
+    type: roundrobin
+    # Cùng API của ứng dụng, riêng cho route /workflow/ai/* (#102): gọi mô hình ngôn ngữ chạy CPU mất hàng
+    # chục giây mỗi request. Thời hạn GW_AI_TIMEOUT_GIAY phải LỚN HƠN LLM_TIMEOUT_GIAY của ứng dụng để ứng
+    # dụng kịp tự dừng mô hình và trả đề xuất của bộ luật dự phòng, thay vì gateway cắt ngang (504).
+    nodes:
+      - host: "${{GW_WORKFLOW_UPSTREAM_HOST:=workflow-api}}"
+        port: ${{GW_WORKFLOW_UPSTREAM_PORT:=8000}}
+        weight: 1
+    timeout:
+      connect: 5
+      send: ${{GW_AI_TIMEOUT_GIAY:=150}}
+      read: ${{GW_AI_TIMEOUT_GIAY:=150}}
+
   - id: ledger
     type: roundrobin
     # Sổ cái minh bạch của lõi (#28): chỉ các đường đọc công khai đi qua gateway
@@ -358,12 +372,13 @@ routes:
   # ngoài), tốn CPU/RAM gấp nhiều lần một request thường, nên có giới hạn tần suất RIÊNG
   # (GW_AI_RATE_LIMIT_COUNT request / GW_RATE_LIMIT_WINDOW giây / IP, đếm riêng route này). Ưu tiên hơn
   # /workflow/* (priority). Còn lại như route /workflow/keu-cuu: JWT bắt buộc, WAF đọc body JSON, body ≤ 1 MiB
-  # (API còn giới hạn riêng 8 KiB). API kiểm lại JWT, vai trò, dữ liệu.
+  # (API còn giới hạn riêng 8 KiB). API kiểm lại JWT, vai trò, dữ liệu. Upstream riêng workflow-api-ai có
+  # thời hạn dài (GW_AI_TIMEOUT_GIAY, mặc định 150 s > LLM_TIMEOUT_GIAY 120 s của ứng dụng).
   - id: workflow-ai
     uri: /workflow/ai/*
     priority: 10
     methods: [POST, OPTIONS]
-    upstream_id: workflow-api
+    upstream_id: workflow-api-ai
     plugins:
       request-id: {}
       client-control: *api-body-limit

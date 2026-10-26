@@ -13,6 +13,7 @@ import json
 import os
 import statistics
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -49,12 +50,18 @@ def dung(k: str, v, d: dict) -> bool:
 
 def main() -> int:
     mau = json.loads(Path(sys.argv[1] if len(sys.argv) > 1 else MAU).read_text())
-    tok = token()
     dem: dict[str, list[bool]] = {}
     thoi_gian = []
     nha_cung_cap = "?"
     for i, m in enumerate(mau):
-        kq = boc_tach(tok, m["van_ban"], m.get("nguon", "van_ban"))
+        try:
+            # Token mới mỗi tin: mô hình chạy CPU mất cả phút một tin, token Keycloak hết hạn sau vài phút
+            kq = boc_tach(token(), m["van_ban"], m.get("nguon", "van_ban"))
+        except urllib.error.HTTPError as e:
+            print(f"tin {i}: lỗi HTTP {e.code}")
+            for k in m["mong_doi"]:
+                dem.setdefault(k, []).append(False)
+            continue
         d, ai = kq["de_xuat"], kq["ai"]
         nha_cung_cap = f"{ai['nha_cung_cap']} {ai['mo_hinh'] or ''}".strip()
         thoi_gian.append(ai["thoi_gian_ms"])
@@ -66,8 +73,9 @@ def main() -> int:
                 sai.append(f"{k}: mong đợi {v!r}, nhận {d.get(k) if k not in ('nhu_cau_co', 'dia_chi_co') else (d['nhu_cau'], d['address_text'])!r}")
         print(f"tin {i}: {ai['thoi_gian_ms']:>6} ms{' (dự phòng)' if ai['du_phong'] else ''}  "
               f"{'đúng hết' if not sai else '; '.join(sai)}")
-    print(f"\nNhà cung cấp: {nha_cung_cap}; {len(mau)} tin; thời gian trung vị {statistics.median(thoi_gian):.0f} ms, "
-          f"lớn nhất {max(thoi_gian)} ms")
+    if thoi_gian:
+        print(f"\nNhà cung cấp: {nha_cung_cap}; {len(mau)} tin; thời gian trung vị {statistics.median(thoi_gian):.0f} ms, "
+              f"lớn nhất {max(thoi_gian)} ms")
     tong = [x for v in dem.values() for x in v]
     for k, v in dem.items():
         print(f"  {k:<16} {sum(v)}/{len(v)}")

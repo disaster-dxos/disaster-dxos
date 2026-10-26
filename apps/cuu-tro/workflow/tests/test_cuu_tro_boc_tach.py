@@ -121,7 +121,7 @@ def test_config_llm(monkeypatch):
     for k in ("LLM_PROVIDER", "LLM_MODEL", "LLM_BASE_URL", "LLM_API_KEY", "LLM_TIMEOUT_GIAY"):
         monkeypatch.delenv(k, raising=False)
     cfg = config.load()
-    assert (cfg.llm_provider, cfg.llm_model, cfg.llm_timeout_giay) == ("gia-lap", "qwen2.5:7b", 60.0)
+    assert (cfg.llm_provider, cfg.llm_model, cfg.llm_timeout_giay) == ("gia-lap", "qwen2.5:7b", 120.0)
     monkeypatch.setenv("LLM_PROVIDER", "Ollama")
     monkeypatch.setenv("LLM_TIMEOUT_GIAY", "5000")
     cfg = config.load()
