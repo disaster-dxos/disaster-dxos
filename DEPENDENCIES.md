@@ -29,9 +29,9 @@ Giấy phép kiểm tra ngày 17/10/2026 trên file LICENSE ở repo chính th�
 | ClamAV | ghim ở tuần 2+ | GPL-2.0 | github.com/Cisco-Talos/clamav | Dịch vụ riêng | sec | ☐ |
 | Centrifugo **OSS** | `centrifugo/centrifugo:v6.9.7` | Apache-2.0 (LICENSE tại tag v6.9.7) | github.com/centrifugal/centrifugo | Dịch vụ riêng, image gốc không sửa, không dùng bản PRO. Chỉ đường WebSocket đi qua APISIX `/realtime/websocket`; HTTP API chỉ trong mạng nội bộ; khóa ký token + API key do bao agent render (#68) | core | ✔ |
 | Grafana OSS | `grafana/grafana-oss:13.0.2` | AGPL-3.0 (LICENSE của repo) | github.com/grafana/grafana, hub.docker.com/r/grafana/grafana-oss | Dịch vụ riêng, image gốc không sửa mã (AGPL-3.0: không nhúng, không liên kết vào mã dự án). Cấu hình qua biến môi trường + tệp provisioning của dự án (`core/grafana/provisioning`, `apps/cuu-tro/grafana/dashboards`). Datasource PostgreSQL bằng role chỉ đọc `<schema>_bi`; mật khẩu admin và datasource qua OpenBao; không tải plugin/tin tức từ Internet; không mở cổng ra host, mở qua APISIX `/grafana/` (#92) | bi | ✔ |
-| Ollama | ghim ở tuần 5 | MIT | github.com/ollama/ollama | Dịch vụ riêng (hoặc chạy trên máy host) | ai | ☐ |
-| Qwen2.5 7B / 14B Instruct | tải qua Ollama, tuần 5 | Apache-2.0 | huggingface.co/Qwen | Trọng số model, không đưa vào repo | ai | ☐ |
-| Qdrant | ghim ở tuần 5 | Apache-2.0 | github.com/qdrant/qdrant | Dịch vụ riêng | ai | ☐ |
+| Ollama | `ollama/ollama:0.40.3` (đổi bằng `OLLAMA_VERSION`; image nén ~2,6 GB arm64, ~3,5 GB amd64) | MIT | github.com/ollama/ollama, hub.docker.com/r/ollama/ollama | Dịch vụ riêng của lõi, image gốc không sửa; không mở cổng ra host, chỉ `cuu-tro-api` gọi trong mạng nội bộ; dịch vụ một lần `ollama-pull` (cùng image) tải `LLM_MODEL` và từ chối mô hình không được phép (#102) | ai | ✔ |
+| Qwen2.5 7B Instruct (mặc định) / 14B Instruct | `qwen2.5:7b` (Q4_K_M, ~4,7 GB) / `qwen2.5:14b`, tải qua Ollama vào volume `ollamadata` | Apache-2.0 | ollama.com/library/qwen2.5, huggingface.co/Qwen/Qwen2.5-7B-Instruct | Trọng số model, KHÔNG đưa vào repo, CI không tải; `LLM_MODEL` chặn 3B/72B, Llama, Gemma (#102) | ai | ✔ |
+| Qdrant | chưa dùng | Apache-2.0 | github.com/qdrant/qdrant | Dịch vụ riêng; bóc tách tin kêu cứu (#102) chưa cần tìm kiếm vector | ai | ☐ |
 
 ## 2. Thư viện
 

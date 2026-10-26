@@ -18,6 +18,10 @@ Client gọi qua API Gateway: APISIX route /workflow/* kiểm JWT + WAF + rate l
 Tiếp nhận tin kêu cứu (#66, Poka-yoke: cuu_tro_workflow/keu_cuu.py, apps/cuu-tro/README.md):
   POST /keu-cuu                     tạo tin (dieu-phoi, tinh-nguyen); 201 · 409 trùng kèm mã tin đang mở ·
                                     422 lỗi theo trường. Route gateway riêng /workflow/keu-cuu (rate limit chặt)
+AI bóc tách tin kêu cứu (#102, cuu_tro_workflow/boc_tach.py, LLM_PROVIDER):
+  POST /ai/boc-tach                 văn bản tự do → đề xuất theo trường của /keu-cuu + kết quả Poka-yoke và kiểm
+                                    trước tin trùng (dieu-phoi, tinh-nguyen). KHÔNG tạo tin: người duyệt quyết
+                                    định. Route gateway riêng /workflow/ai/* (rate limit riêng)
 Ảnh hiện trường (#27, luật quyền: cuu_tro_workflow/anh.py, apps/cuu-tro/README.md):
   POST /tai-len/su-co/{incident_id}/anh   body = nội dung ảnh (route gateway /workflow/tai-len/*)
   GET  /su-co/{incident_id}/anh           liệt kê ảnh của tin kèm link xem ngắn hạn
@@ -61,7 +65,7 @@ from temporalio.common import Priority, WorkflowIDConflictPolicy, WorkflowIDReus
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError
 
-from . import anh, config, keu_cuu, so_cai, so_cai_csdl, thong_bao
+from . import anh, boc_tach, config, keu_cuu, so_cai, so_cai_csdl, thong_bao
 from .auth import VAI_TRO_CUU_HO, VAI_TRO_DIEU_PHOI, VAI_TRO_TINH_NGUYEN, NguoiDung, XacThuc, can_vai_tro
 from .s3 import KhoAnh, LoiS3
 from .logic import PhanHoi, TrangThaiPhanCong, XacNhan, YeuCauHuy, uu_tien
@@ -176,6 +180,15 @@ class SoTin:
         )
         return dict(row)
 
+    async def tim_trung(self, sdt: str, lon: float, lat: float) -> dict[str, Any] | None:
+        """Tin còn mở mà trigger chặn trùng sẽ chặn (migration 0013), không tạo tin; None nếu không trùng."""
+        row = await self._pool.fetchrow(
+            "SELECT * FROM cuu_tro.incident_find_duplicate($1, $2, $3)", sdt, lon, lat)
+        if row is None:
+            return None
+        return {"incident_id": str(row["incident_id"]), "khoang_cach_m": round(row["distance_m"]),
+                "ban_kinh_m": round(row["radius_m"]), "trong_vong_phut": row["window_minutes"]}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -202,8 +215,11 @@ async def lifespan(app: FastAPI):
     try:
         async with httpx.AsyncClient(base_url=cfg.gateway_url, timeout=10) as http, \
                 httpx.AsyncClient(timeout=30) as http_s3, \
-                httpx.AsyncClient(base_url=cfg.ledger_url, timeout=20) as http_ledger:
+                httpx.AsyncClient(base_url=cfg.ledger_url, timeout=20) as http_ledger, \
+                httpx.AsyncClient(timeout=cfg.llm_timeout_giay) as http_llm:
             st.http = http
+            if not hasattr(st, "boc_tach"):
+                st.boc_tach = boc_tach.tao(cfg, http_llm)
             if not hasattr(st, "so_cai"):
                 st.so_cai = so_cai.SoCai(http_ledger, cfg.ledger_write_token, cfg.ledger_verifier_key)
             if not hasattr(st, "kho_anh"):
@@ -367,6 +383,51 @@ async def keu_cuu_moi(request: Request, nd: NguoiDungDep, response: Response) ->
         "created_at": dong["created_at"].isoformat(),
         # Trigger outbox (0007) đã xếp tin vào hàng phân công tự động; bản đồ thấy tin qua subscription (#60)
         "phan_cong": "tu_dong",
+    }
+
+
+@app.post("/ai/boc-tach")
+async def ai_boc_tach(request: Request, nd: NguoiDungDep, response: Response) -> dict[str, Any]:
+    """Bóc tách tin kêu cứu viết tự do (#102). Body {"van_ban": "...", "nguon": "sms|zalo|…"}. Trả đề xuất
+    (tên trường như /keu-cuu), body sẵn để gửi /keu-cuu sau khi người duyệt sửa, kết quả Poka-yoke (lỗi theo
+    trường, tin trùng đang mở) và thông tin mô hình. Không ghi văn bản tin hay SĐT ra log."""
+    can_vai_tro(nd, VAI_TRO_DIEU_PHOI, VAI_TRO_TINH_NGUYEN)
+    st = request.app.state
+    if not st.boc_tach.bat:
+        raise HTTPException(503, "Tính năng AI bóc tách đang tắt (LLM_PROVIDER=tat)")
+    raw = await doc_body_gioi_han(request, boc_tach.BODY_TOI_DA, "Nội dung gửi lên")
+    try:
+        d = json.loads(raw)
+    except ValueError:
+        d = None
+    vao = boc_tach.kiem_dau_vao(d) if d is not None else [
+        keu_cuu.LoiTruong("body", "Nội dung gửi lên không phải JSON hợp lệ.")]
+    if isinstance(vao, list):
+        raise HTTPException(422, {**keu_cuu.loi_422(vao), "thong_bao": "Chưa bóc tách được: kiểm tra lại các trường."})
+    van_ban, nguon = vao
+    kq = await st.boc_tach.boc_tach(van_ban)
+    body = kq.de_xuat.body_keu_cuu(boc_tach.NGUON_TIN[nguon])
+    pk = keu_cuu.kiem_tra(body, st.cfg.keu_cuu_vung)
+    loi = pk if isinstance(pk, list) else []
+    trung = None
+    if not loi:
+        assert isinstance(pk, keu_cuu.TinKeuCuu)
+        trung = await st.so_tin.tim_trung(pk.reporter_phone, pk.lon, pk.lat)
+    canh_bao = list(kq.canh_bao)
+    if kq.de_xuat.people_count is None:
+        canh_bao.append("Tin không nói rõ số người: tạm tính 1, cần hỏi lại.")
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "de_xuat": asdict(kq.de_xuat),
+        "tin_keu_cuu": body,
+        "poka_yoke": {
+            "hop_le": not loi and trung is None,
+            "loi": [{"truong": x.truong, "thong_bao": x.thong_bao} for x in loi],
+            "tin_trung": {**trung, "thong_bao": keu_cuu.loi_409(trung)["thong_bao"]} if trung else None,
+        },
+        "ai": {"nha_cung_cap": kq.nha_cung_cap, "mo_hinh": kq.mo_hinh, "thoi_gian_ms": kq.thoi_gian_ms,
+               "du_phong": kq.du_phong},
+        "canh_bao": canh_bao,
     }
 
 

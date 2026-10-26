@@ -329,6 +329,51 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
 
 Kiểm thử: `tests/test_cuu_tro_keu_cuu.py` (kiểm dữ liệu, chuẩn hóa SĐT, ánh xạ 409/422, quyền theo vai, gửi đồng thời trên CSDL giả, không có SĐT trong log); `db/tests/0008_api_keu_cuu.sql` (INSERT thật bằng `cuu_tro_app`: thiếu tọa độ, SĐT sai, trùng trong 200 m, khác SĐT cùng chỗ, cùng SĐT ngoài 200 m, DETAIL đúng dạng API đọc, quyền theo cột); `scripts/smoke-keu-cuu.sh` (trong `make smoke`, chạy cuối vì ca 429 khóa route trong `GW_RATE_LIMIT_WINDOW` giây).
 
+## AI bóc tách tin kêu cứu (`workflow/cuu_tro_workflow/boc_tach.py`, #102)
+
+Tin kêu cứu thật hay là SMS, tin Zalo viết vội, không dấu. `POST /workflow/ai/boc-tach` nhận văn bản tự do và trả **đề xuất** theo đúng tên trường của `POST /workflow/keu-cuu`, cộng kết quả Poka-yoke và kiểm trước tin trùng. **AI không tạo tin**: người duyệt sửa rồi gửi `tin_keu_cuu` qua `POST /workflow/keu-cuu` (HITL). Thiết kế: `docs/architecture.md` mục 6.4.
+
+**Nhà cung cấp** (`LLM_PROVIDER` trong `.env`, đọc khi `cuu-tro-api` khởi động):
+
+| Giá trị | Chạy gì | Khi nào dùng |
+|---|---|---|
+| `gia-lap` (mặc định) | Bộ luật: regex SĐT/tọa độ, từ khóa không dấu cho mức khẩn cấp, nhu cầu, địa chỉ, số người | Máy yếu, CI, smoke. Không cần mô hình |
+| `ollama` | Ollama của profile `ai` (`http://ollama:11434`, đổi bằng `LLM_BASE_URL`), mô hình `LLM_MODEL` (mặc định `qwen2.5:7b`, Apache-2.0) | `make up-ai` một lần (tải image ~2,6 GB + mô hình ~4,7 GB), đặt `LLM_PROVIDER=ollama`, `make up` |
+| `openai-compatible` | `POST {LLM_BASE_URL}/chat/completions`, `response_format: json_object`; khóa API trong OpenBao | Máy chủ GPU của xã/tỉnh (vLLM, llama.cpp server, Ollama khác) hoặc dịch vụ ngoài: `bao kv put secret/app/cuu-tro/llm api_key=<khóa>` rồi `make up` |
+| `tat` | Endpoint trả `503` | Tắt tính năng |
+
+Ollama chạy CPU: đặt `LLM_SO_LUONG` (mặc định 6) khoảng một nửa số CPU cấp cho Docker; để Ollama tự chọn (0) thì trong VM Docker trên Mac các luồng tranh nhau, chậm ~30 lần. Đo thật trên MacBook (Qwen2.5 7B, CPU): ~11,5 s mỗi tin, đúng 58/59 trường trên tin mẫu (`make danh-gia-ai`, `docs/architecture.md` mục 6.4).
+
+`LLM_MODEL` chứa `llama`, `gemma`, `qwen2.5:3b`, `qwen2.5:72b` → `cuu-tro-api` và `ollama-pull` từ chối khởi động (giấy phép không phải Apache-2.0/OSI). Mô hình lỗi, trả rác hoặc quá `LLM_TIMEOUT_GIAY` (90 s) → đề xuất do bộ luật dự phòng tạo, `ai.du_phong = true`, kèm cảnh báo.
+
+**Vai trò:** `dieu-phoi`, `tinh-nguyen` (như quyền tạo tin); `cuu-ho` → `403`; không token → `401` ở APISIX. Route gateway riêng `/workflow/ai/*`: WAF đọc body, `GW_AI_RATE_LIMIT_COUNT` (30)/60 s/IP.
+
+**Body JSON** (≤ 8 KiB): `van_ban` (bắt buộc, ≤ 2000 ký tự), `nguon` (`sms`, `zalo`, `dien_thoai`, `mang_xa_hoi`, `van_ban`; mặc định `van_ban`). Nguồn đổi sang `source` của tin: `sms`/`dien_thoai` → `dien_thoai`, `zalo`/`mang_xa_hoi` → `mang_xa_hoi`, `van_ban` → `khac`. Trường lạ, thiếu `van_ban`, nguồn sai → `422` theo trường.
+
+**Kết quả `200`** (`Cache-Control: no-store`):
+
+| Trường | Nội dung |
+|---|---|
+| `de_xuat` | `lat`, `lon`, `reporter_phone`, `reporter_name`, `address_text`, `people_count` (`null` = tin không nói), `urgency`, `description`, `nhu_cau` (`cuu_nguoi`, `y_te`, `luong_thuc`, `nuoc_uong`, `cho_o`, `di_doi`, `khac`) |
+| `tin_keu_cuu` | Body sẵn để gửi `POST /workflow/keu-cuu` (bỏ trường trống) |
+| `poka_yoke` | `hop_le`; `loi` theo trường đúng như `422` của `/keu-cuu` (vd thiếu `lat`/`lon` khi tin không có tọa độ: người duyệt chọn điểm trên bản đồ); `tin_trung` (`incident_id`, `khoang_cach_m`, `ban_kinh_m`, `trong_vong_phut`, `thong_bao`) khi SĐT này đã báo một tin còn mở gần đó |
+| `ai` | `nha_cung_cap`, `mo_hinh`, `thoi_gian_ms`, `du_phong` |
+| `canh_bao` | Vd mô hình đưa SĐT/tọa độ không có trong tin (đã bỏ), không rõ số người |
+
+**Chống bịa:** SĐT và tọa độ chỉ lấy từ văn bản gốc (regex; số có nhãn "SĐT", "gọi", "liên hệ" được ưu tiên; tọa độ cần ≥ 4 chữ số thập phân để không nhầm giá tiền, tự đổi chỗ khi viết "kinh độ, vĩ độ"); SĐT mô hình đưa ra mà không có trong tin thì bỏ, tọa độ luôn lấy từ regex (mô hình hay đảo vĩ độ/kinh độ). Nhu cầu là hợp của mô hình và từ khóa. Địa chỉ của mô hình phải khớp ≥ 60% từ của tin, tên người báo khớp 100%. Tọa độ không suy từ địa chỉ.
+
+**Kiểm trước tin trùng:** hàm `cuu_tro.incident_find_duplicate(sđt, kinh độ, vĩ độ)` (migration `0013`) dùng đúng điều kiện của trigger `incidents_no_duplicate`, chạy `SECURITY DEFINER`, chỉ trả mã tin + khoảng cách; chỉ `cuu_tro_app` được gọi. Không khóa, không ghi: trigger vẫn là chốt chặn cuối khi tạo tin.
+
+**Dữ liệu cá nhân:** mô tả thay mọi SĐT bằng `[SĐT]` (số đã nằm ở `reporter_phone`, vai không được xem SĐT chỉ thấy bản che); không ghi văn bản tin hay SĐT ra log; tin nằm trong khung `<tin>…</tin>` khi gửi mô hình, lời dặn coi nội dung là dữ liệu.
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"van_ban": "Toi la Nguyen Van An o to 5 phuong Hoa Khanh, 3 nguoi gia bi ket, can thuoc. Goi 0935 111 222. Vi tri 16.0712, 108.1503", "nguon": "zalo"}' \
+  http://localhost:9080/workflow/ai/boc-tach
+```
+
+Kiểm thử: `tests/test_cuu_tro_boc_tach.py` (bộ luật trên tin mẫu `cuu_tro_workflow/du_lieu/tin_keu_cuu_mau.json`, chống bịa, Ollama và OpenAI-compatible qua máy chủ giả, dự phòng khi quá hạn/HTTP lỗi/JSON hỏng, chặn mô hình không được phép, endpoint); `db/tests/0013_kiem_trung_truoc.sql` (hàm và trigger cùng kết luận); `scripts/smoke-ai.sh` (trong `make smoke`, chế độ `gia-lap`, gọi thật qua gateway).
+
 ## Ảnh hiện trường (`workflow/cuu_tro_workflow/anh.py`, `s3.py`, #27)
 
 Ảnh chụp tại hiện trường gắn với tin kêu cứu. Nội dung ảnh nằm trên SeaweedFS (bucket riêng tư `cuu-tro-media`), siêu dữ liệu ở bảng `incident_media` (migration `0005`). **Client Tầng 2 không bao giờ cầm khóa S3.**
