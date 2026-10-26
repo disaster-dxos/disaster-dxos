@@ -13,8 +13,8 @@ export function workflowId(incidentId: string): string {
 
 export type KetQuaApi<T> =
   | { ok: true; status: number; data: T }
-  /** status 0 = không tới được máy chủ (mất mạng, gateway tắt) */
-  | { ok: false; status: number; chiTiet: string }
+  /** status 0 = không tới được máy chủ (mất mạng, gateway tắt); detail = `detail` gốc của FastAPI nếu có */
+  | { ok: false; status: number; chiTiet: string; detail?: unknown }
 
 /** Đường dẫn và body của từng thao tác (đổi đội = signal từ chối do điều phối gửi, cùng endpoint). */
 export function yeuCauHanhDong(hd: HanhDong, incidentId: string, ghiChu = ''): { path: string; body?: Record<string, string> } {
@@ -42,7 +42,7 @@ function chiTietLoi(body: unknown): string {
 
 export async function goiWorkflow<T = unknown>(
   fetchFn: typeof fetch, gatewayUrl: string, headers: Record<string, string>,
-  method: 'GET' | 'POST', path: string, body?: Record<string, string>,
+  method: 'GET' | 'POST', path: string, body?: Record<string, unknown>,
 ): Promise<KetQuaApi<T>> {
   const url = new URL(DUONG_WORKFLOW + path, gatewayUrl).toString()
   let r: Response
@@ -62,7 +62,10 @@ export async function goiWorkflow<T = unknown>(
   } catch {
     // APISIX trả trang lỗi HTML/rỗng (502, 429…): giữ mã HTTP
   }
-  if (!r.ok) return { ok: false, status: r.status, chiTiet: chiTietLoi(data) }
+  if (!r.ok) {
+    const detail = (data as { detail?: unknown } | null)?.detail
+    return { ok: false, status: r.status, chiTiet: chiTietLoi(data), ...(detail === undefined ? {} : { detail }) }
+  }
   return { ok: true, status: r.status, data: data as T }
 }
 

@@ -59,7 +59,7 @@ Miền Trung mỗi năm hứng nhiều cơn bão và lũ. Trong vài giờ nư�
 | **Sổ cái minh bạch** tiền và hàng cứu trợ | ✅ Đã có ở v0.1 cho hàng (Tessera, trang công khai, CLI tự kiểm) · từ v0.3 (#89): tiền cứu trợ thu/chi lên sổ cái, worker tự niêm phong bù khi sổ cái tạm dừng, API xác minh chung theo mã phiếu hoặc mã bút toán kèm bằng chứng, danh sách và tổng hợp quỹ công khai |
 | **Bản đồ thời gian thực** cho người điều phối | ✅ Đã có ở v0.2 (web Nuxt 4 + Nuxt UI + MapLibre, GraphQL subscription qua gateway, màn phân công cho điều phối và đội cứu hộ, thông báo Centrifugo) |
 | **Dashboard điều hành, dữ liệu lịch sử** | ✅ Đã có ở v0.3 (#91, #92): Grafana OSS (`make up-bi`, mở http://localhost:9080/grafana/) với tin kêu cứu theo trạng thái, thời gian phản hồi, mực nước, tồn kho, quỹ cứu trợ, đọc bằng role chỉ đọc không thấy SĐT/họ tên; dữ liệu cũ xuất ra Parquet theo tháng trên SeaweedFS (`make luu-tru`), truy vấn bằng DuckDB (`make luu-tru-truy-van`) |
-| **AI bóc tách tin kêu cứu** tự do, người duyệt lại | ✅ Từ tuần 5 (#102): SMS, tin Zalo dán vào, viết không dấu → đề xuất có địa chỉ, tọa độ (nếu tin có), SĐT, số người, mức khẩn cấp, nhu cầu; qua cùng Poka-yoke và chặn trùng của API kêu cứu; AI không tự tạo tin. Chọn mô hình bằng `LLM_PROVIDER`: Qwen2.5 7B qua Ollama (`make up-ai`), API ngoài, hoặc bộ luật không cần mô hình (mặc định) · 🔜 hàng chờ duyệt trên web điều phối |
+| **AI bóc tách tin kêu cứu** tự do, người duyệt lại | ✅ Từ tuần 5 (#102): SMS, tin Zalo dán vào, viết không dấu → đề xuất có địa chỉ, tọa độ (nếu tin có), SĐT, số người, mức khẩn cấp, nhu cầu; qua cùng Poka-yoke và chặn trùng của API kêu cứu; AI không tự tạo tin. Chọn mô hình bằng `LLM_PROVIDER`: Qwen2.5 7B qua Ollama (`make up-ai`), API ngoài, hoặc bộ luật không cần mô hình (mặc định) · từ tuần 5 (#104): **hàng chờ duyệt** trên web điều phối (trang "Duyệt tin AI"): đề xuất hiện cạnh văn bản gốc, người duyệt sửa, chọn vị trí trên bản đồ rồi duyệt mới tạo tin; lưu vết AI đề xuất gì, người sửa trường nào, ai duyệt, lúc nào · *AI review queue: a human approves or edits every AI suggestion before it becomes a rescue request; full audit trail* |
 
 Ngoài ra đã có: tải và xem ảnh hiện trường qua link ngắn hạn. Ánh xạ từng yêu cầu của đề vào mã nguồn: [`docs/de-thi-mapping.md`](docs/de-thi-mapping.md).
 
@@ -138,7 +138,7 @@ Theo [`docs/PLAN.md`](docs/PLAN.md):
 
 - **Tuần 3:** web điều phối Nuxt 4 + Nuxt UI với bản đồ MapLibre thời gian thực, màn hình phân công; tự khởi chạy phân công khi có tin mới; thông báo realtime qua Centrifugo.
 - **Tuần 4:** trạm đo thành bản sao số NGSI-LD trên Scorpio (đã có, #85); cảnh báo vượt ngưỡng qua Temporal, gửi Telegram (đã có, #87, cần token bot thật); dữ liệu cũ ra Parquet + DuckDB (đã có, #91); dashboard Grafana điều hành (đã có, #92); lên VPS có HTTPS.
-- **Tuần 5:** AI bóc tách tin kêu cứu tự do thành dữ liệu có cấu trúc, người điều phối duyệt lại; app hiện trường Flutter chạy được khi mất mạng; demo công khai.
+- **Tuần 5:** AI bóc tách tin kêu cứu tự do thành dữ liệu có cấu trúc (đã có, #102), hàng chờ duyệt trên web điều phối (đã có, #104); app hiện trường Flutter chạy được khi mất mạng; demo công khai.
 - **Tuần 6–7:** sửa theo phản hồi người dùng thật, module mẫu cho `apps/`, phát hành v1.0.0.
 
 ## 🛠️ Cài đặt từ máy sạch
@@ -220,6 +220,8 @@ curl -s -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 ```
 
 Chạy AI bằng mô hình thật Qwen2.5 7B (*run the extraction with a real open model*): `make up-ai` (tải image Ollama ~2,6 GB và mô hình ~4,7 GB lần đầu), đặt `LLM_PROVIDER=ollama` trong `.env`, rồi `make up`. Mô hình chạy CPU trong Docker; không đủ RAM thì giữ `LLM_PROVIDER=gia-lap`.
+
+Duyệt tin AI trên web (*review AI suggestions in the web app*): đăng nhập `dieuphoi01`, mở http://localhost:9080/hang-cho, dán tin nhắn, bấm "Bóc tách bằng AI", sửa nếu cần rồi "Duyệt và tạo tin". Gọi API: thêm `"vao_hang_cho": true` vào lệnh trên rồi `POST /workflow/hang-cho/<mã>/duyet`.
 
 Phân công đội, xác nhận, tải ảnh, lập phiếu kho, trang minh bạch, tự kiểm sổ cái bằng `ledger-verify`: xem [`apps/cuu-tro/README.md`](apps/cuu-tro/README.md).
 

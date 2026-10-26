@@ -7,7 +7,7 @@
 
 Ảnh sáng/tối và cách chụp lại (Playwright, `scripts/chup-anh/`): `README.md` mục "Sản phẩm", `docs/images/README.md`.
 
-> Trạng thái: khung web, đăng nhập Keycloak, bố cục, logo (#59); chạy trong stack qua gateway (#64); thông báo realtime qua Centrifugo (#68); bản đồ và danh sách tin kêu cứu **dữ liệu thật, thời gian thực** qua GraphQL subscription (#60); màn phân công cứu hộ cho 2 vai điều phối, cứu hộ (#61); lớp trạm đo mực nước trên bản đồ (#62); trang Minh bạch công khai cho phiếu kho và bút toán tiền, trình duyệt tự kiểm sổ cái (#63).
+> Trạng thái: khung web, đăng nhập Keycloak, bố cục, logo (#59); chạy trong stack qua gateway (#64); thông báo realtime qua Centrifugo (#68); bản đồ và danh sách tin kêu cứu **dữ liệu thật, thời gian thực** qua GraphQL subscription (#60); màn phân công cứu hộ cho 2 vai điều phối, cứu hộ (#61); lớp trạm đo mực nước trên bản đồ (#62); trang Minh bạch công khai cho phiếu kho và bút toán tiền, trình duyệt tự kiểm sổ cái (#63); hàng chờ duyệt tin do AI bóc tách (#104).
 
 ## Đăng nhập: OIDC Authorization Code + PKCE
 
@@ -120,10 +120,25 @@ Hai đường mới, chỉ gọi lõi qua API Gateway bằng JWT của người 
 
 Ảnh chụp trên stack thật với tin mẫu là dữ liệu giả (`docs/images/README.md`). Kiểm trên stack thật: `bash scripts/smoke-phan-cong.sh` (trong `make smoke`), chạy nguyên văn query GraphQL của web.
 
+## Duyệt tin AI: hàng chờ Human-in-the-loop (#104)
+
+Trang `/hang-cho` (mục "Duyệt tin AI" ở thanh bên, chỉ vai `dieu-phoi`). Tin SMS/Zalo dán vào được AI bóc tách (#102) rồi vào hàng chờ; tin chỉ được tạo khi người điều phối duyệt. Luồng, API, bảng vết: `apps/cuu-tro/README.md` mục "Hàng chờ duyệt tin AI".
+
+| Phần | Gọi gì | Mã |
+|---|---|---|
+| Dán tin + "Bóc tách bằng AI" | `POST /workflow/ai/boc-tach` `{van_ban, nguon, vao_hang_cho: true}` | `composables/useHangCho.ts` |
+| Danh sách, chi tiết, vết | GraphQL HTTP `/graphql` vai `dieu-phoi`: `ai_intake_reviews` theo trạng thái + đếm số chờ duyệt; tải lại mỗi 15 giây | `utils/hang-cho.ts` `queryHangCho`, `mucTuHang` |
+| Form sửa đề xuất | Ô nhập ↔ body `/keu-cuu` (`formTuBody`, `bodyTuForm`: dấu phẩy thập phân, số người nguyên, báo sớm thiếu tọa độ/SĐT/mô tả); trường khác đề xuất có nhãn "đã sửa" + giá trị AI (`truongDaSua`, so sau chuẩn hóa SĐT/số) | `pages/hang-cho.vue`, `utils/hang-cho.ts` |
+| Chọn vị trí | MapLibre, cùng kiểu nền với bản đồ điều phối; bấm hoặc kéo ghim cam điền vĩ độ/kinh độ (6 chữ số thập phân) | `components/ChonViTri.vue` |
+| Duyệt / hủy | `POST /workflow/hang-cho/{id}/duyet` `{tin_keu_cuu}` · `/huy` `{ly_do}` | `composables/useHangCho.ts` |
+| Lỗi | 422 theo trường hiện dưới ô; 409 tin trùng (liên kết "Xem tin đang mở") hoặc đã có người xử lý (tải lại); 401/403/404/429/5xx, mất mạng | `utils/hang-cho.ts` `phanTichLoi` |
+
+Kiểm tra thật nằm ở API (cùng Poka-yoke với `/keu-cuu`); kiểm ở web chỉ để báo sớm. Trang không đọc văn bản gốc của vai khác: Hasura chỉ cho `dieu-phoi`.
+
 ## Kiểm thử
 
 ```bash
-npm test              # Vitest: PKCE (vector RFC 7636), URL OIDC, state/nonce, hạn token, GraphQL → tin → GeoJSON, bộ lọc, tin mới, CSP, thông báo realtime, phân công (nút theo vai, gọi /workflow, mã lỗi), trạm đo (GeoJSON NGSI-LD, màu, biểu đồ nhỏ), minh bạch (phản hồi xác minh, tự kiểm 5 bước: JSON chuẩn tắc, Merkle, Ed25519)
+npm test              # Vitest: PKCE (vector RFC 7636), URL OIDC, state/nonce, hạn token, GraphQL → tin → GeoJSON, bộ lọc, tin mới, CSP, thông báo realtime, phân công (nút theo vai, gọi /workflow, mã lỗi), trạm đo (GeoJSON NGSI-LD, màu, biểu đồ nhỏ), minh bạch (phản hồi xác minh, tự kiểm 5 bước: JSON chuẩn tắc, Merkle, Ed25519), hàng chờ duyệt tin AI (đọc hàng chờ, form ↔ body /keu-cuu, trường đã sửa, lỗi API)
 npm run typecheck     # vue-tsc
 npm run licenses      # giấy phép mọi gói npm trong package-lock.json
 ```
@@ -137,11 +152,11 @@ CI chạy cả bốn lệnh, `npm run build`, rồi build image Docker và chạ
 | `app.vue`, `app.config.ts`, `layouts/default.vue`, `error.vue` | Khung Nuxt UI (#77): `UApp` (nhãn tiếng Việt), màu theme, thanh bên thu gọn được (trên điện thoại thành ngăn kéo), trang lỗi tiếng Việt |
 | `assets/css/main.css` | Theme: bảng màu nhận diện (navy, cam, xanh nước, mức khẩn), chữ, chế độ tối, vòng focus, MapLibre theo theme (#77) |
 | `public/fonts/be-vietnam-pro/` | Font Be Vietnam Pro (OFL-1.1) tự host, kèm SHA-256 (#77) |
-| `pages/` | `index.vue` (trang điều phối), `phan-cong/index.vue`, `phan-cong/[id].vue` (màn phân công, #61), `minh-bach/[[ma]].vue` (trang minh bạch công khai, #78), `auth/callback.vue` (hai trang sau không dùng khung) |
+| `pages/` | `index.vue` (trang điều phối), `phan-cong/index.vue`, `phan-cong/[id].vue` (màn phân công, #61), `minh-bach/[[ma]].vue` (trang minh bạch công khai, #78), `hang-cho.vue` (duyệt tin AI, #104), `auth/callback.vue` (hai trang sau không dùng khung) |
 | `server/` | Nitro: `plugins/bao-mat.ts` (header bảo mật), `utils/csp.ts` (dựng CSP, hàm thuần có test) |
-| `components/` | `MenuNguoiDung.vue` (người dùng, vai, sáng/tối, đăng xuất), `NhanMucKhan.vue`, `NhanTrangThai.vue`, `DongHoHanNhan.vue` (thành phần dùng chung, #77), `BanDo.vue` (MapLibre, #60), `DanhSachTin.vue`, `BoLocTin.vue`, `ChiTietTin.vue` (#60), `ThongBaoRealtime.vue` (#68), `TheTinPhanCong.vue` (#61) |
-| `composables/` | `useAuth.ts` (phiên đăng nhập), `useTinKeuCuu.ts` (subscription tin kêu cứu, #60), `useThongBao.ts` (kết nối Centrifugo, #68), `usePhanCong.ts` (hàng đợi, workflow, thao tác, #61), `useNow.ts`, `useToi.ts` (đang ở chế độ tối) |
-| `utils/` | Hàm thuần, có test: `pkce.ts`, `oidc.ts`, `session.ts`, `tin.ts`, `tin-graphql.ts`, `ban-do.ts`, `thong-bao.ts`, `phan-cong.ts`, `workflow-api.ts`, `minh-bach.ts` |
+| `components/` | `MenuNguoiDung.vue` (người dùng, vai, sáng/tối, đăng xuất), `NhanMucKhan.vue`, `NhanTrangThai.vue`, `DongHoHanNhan.vue` (thành phần dùng chung, #77), `BanDo.vue` (MapLibre, #60), `DanhSachTin.vue`, `BoLocTin.vue`, `ChiTietTin.vue` (#60), `ThongBaoRealtime.vue` (#68), `TheTinPhanCong.vue` (#61), `ChonViTri.vue` (bản đồ chọn vị trí khi duyệt tin AI, #104) |
+| `composables/` | `useAuth.ts` (phiên đăng nhập), `useTinKeuCuu.ts` (subscription tin kêu cứu, #60), `useThongBao.ts` (kết nối Centrifugo, #68), `usePhanCong.ts` (hàng đợi, workflow, thao tác, #61), `useHangCho.ts` (hàng chờ duyệt tin AI, #104), `useNow.ts`, `useToi.ts` (đang ở chế độ tối) |
+| `utils/` | Hàm thuần, có test: `pkce.ts`, `oidc.ts`, `session.ts`, `tin.ts`, `tin-graphql.ts`, `ban-do.ts`, `thong-bao.ts`, `phan-cong.ts`, `workflow-api.ts`, `minh-bach.ts`, `hang-cho.ts` |
 | `tests/` | Vitest |
 | `scripts/check-licenses.mjs` | Kiểm giấy phép npm |
 

@@ -464,7 +464,7 @@ flowchart LR
   A["Người dân / tình nguyện viên<br/>gửi kêu cứu"] -->|"APISIX"| B{"Poka-yoke<br/>có tọa độ?<br/>trùng SĐT trong 200 m?"}
   B -->|"không hợp lệ"| R["Từ chối / gộp vào sự cố cũ"]
   B -->|"hợp lệ"| C["Temporal: tiếp nhận"]
-  A2["Tin nhắn tự do"] --> AI["AI bóc tách (Qwen2.5 7B)"] --> H["Người điều phối duyệt (HITL)"] --> C
+  A2["Tin nhắn tự do"] --> AI["AI bóc tách (Qwen2.5 7B)"] --> Q["Hàng chờ duyệt (#104)"] --> H["Người điều phối sửa / duyệt (HITL)"] --> B
   C --> D["Phân công đội gần nhất (PostGIS)"] --> E["Đội cứu hộ xác nhận"] --> F["Đóng sự cố"]
   S["Cảm biến mực nước"] -->|"MQTT → NATS"| N["Scorpio: bản sao số trạm đo"]
   S -->|"vượt ngưỡng (NATS)"| W["Temporal: một workflow mỗi đợt (#87)"] --> T["Hộp thư nội bộ / Telegram + Centrifugo"]
@@ -595,7 +595,7 @@ Gửi Telegram là "ít nhất một lần": worker chết sau khi Telegram nh�
 
 ### 6.4. AI bóc tách tin kêu cứu, Tầng [I] (#102)
 
-Tin kêu cứu thật thường là SMS hoặc tin Zalo viết vội, không dấu, thiếu tọa độ. `POST /workflow/ai/boc-tach` của `cuu-tro-api` nhận văn bản tự do và trả **đề xuất** theo đúng tên trường của `POST /workflow/keu-cuu` (địa chỉ, tọa độ nếu tin có, SĐT, tên, số người, mức khẩn cấp, nhu cầu, mô tả), kèm kết quả Poka-yoke và kiểm trước tin trùng. Endpoint **không tạo tin**: điều phối viên duyệt hoặc sửa rồi mới tạo (HITL). Chi tiết trường: `apps/cuu-tro/README.md` mục "AI bóc tách tin kêu cứu".
+Tin kêu cứu thật thường là SMS hoặc tin Zalo viết vội, không dấu, thiếu tọa độ. `POST /workflow/ai/boc-tach` của `cuu-tro-api` nhận văn bản tự do và trả **đề xuất** theo đúng tên trường của `POST /workflow/keu-cuu` (địa chỉ, tọa độ nếu tin có, SĐT, tên, số người, mức khẩn cấp, nhu cầu, mô tả), kèm kết quả Poka-yoke và kiểm trước tin trùng. Endpoint **không tạo tin**: điều phối viên duyệt hoặc sửa rồi mới tạo (HITL; hàng chờ duyệt trên web: mục 6.5). Chi tiết trường: `apps/cuu-tro/README.md` mục "AI bóc tách tin kêu cứu".
 
 ```mermaid
 sequenceDiagram
@@ -645,6 +645,44 @@ sequenceDiagram
 | `ollama`, Ollama tự chọn số luồng | 0/12 trong hạn | > 120 s, mọi tin dùng bộ luật dự phòng | 0,43 token/s; request bị hủy vẫn chạy thêm ~1 phút trong Ollama |
 
 Tài nguyên: image `ollama/ollama:0.40.3` 7,0 GB trên ổ (nén ~2,6 GB arm64), mô hình 4,7 GB trong volume `ollamadata`, Ollama dùng ~4,7 GiB RAM khi đã nạp mô hình (`OLLAMA_MEM_LIMIT` 8g), CPU ~900% lúc sinh; `make up-ai` lần đầu 6,5–10 phút (tải ~7 GB). `cuu-tro-api` không đổi (~65 MiB). Máy có GPU, hoặc Ollama chạy thẳng trên macOS (Metal), nhanh hơn nhiều: `LLM_BASE_URL=http://host.docker.internal:11434`.
+
+### 6.5. Hàng chờ duyệt tin AI, Human-in-the-loop (#104)
+
+Đề xuất của AI (mục 6.4) chỉ thành tin kêu cứu khi một điều phối viên duyệt. Tin viết tự do vào hàng chờ (bảng `cuu_tro.ai_intake_reviews`, migration 0014); web điều phối hiện đề xuất cạnh văn bản gốc, người duyệt sửa (chọn vị trí trên bản đồ khi tin thiếu tọa độ) rồi duyệt hoặc hủy. Mỗi mục giữ vết: đề xuất của AI, trường người sửa (giá trị AI → giá trị người duyệt), người duyệt, thời điểm. API và bảng: `apps/cuu-tro/README.md` mục "Hàng chờ duyệt tin AI".
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant TN as tinh-nguyen / dieu-phoi
+  participant DP as dieu-phoi (web /hang-cho)
+  participant GW as APISIX
+  participant API as cuu-tro-api
+  participant HS as Hasura (/graphql)
+  participant PG as PostgreSQL (cuu_tro)
+  TN->>GW: POST /workflow/ai/boc-tach {van_ban, nguon, vao_hang_cho: true}
+  GW->>API: (route /workflow/ai/*)
+  API->>API: bóc tách + Poka-yoke + kiểm trước tin trùng (mục 6.4)
+  API->>PG: INSERT ai_intake_reviews (văn bản, đề xuất, người gửi) → cho_duyet
+  DP->>GW: query ai_intake_reviews (vai dieu-phoi)
+  GW->>HS: JWT → chỉ dieu-phoi thấy văn bản gốc + đề xuất
+  DP->>GW: POST /workflow/hang-cho/{id}/duyet {tin_keu_cuu đã sửa}
+  GW->>API: (route /workflow/*: JWT, WAF đọc body)
+  API->>HS: đọc đề xuất bằng JWT của người duyệt
+  API->>API: keu_cuu.kiem_tra (422 theo trường), so trường đã sửa
+  API->>PG: BEGIN · SELECT … FOR UPDATE · INSERT incidents · UPDATE da_duyet + vết · COMMIT
+  Note over PG: trigger chặn trùng (409, rollback, mục vẫn chờ) · outbox phân công tự động (#67)
+  API-->>DP: 201 {incident_id, truong_da_sua}
+```
+
+| Quyết định | Chọn | Vì sao |
+|---|---|---|
+| Hàng chờ ở đâu | **Bảng PostgreSQL** của ứng dụng, đọc qua Hasura; ghi chỉ qua API | Hàng chờ phải bền (máy điều phối tắt, nhiều người cùng trực) và là vết kiểm toán; Hasura cho web đọc theo quyền vai trò như mọi bảng khác. Không dùng Temporal: một mục chờ người là dữ liệu, không phải quy trình có hẹn giờ; luồng sau khi duyệt đã là `PhanCongCuuHo` (#67) |
+| Ai tạo đề xuất trong vết | **API** lưu nguyên phản hồi `/ai/boc-tach` của chính nó (`vao_hang_cho: true`); GraphQL không có quyền thêm/sửa | Nếu client gửi "AI đã đề xuất X" thì vết so sánh AI ↔ người không còn tin được. Cờ trên endpoint có sẵn (không thêm endpoint) để mọi đường bóc tách đều vào được hàng chờ: web, sau này app hiện trường và bot |
+| Tạo tin khi duyệt | Cùng `keu_cuu.kiem_tra` và câu `INSERT` của `POST /workflow/keu-cuu`, trong **một transaction** với cập nhật vết, dòng hàng chờ khóa `FOR UPDATE` | Không có đường thứ hai né Poka-yoke. Tin và vết cùng commit hoặc cùng rollback (tin trùng → 409, mục vẫn chờ). Hai người duyệt cùng lúc: người sau thấy `da_duyet` sau khi chờ khóa → 409, chỉ một tin |
+| Dữ liệu cá nhân | Văn bản gốc, đề xuất, tin cuối chỉ vai `dieu-phoi` đọc (Hasura). `cuu_tro_app` ghi được nhưng không đọc các cột này; khi duyệt API đọc đề xuất qua Hasura bằng JWT người duyệt | Giữ nguyên tắc của #66/#102: role dịch vụ không đọc SĐT người dân. `tinh-nguyen` chỉ thấy trạng thái tin mình chuyển; log chỉ có mã mục |
+| Vết không sửa được | Trigger `ai_intake_reviews_immutable` (đề xuất, văn bản, người gửi không đổi; dòng đã duyệt/hủy không đổi), CHECK theo trạng thái, không ai có `DELETE`, khóa ngoại tới tin | Vết duyệt dùng để giải trình khi đội cứu hộ đi nhầm chỗ hay bỏ sót tin: phải biết lỗi do AI hay do người sửa |
+| Trường đã sửa | API tính `{trường: {ai, nguoi}}` trên giá trị đã chuẩn hóa; web đánh dấu trường khác đề xuất ngay khi gõ | Đo được chất lượng AI trên dữ liệu thật (tỷ lệ duyệt nguyên đề xuất, trường hay phải sửa) để chọn mô hình/bộ luật; không coi gõ lại SĐT có dấu cách là sửa |
+| `created_by` của tin | Người đưa tin vào hàng chờ | Tình nguyện viên chuyển tin vẫn theo dõi được tin của mình (Hasura lọc theo `created_by`), tải ảnh hiện trường lúc tin còn `tiep_nhan` như tin tự gửi |
 
 ## 7. Vì sao lõi độc lập với nghiệp vụ (`core/` và `apps/`)
 
