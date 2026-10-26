@@ -307,8 +307,11 @@ flowchart LR
   end
   subgraph later["profile sau"]
     sec["sec · ClamAV"]
-    ai["ai · Ollama + Qwen2.5 7B/14B, Qdrant, agent"]
   end
+  subgraph ai["profile ai (#102)"]
+    ol[ollama<br/>Qwen2.5 7B · chỉ mạng nội bộ] --> olp[ollama-pull<br/>một lần]
+  end
+  core --> ai
   subgraph bi["profile bi (#92)"]
     gf[grafana OSS<br/>qua apisix /grafana/]
   end
@@ -321,7 +324,7 @@ flowchart LR
 | `core` | openbao, openbao-unseal (dev), 10 bao agent, postgres, postgres-roles (chạy một lần rồi thoát), keycloak, apisix, hasura, seaweedfs, temporal, temporal-ui, nats, ledger (#28), centrifugo (#68), scorpio (#85) | `make up` | **Đo 19/10/2026** (`docker stats --no-stream`, Mac Apple Silicon, PostGIS chạy giả lập amd64): ~1,5 GB ngay sau khi mọi dịch vụ healthy; ~2,1 GB sau `make smoke` (bảng dưới; APISIX đo lại sau #12) |
 | ~~`gis`~~ | Gộp vào `core` ở #85: Scorpio (CSDL riêng trên postgis của lõi). Bộ giả lập cảm biến ở profile `gia-lap` của ứng dụng (#30) | – | Scorpio ~150 MiB (đo ở bảng dưới) |
 | `sec` | ClamAV | tuần 2–4 | ClamAV ~1,5 GB. `ledger` (Tessera) đã vào `core` (#28) |
-| `ai` | Ollama, Qdrant, agent | tuần 5 | Qwen2.5 7B ~5 GB |
+| `ai` (#102) | ollama (Ollama `0.40.3`, MIT, image gốc), ollama-pull (tải `LLM_MODEL` vào volume `ollamadata`, chạy một lần) | `make up-ai`, rồi `LLM_PROVIDER=ollama` trong `.env` + `make up` | Qwen2.5 7B: đo ở mục 6.4. Không bật thì `LLM_PROVIDER=gia-lap` (bộ luật, mặc định) |
 | `bi` (#92) | bao-agent-grafana, grafana (Grafana OSS 13.0.2, AGPL-3.0, image gốc) | `make up-bi` (`make smoke` tự bật) | grafana ~150 MiB (đo ở mục 7.6) |
 
 RAM từng dịch vụ của `core` (MiB; "sau smoke" = sau khi chạy `make smoke` khoảng 10 phút):
@@ -589,6 +592,46 @@ sequenceDiagram
 | Chạy ở đâu | Trong tiến trình `cuu-tro-worker` (như bộ khởi chạy phân công #67) | Đã có Temporal client, NATS, CSDL; không thêm container |
 
 Gửi Telegram là "ít nhất một lần": worker chết sau khi Telegram nhận mà trước khi ghi `da_gui` thì lần thử lại gửi thêm một tin; hộp thư vẫn một dòng. Kiểm thử: `tests/test_cuu_tro_canh_bao.py` (workflow trên máy chủ test của Temporal, khử trùng lặp, Telegram giả), `db/tests/0010`, `scripts/smoke-canh-bao.sh`.
+
+### 6.4. AI bóc tách tin kêu cứu, Tầng [I] (#102)
+
+Tin kêu cứu thật thường là SMS hoặc tin Zalo viết vội, không dấu, thiếu tọa độ. `POST /workflow/ai/boc-tach` của `cuu-tro-api` nhận văn bản tự do và trả **đề xuất** theo đúng tên trường của `POST /workflow/keu-cuu` (địa chỉ, tọa độ nếu tin có, SĐT, tên, số người, mức khẩn cấp, nhu cầu, mô tả), kèm kết quả Poka-yoke và kiểm trước tin trùng. Endpoint **không tạo tin**: điều phối viên duyệt hoặc sửa rồi mới tạo (HITL). Chi tiết trường: `apps/cuu-tro/README.md` mục "AI bóc tách tin kêu cứu".
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as dieu-phoi / tinh-nguyen
+  participant GW as APISIX /workflow/ai/*
+  participant API as cuu-tro-api (boc_tach.py)
+  participant M as Ollama (profile ai) / API ngoài
+  participant PG as PostgreSQL (cuu_tro)
+  U->>GW: POST {van_ban, nguon} + Bearer JWT
+  Note over GW: WAF (body) → JWT → limit-count riêng (30/60 s/IP)
+  GW->>API: /ai/boc-tach
+  API->>API: trích SĐT, tọa độ bằng regex (mọi nhà cung cấp)
+  alt LLM_PROVIDER = ollama / openai-compatible
+    API->>M: lời dặn + <tin>…</tin>, JSON schema, nhiệt độ 0
+    M-->>API: JSON
+    API->>API: chống bịa: SĐT/tọa độ phải có trong tin, địa chỉ khớp ≥ 60% từ
+    Note over API,M: lỗi / quá LLM_TIMEOUT_GIAY → bộ luật dự phòng + cảnh báo
+  else gia-lap
+    API->>API: bộ luật (từ khóa không dấu)
+  end
+  API->>API: Poka-yoke của /keu-cuu (tọa độ bắt buộc, SĐT, vùng phục vụ)
+  API->>PG: incident_find_duplicate(SĐT, điểm) (migration 0013, không khóa, không ghi)
+  API-->>U: 200 {de_xuat, tin_keu_cuu, poka_yoke{hop_le, loi, tin_trung}, ai, canh_bao}
+```
+
+| Quyết định | Chọn | Vì sao |
+|---|---|---|
+| AI có tạo tin không | **Không**. Chỉ đề xuất; người duyệt gửi `tin_keu_cuu` (đã sửa) qua `POST /workflow/keu-cuu` như mọi tin khác | Tin kêu cứu sai vị trí làm đội cứu hộ đi nhầm chỗ. Mô hình nhỏ chạy CPU có thể sai; người chịu trách nhiệm là điều phối viên (HITL, nguyên lý [I] của đề). Dùng lại toàn bộ Poka-yoke và chốt chặn trùng của #66 |
+| Chọn mô hình | Biến `LLM_PROVIDER`: `gia-lap` (mặc định), `ollama`, `openai-compatible`, `tat` (D-005) | Laptop 16 GB không phải lúc nào cũng chạy được 7B; CI không tải mô hình. Xã có máy chủ GPU hoặc API riêng thì đổi biến, không đổi mã |
+| Mô hình mặc định | Qwen2.5 7B (Apache-2.0) qua Ollama (MIT), dịch vụ riêng ở profile `ai`, không mở cổng ra host | Qwen2.5 3B/72B không phải Apache-2.0, Llama/Gemma có điều khoản riêng: API (`config.load`) và `ollama-pull` đều từ chối các tên này. Trọng số nằm trong volume, không trong repo |
+| SĐT, tọa độ | Lấy bằng regex trên văn bản gốc; giá trị mô hình đưa ra mà không có trong văn bản thì bỏ, ghi cảnh báo | Hai trường quyết định đội cứu hộ đi đâu, gọi ai; mô hình ngôn ngữ hay "điền cho đủ". Tọa độ KHÔNG suy từ địa chỉ: tin thiếu tọa độ thì Poka-yoke báo `lat`/`lon`, người duyệt chọn điểm trên bản đồ |
+| Mô hình chậm hoặc chết | Quá `LLM_TIMEOUT_GIAY` (90 s) hay lỗi → bộ luật dự phòng, `ai.du_phong = true` | Lúc bão, máy chạy mô hình quá tải là chuyện bình thường; tin không được mất vì AI |
+| Dữ liệu cá nhân | Mô tả thay SĐT bằng `[SĐT]`; không ghi văn bản tin, SĐT ra log; kiểm trùng qua hàm `SECURITY DEFINER` chỉ trả mã tin + khoảng cách | Vai không được xem SĐT chỉ thấy bản che (#60): mô tả không được làm lộ lại. `cuu_tro_app` vẫn không đọc được cột `reporter_phone` |
+| Tiêm lệnh qua tin nhắn | Tin nằm trong khung `<tin>…</tin>`, lời dặn nói rõ là dữ liệu; đầu ra ép theo JSON schema rồi kiểm lại từng trường | Kẻ xấu có thể gửi "bỏ qua hướng dẫn…". Kết quả xấu nhất vẫn chỉ là một đề xuất sai mà người duyệt thấy cạnh văn bản gốc |
+| Không dùng LangGraph, Qdrant | Gọi HTTP trực tiếp bằng `httpx` (đã có) | Bóc tách là một lượt hỏi-đáp, chưa cần đồ thị tác tử hay tìm kiếm vector; thêm sau khi có bài toán cần (vd tra cứu quy trình) |
 
 ## 7. Vì sao lõi độc lập với nghiệp vụ (`core/` và `apps/`)
 

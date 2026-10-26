@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: up up-bi up-ai luu-tru luu-tru-truy-van gia-lap gia-lap-vuot-nguong gia-lap-tran-lu down logs ps migrate seed test-db test-py license check lint smoke bao-init bao-unseal bao-status
+.PHONY: up up-bi up-ai danh-gia-ai luu-tru luu-tru-truy-van gia-lap gia-lap-vuot-nguong gia-lap-tran-lu down logs ps migrate seed test-db test-py license check lint smoke bao-init bao-unseal bao-status
 
 # Dùng .env nếu có, nếu không thì .env.example (để CI/máy sạch vẫn kiểm được compose)
 ENV_FILE := $(if $(wildcard .env),.env,.env.example)
@@ -40,6 +40,9 @@ up-ai:         ## Ollama + tải mô hình LLM_MODEL (#102, profile ai, lần đ
 	docker compose --profile core --profile app --profile ai up -d ollama
 	docker compose --profile core --profile app --profile ai run --rm ollama-pull
 	@grep -Eq '^LLM_PROVIDER=ollama' $(ENV_FILE) || echo "Đã có mô hình. Đặt LLM_PROVIDER=ollama trong .env rồi chạy make up để cuu-tro-api dùng Ollama."
+
+danh-gia-ai:   ## Đo độ đúng AI bóc tách (#102) trên tin mẫu giả, với LLM_PROVIDER đang chạy (cần make up)
+	python3 scripts/danh-gia-ai.py
 
 smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS, ràng buộc DB, phân quyền GraphQL, workflow phân công, luồng cảm biến MQTT, ảnh hiện trường, sổ cái minh bạch, web điều phối qua gateway, thông báo realtime Centrifugo, bản đồ tin kêu cứu realtime (GraphQL subscription), màn phân công 2 vai, API kêu cứu Poka-yoke, bản sao số trạm đo NGSI-LD trên Scorpio + trận lũ mẫu, thông báo cảnh báo vượt ngưỡng qua Temporal, tiền cứu trợ + xác minh sổ cái, lưu trữ Parquet + DuckDB, Grafana dashboard điều hành (tự bật profile bi), lớp trạm đo mực nước của web, trang Minh bạch công khai tự kiểm sổ cái trong trình duyệt, AI bóc tách tin kêu cứu (cần make up trước)
 	bash scripts/smoke-openbao.sh

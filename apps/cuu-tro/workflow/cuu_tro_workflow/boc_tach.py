@@ -93,7 +93,7 @@ _CAO = ("nguoi gia", "cu gia", "tre em", "tre nho", "em be", "chau nho", "ba bau
         "liet")
 _THAP = ("tiep te", "xin ho tro them", "khi nao", "hoi thong tin", "da an toan", "da so tan xong")
 _NHU_CAU_TU = {
-    "cuu_nguoi": ("cuu(?! tro)", "mac ket", "bi ket", "ket lai", "ngap mai", "noc nha", "tren mai", "cuon", "duoi nuoc", "sap chim"),
+    "cuu_nguoi": ("cuu(?! tro)", "mac ket", "bi ket", "ket lai", "khong ra duoc", "ngap (?:toi |den )?(?:nguc|co)", "ngap mai", "noc nha", "tren mai", "cuon", "duoi nuoc", "sap chim"),
     "y_te": ("thuoc", "bi thuong", "om", "benh", "cap cuu", "bat tinh", "mang thai", "ba bau", "chuyen da", "sot",
              "y te", "bac si"),
     "luong_thuc": ("gao", "mi tom", "do an", "luong thuc", "thuc pham", "bi doi", "doi lam", "an uong",

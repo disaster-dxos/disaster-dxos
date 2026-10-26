@@ -60,7 +60,7 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [ ] [V1] Release v0.3.0 (#94: PR chốt CHANGELOG + phiên bản về `develop`, rồi `develop` → `main`, tag, Release)
 
 ## Tuần 5 · 12–18/11 · Tầng [I] + demo công khai
-- [ ] [V3] AI bóc tách tin kêu cứu tự do → JSON (địa chỉ, số người, mức khẩn cấp); `LLM_PROVIDER` chọn Ollama + Qwen2.5 7B hoặc API ngoài
+- [x] [V3] AI bóc tách tin kêu cứu tự do → JSON (địa chỉ, số người, mức khẩn cấp); `LLM_PROVIDER` chọn Ollama + Qwen2.5 7B hoặc API ngoài (#102)
 - [ ] [V3] Hàng chờ duyệt HITL trên web điều phối
 - [ ] [V3] App Flutter: gửi kêu cứu/cập nhật hiện trường, hàng đợi offline
 - [ ] [V1] Demo công khai trên tên miền, bật GitHub Discussions
