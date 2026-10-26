@@ -51,6 +51,8 @@ bt() { post /workflow/ai/boc-tach "$1" "$2"; }
 http_code() { printf '%s' "${1%% *}"; }
 # jf <biểu thức python trên d>: đọc phần body JSON (sau mã HTTP) từ stdin
 jf() { python3 -c 'import sys,json; d=json.loads(sys.stdin.read().split(" ", 1)[1]); print(eval(sys.argv[1], {"d": d}))' "$1"; }
+# jv <biểu thức>…: như jf, nhiều biểu thức, in cách nhau một dấu cách
+jv() { python3 -c 'import sys,json; d=json.loads(sys.stdin.read().split(" ", 1)[1]); print(*(eval(e, {"d": d}) for e in sys.argv[1:]))' "$@"; }
 # vb <văn bản> [nguồn]: body JSON của /ai/boc-tach
 vb() { python3 -c 'import sys,json; print(json.dumps({"van_ban": sys.argv[1], "nguon": sys.argv[2]}, ensure_ascii=False))' "$1" "${2:-sms}"; }
 sql() { docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -q -v ON_ERROR_STOP=1'; }
@@ -80,24 +82,24 @@ out=$(bt "$T" "$(vb "$TIN")")
 check "tinh-nguyen bóc tách tin SMS → 200" 200 "$(http_code "$out")"
 check "nhà cung cấp đúng LLM_PROVIDER" "$PROVIDER" "$(jf 'd["ai"]["nha_cung_cap"]' <<<"$out")"
 check "SĐT chuẩn hóa, tọa độ lấy từ tin" "0900102001 20.9612 105.7488" \
-  "$(jf 'f"{d[\"tin_keu_cuu\"][\"reporter_phone\"]} {d[\"tin_keu_cuu\"][\"lat\"]} {d[\"tin_keu_cuu\"][\"lon\"]}"' <<<"$out")"
+  "$(jv 'd["tin_keu_cuu"]["reporter_phone"]' 'd["tin_keu_cuu"]["lat"]' 'd["tin_keu_cuu"]["lon"]' <<<"$out")"
 check "số người, mức khẩn cấp (ngập tới mái → khan_cap), nhu cầu cứu người" "5 khan_cap True" \
-  "$(jf 'f"{d[\"tin_keu_cuu\"][\"people_count\"]} {d[\"tin_keu_cuu\"][\"urgency\"]} {\"cuu_nguoi\" in d[\"de_xuat\"][\"nhu_cau\"]}"' <<<"$out")"
+  "$(jv 'd["tin_keu_cuu"]["people_count"]' 'd["tin_keu_cuu"]["urgency"]' '"cuu_nguoi" in d["de_xuat"]["nhu_cau"]' <<<"$out")"
 check "địa chỉ bóc từ tin, nguồn sms → dien_thoai" "True dien_thoai" \
-  "$(jf 'f"{d[\"tin_keu_cuu\"][\"address_text\"].startswith(\"thon 3\")} {d[\"tin_keu_cuu\"][\"source\"]}"' <<<"$out")"
+  "$(jv 'd["tin_keu_cuu"]["address_text"].startswith("thon 3")' 'd["tin_keu_cuu"]["source"]' <<<"$out")"
 check "Poka-yoke hợp lệ, không trùng" "True [] None" \
-  "$(jf 'f"{d[\"poka_yoke\"][\"hop_le\"]} {d[\"poka_yoke\"][\"loi\"]} {d[\"poka_yoke\"][\"tin_trung\"]}"' <<<"$out")"
+  "$(jv 'd["poka_yoke"]["hop_le"]' 'd["poka_yoke"]["loi"]' 'd["poka_yoke"]["tin_trung"]' <<<"$out")"
 check "mô tả che SĐT ([SĐT])" "True" "$(jf '"0900" not in d["tin_keu_cuu"]["description"] and "[SĐT]" in d["tin_keu_cuu"]["description"]' <<<"$out")"
 check "bóc tách KHÔNG tạo tin kêu cứu (người duyệt quyết định)" "$truoc" "$(dem_tin)"
 out=$(bt "$D" "$(vb 'Tôi là Trần Thị Mai ở tổ 4 phường Phúc La, có 2 cụ già bị kẹt, cần thuốc. Gọi +84 900 102 002. Vị trí 20.9701, 105.7799' zalo)")
 check "dieu-phoi bóc tách tin Zalo có dấu → tên, địa chỉ, mức cao, nguồn mang_xa_hoi" \
   "200 Trần Thị Mai tổ 4 phường Phúc La cao mang_xa_hoi" \
-  "$(http_code "$out") $(jf 'f"{d[\"tin_keu_cuu\"][\"reporter_name\"]} {d[\"tin_keu_cuu\"][\"address_text\"]} {d[\"tin_keu_cuu\"][\"urgency\"]} {d[\"tin_keu_cuu\"][\"source\"]}"' <<<"$out")"
+  "$(http_code "$out") $(jv 'd["tin_keu_cuu"]["reporter_name"]' 'd["tin_keu_cuu"]["address_text"]' 'd["tin_keu_cuu"]["urgency"]' 'd["tin_keu_cuu"]["source"]' <<<"$out")"
 
 # ---------- (3) Thiếu tọa độ ----------
 out=$(bt "$T" "$(vb 'nha o xom Bau ngap sau, 3 nguoi mac ket, goi 0900102003')")
 check "tin không có tọa độ → Poka-yoke báo thiếu lat, lon" "200 False ['lat', 'lon']" \
-  "$(http_code "$out") $(jf 'f"{d[\"poka_yoke\"][\"hop_le\"]} {sorted(x[\"truong\"] for x in d[\"poka_yoke\"][\"loi\"])}"' <<<"$out")"
+  "$(http_code "$out") $(jv 'd["poka_yoke"]["hop_le"]' 'sorted(x["truong"] for x in d["poka_yoke"]["loi"])' <<<"$out")"
 
 # ---------- (4) Kiểm trước tin trùng ----------
 out=$(post /workflow/keu-cuu "$T" '{"lat": 20.9612, "lon": 105.7488, "reporter_phone": "0900102001", "description": "[smoke #102] tin gốc", "urgency": "cao", "people_count": 5}')
@@ -105,10 +107,10 @@ check "tạo tin thật qua /workflow/keu-cuu → 201" 201 "$(http_code "$out")"
 ID=$(jf 'd["id"]' <<<"$out")
 out=$(bt "$T" "$(vb 'Lại là tôi, nước lên thêm, 5 người, 20.9622, 105.7488, sđt 0900102001')")
 check "cùng SĐT cách ~110 m → tin_trung trỏ đúng tin đang mở" "False $ID True" \
-  "$(jf 'f"{d[\"poka_yoke\"][\"hop_le\"]} {d[\"poka_yoke\"][\"tin_trung\"][\"incident_id\"]} {100 <= d[\"poka_yoke\"][\"tin_trung\"][\"khoang_cach_m\"] <= 120}"' <<<"$out")"
+  "$(jv 'd["poka_yoke"]["hop_le"]' 'd["poka_yoke"]["tin_trung"]["incident_id"]' '100 <= d["poka_yoke"]["tin_trung"]["khoang_cach_m"] <= 120' <<<"$out")"
 out=$(bt "$T" "$(vb 'Nhà khác, 2 người, 20.9622, 105.7488, sđt 0900102009')")
 check "khác SĐT cùng chỗ → không trùng" "True None" \
-  "$(jf 'f"{d[\"poka_yoke\"][\"hop_le\"]} {d[\"poka_yoke\"][\"tin_trung\"]}"' <<<"$out")"
+  "$(jv 'd["poka_yoke"]["hop_le"]' 'd["poka_yoke"]["tin_trung"]' <<<"$out")"
 check "kiểm trùng không tạo thêm tin (chỉ 1 tin của 0900102001)" 1 \
   "$(sql <<<"SELECT count(*) FROM cuu_tro.incidents WHERE reporter_phone = '0900102001'")"
 
