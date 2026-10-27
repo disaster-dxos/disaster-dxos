@@ -123,7 +123,7 @@ curl -s -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"query":"{ devices { code name condition } }"}' http://localhost:9080/graphql
 ```
 
-**Đo thật** (27/10/2026, MacBook Apple Silicon, OrbStack): `make up` với `DXOS_APP=muon-thiet-bi` trên volume trống chạy được mà không sửa `core/`. `make smoke-app` đạt 72/72 ca: 38 ca lõi dùng chung, 11 ca test DB, 23 ca của module. RAM toàn stack khoảng 2 GiB.
+**Đo thật** (27/10/2026, MacBook Apple Silicon, OrbStack): `make up` với `DXOS_APP=muon-thiet-bi` trên volume trống chạy được mà không sửa `core/`. `make smoke-app` đạt 71/71 ca: 38 ca lõi dùng chung (OpenBao 9, Hasura/SeaweedFS/Temporal/NATS 29), 11 ca test DB, 22 ca của module. RAM toàn stack khoảng 2 GiB.
 
 ## 5. Không được làm
 
