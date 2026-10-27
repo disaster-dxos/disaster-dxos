@@ -58,7 +58,7 @@ mutation { insert_loans_one(object: {device_id: "d0000000-0000-4000-8000-0000000
 query { devices { code name condition loans(order_by: {borrowed_at: desc}, limit: 1) { borrower_name due_at returned_at } } }
 ```
 
-Smoke (`tests/smoke.sh`, 23 ca) kiểm:
+Smoke (`tests/smoke.sh`, 22 ca) kiểm:
 - lõi chạy với module: schema và role theo quy ước tên của lõi, không có gì của `apps/cuu-tro`, `/` và `/workflow/*` trả 503 vì không có backend;
 - quyền theo vai, kể cả giả mạo người mượn;
 - Poka-yoke qua GraphQL, kể cả hai người mượn cùng lúc;
