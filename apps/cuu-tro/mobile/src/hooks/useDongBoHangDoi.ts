@@ -36,6 +36,13 @@ export function useDongBoHangDoi(): void {
     }
   }, [daNap, coMang, daDangNhap]);
 
+  // Đăng nhập lại: bản ghi đang lùi vì hết phiên được gửi ngay, không chờ hết thời gian lùi
+  useEffect(() => {
+    if (daNap && daDangNhap) {
+      boQua(useHangDoiStore.getState().sauDangNhap());
+    }
+  }, [daNap, daDangNhap]);
+
   // Hẹn giờ đúng lúc bản ghi lỗi tạm tới hạn thử lại
   const han = hanKeTiep(ds);
   useEffect(() => {

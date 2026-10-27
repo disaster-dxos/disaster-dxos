@@ -6,3 +6,4 @@ declare const crypto: {
 
 /** Hermes (React Native ≥ 0.74) và Node đều có atob */
 declare function atob(data: string): string;
+declare function btoa(data: string): string;

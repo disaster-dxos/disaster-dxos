@@ -3,6 +3,7 @@
 // đọc header Idempotent-Replayed, lấy `detail` lỗi của API.
 import type { AxiosRequestConfig, AxiosResponse } from 'axios';
 import { taoApi } from '@/services/api';
+import { LoiTamToken } from '@/utils/loiPhien';
 
 function adapter(dsTraLoi: Array<Partial<AxiosResponse> | Error>) {
   const goi: AxiosRequestConfig[] = [];
@@ -43,5 +44,15 @@ describe('client API qua gateway', () => {
     expect(await api.goi({ url: '/x' })).toEqual({ ok: false, status: 422, detail: { ma: 'x' } });
     const khong = taoApi({ gatewayUrl: () => 'http://gw', layToken: async () => null }, a.fn as never);
     expect(await khong.goi({ url: '/x' })).toEqual({ ok: false, status: 401, detail: null });
+  });
+
+  it('làm mới token lỗi tạm (LoiTamToken) → status 0 như mất mạng, không gọi gateway (#108)', async () => {
+    const a = adapter([]);
+    const api = taoApi(
+      { gatewayUrl: () => 'http://gw', layToken: async () => Promise.reject(new LoiTamToken(new Error('x'))) },
+      a.fn as never,
+    );
+    expect(await api.goi({ url: '/x' })).toEqual({ ok: false, status: 0, detail: null });
+    expect(a.goi).toHaveLength(0);
   });
 });

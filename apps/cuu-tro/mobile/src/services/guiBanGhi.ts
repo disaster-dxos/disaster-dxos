@@ -13,7 +13,7 @@ import type { BanGhi, KetQuaGui } from '@/utils/hangDoi';
 import { phanLoaiLoi } from '@/utils/loiApi';
 import { useAuthStore } from '@/stores/authStore';
 import { useCaiDatStore } from '@/stores/caiDatStore';
-import { api, type KetQuaGoi } from './api';
+import { api, tokenHoacLoi, type KetQuaGoi } from './api';
 import { conTrenMay, xoaTep } from './anhCucBo';
 import { M_VI_TRI_DOI, M_VI_TRI_DOI_DAU, Q_MOC_VI_TRI_DOI } from './graphql';
 
@@ -32,9 +32,9 @@ export interface PhuThuocGui {
 
 /** Tải tệp làm body nhị phân (react-native-blob-util đọc thẳng từ đĩa) */
 async function taiTepThat(url: string, headers: Record<string, string>, duongDan: string) {
-  const token = await useAuthStore.getState().layToken();
-  if (!token) {
-    return { ok: false as const, status: 401, detail: null };
+  const token = await tokenHoacLoi(b => useAuthStore.getState().layToken(b));
+  if (typeof token !== 'string') {
+    return token;
   }
   try {
     const r = await ReactNativeBlobUtil.config({ timeout: THOI_HAN_MS * 4 }).fetch(

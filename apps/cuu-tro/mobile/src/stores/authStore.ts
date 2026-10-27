@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Phiên đăng nhập. Token chỉ nằm trong Keychain (iOS) / Keystore (Android) qua react-native-keychain, không
-// ghi AsyncStorage, không ghi log. Access token tự làm mới trước khi hết hạn; làm mới thất bại (refresh token hết
-// hạn, bị thu hồi) thì về màn đăng nhập, hàng đợi offline vẫn giữ nguyên và gửi tiếp sau khi đăng nhập lại.
+// ghi AsyncStorage, không ghi log. Access token tự làm mới trước khi hết hạn:
+//   - Keycloak từ chối refresh token (hết hạn, bị thu hồi; utils/loiPhien.ts) → xóa phiên, về màn đăng nhập;
+//     hàng đợi offline vẫn giữ nguyên và gửi tiếp sau khi đăng nhập lại;
+//   - lỗi khác (mất mạng, Keycloak sập, thông điệp lạ) → GIỮ phiên, ném LoiTamToken để client API coi như mất
+//     mạng (hàng đợi lùi dần), không đăng xuất người dùng ngoài hiện trường (#108).
 import * as Keychain from 'react-native-keychain';
 import { create } from 'zustand';
 import * as xacThuc from '@/services/xacThuc';
 import type { Token } from '@/services/xacThuc';
 import { nguoiDungTuToken, type NguoiDung } from '@/utils/jwt';
+import { LoiTamToken, phienBiTuChoi } from '@/utils/loiPhien';
 import { useCaiDatStore } from './caiDatStore';
 
 const DICH_VU = 'org.disasterdxos.cuutro.phien';
@@ -22,7 +26,10 @@ interface AuthState {
   loi: string | null;
   khoiPhuc: () => Promise<void>;
   dangNhap: () => Promise<void>;
-  /** Access token còn hạn (tự làm mới); null nếu chưa đăng nhập / làm mới thất bại */
+  /**
+   * Access token còn hạn (tự làm mới). null: chưa đăng nhập hoặc Keycloak vừa từ chối refresh token (đã xóa
+   * phiên). Ném LoiTamToken: làm mới thất bại tạm thời, phiên vẫn giữ.
+   */
   layToken: (batBuocLamMoi?: boolean) => Promise<string | null>;
   dangXuat: () => Promise<void>;
 }
@@ -86,10 +93,9 @@ export const useAuthStore = create<AuthState>((set, get) => {
           await datToken(moi);
           return moi.accessToken;
         } catch (e) {
-          const chuaToiMayChu = e instanceof Error && /network|timeout|connect|offline/i.test(e.message);
-          if (chuaToiMayChu) {
-            // Mất mạng: giữ phiên, hàng đợi thử lại sau
-            return null;
+          if (!phienBiTuChoi(e)) {
+            // Mất mạng, Keycloak lỗi: giữ phiên, không ghi log (thông điệp có thể chứa URL máy chủ)
+            throw new LoiTamToken(e);
           }
           await ghiToken(null);
           set({ token: null, nguoiDung: null, trangThai: 'chua_dang_nhap' });

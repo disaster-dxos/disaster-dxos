@@ -7,6 +7,7 @@ import {
   guiLai,
   hanKeTiep,
   khoiPhuc,
+  sauDangNhap,
   luiMs,
   LUI_TOI_DA_MS,
   taoBanGhi,
@@ -78,9 +79,17 @@ describe('áp kết quả gửi', () => {
     expect(luiMs(30)).toBe(LUI_TOI_DA_MS);
   });
 
-  it('hết phiên: chờ đăng nhập, không tính lần lỗi', () => {
-    const x = apKetQua(b, { ok: false, loai: 'can_dang_nhap', status: 401, khoa: 'loi.hetPhien' }, T0);
-    expect(x).toMatchObject({ trangThai: 'cho_gui', soLan: 0, lanThuTiep: T0 });
+  it('hết phiên: chờ gửi, LÙI DẦN (401 liên tục không thử lại mỗi giây); đăng nhập lại thì gửi ngay (#108)', () => {
+    const hetPhien = { ok: false as const, loai: 'can_dang_nhap' as const, status: 401, khoa: 'loi.hetPhien' };
+    const x1 = apKetQua(b, hetPhien, T0);
+    const x2 = apKetQua(x1, hetPhien, T0);
+    expect([x1.lanThuTiep - T0, x2.lanThuTiep - T0]).toEqual([5_000, 10_000]);
+    expect(x2).toMatchObject({ trangThai: 'cho_gui', khoa: b.khoa });
+    const tam = apKetQua(b, { ok: false, loai: 'tam', status: 0, khoa: 'loi.mang' }, T0);
+    const [y, z] = sauDangNhap([x2, tam], T0 + 1);
+    expect(y).toMatchObject({ lanThuTiep: T0 + 1, loi: undefined, khoa: b.khoa });
+    // Bản ghi lỗi mạng giữ lịch lùi của nó
+    expect(z).toBe(tam);
   });
 
   it('lỗi vĩnh viễn (409 tin trùng): dừng, giữ mã tin đang mở để báo', () => {
