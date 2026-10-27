@@ -54,6 +54,12 @@ class Config:
     anh_max_bytes: int = 10 * 1024 * 1024
     # Hạn link xem mặc định = tối đa (giây); client xin ngắn hơn bằng ?han_giay=
     anh_link_han_giay: int = 300
+    # Quét mã độc ảnh (#111): clamd của lõi (profile sec). Trống = tắt. Máy quét lỗi/không có: nhận ảnh với
+    # scan_status chua_quet, trừ khi anh_quet_bat_buoc (khi đó 503)
+    clamav_host: str = "clamav"
+    clamav_port: int = 3310
+    clamav_timeout_giay: float = 30.0
+    anh_quet_bat_buoc: bool = False
     gateway_public_url: str = "http://localhost:9080"
     # Sổ cái minh bạch (#28): core/ledger trong mạng nội bộ (ghi không đi qua gateway: APISIX chặn mọi
     # phương thức ghi /ledger/*). Token ghi của ứng dụng (secret/app/cuu-tro/ledger) do bao agent render.
@@ -146,6 +152,10 @@ def load() -> Config:
         anh_bucket=os.environ.get("ANH_BUCKET", "cuu-tro-media"),
         anh_max_bytes=_int("ANH_MAX_BYTES", 10 * 1024 * 1024),
         anh_link_han_giay=_int("ANH_LINK_HAN_GIAY", 300),
+        clamav_host=os.environ.get("CLAMAV_HOST", "clamav"),
+        clamav_port=_int("CLAMAV_PORT", 3310),
+        clamav_timeout_giay=min(300.0, max(1.0, float(os.environ.get("CLAMAV_TIMEOUT_GIAY", 30)))),
+        anh_quet_bat_buoc=os.environ.get("ANH_QUET_BAT_BUOC", "0").strip().lower() in ("1", "true", "co"),
         gateway_public_url=os.environ.get("GATEWAY_PUBLIC_URL", "http://localhost:9080"),
         ledger_url=os.environ.get("LEDGER_URL", "http://ledger:8090"),
         ledger_write_token=os.environ.get("LEDGER_WRITE_TOKEN", ""),

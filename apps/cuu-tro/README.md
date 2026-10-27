@@ -485,7 +485,7 @@ Kiểm thử: `tests/test_cuu_tro_idempotency.py` (dạng khóa, ba đường, k
 | Khóa S3 | Định danh `cuu-tro-app` (`secret/app/cuu-tro/s3`) chỉ `Read`/`Write`/`List` bucket `cuu-tro-*`, không `Admin`; chỉ `cuu-tro-api` có (volume tmpfs riêng) | Lộ khóa ứng dụng không đụng được bucket khác, không tạo/xóa bucket. Khóa quản trị `secret/core/s3` không cấp cho ứng dụng |
 | Thứ tự ghi | Kiểm quyền → đọc body (dừng ngay khi vượt giới hạn) → magic bytes → PUT S3 (ký kèm SHA-256 nội dung) → `INSERT incident_media`. CSDL lỗi → xóa object vừa ghi | Không có dòng trỏ tới object không có, không để object mồ côi |
 | Tên object | `su-co/<incident_id>/<media_id>.<jpg\|png\|webp>`, đuôi theo loại thật | Không dùng tên tệp của người dùng (chặn path traversal, lộ thông tin) |
-| Quét mã độc | Cột `scan_status` (mặc định `chua_quet`) chừa chỗ; ClamAV ở biên (profile `sec`) là việc sau | |
+| Quét mã độc (#111) | `cuu-tro-api` gửi nội dung tới clamd của lõi (`clamav:3310`, profile `sec`, `make up-sec`) **trước** khi kiểm magic bytes và lưu. Nhiễm → `422 {ma: "anh_nhiem_ma_doc", chu_ky}`, không ghi S3/CSDL; sạch → `scan_status = sach` kèm `scanned_at`, `scan_engine` (vd `ClamAV 1.5.4/28166`). Máy quét chưa bật hoặc lỗi → nhận với `chua_quet` (mặc định) hoặc `503 {ma: "chua_quet_duoc"}` khi `ANH_QUET_BAT_BUOC=1`. Biến: `CLAMAV_HOST` (trống = tắt), `CLAMAV_PORT`, `CLAMAV_TIMEOUT_GIAY` | Quét ở một chỗ duy nhất đã đọc nội dung (cách a). Theo chuẩn EICAR, tệp thử chỉ bị nhận diện khi chuỗi nằm ở đầu tệp; smoke dùng EICAR thuần (422, không phải 415: quét chạy trước kiểm loại tệp) |
 
 ### Quyền theo vai trò
 
@@ -501,7 +501,7 @@ Quyền theo hàng không viết lại trong API: API hỏi Hasura qua gateway `
 
 | Phương thức, đường dẫn | Kết quả |
 |---|---|
-| `POST /workflow/tai-len/su-co/{incident_id}/anh`, body = nội dung ảnh | `201 {id, incident_id, object_key, content_type, size_bytes, sha256, uploaded_by, uploader_role, uploaded_at, scan_status, link}` · `400` body rỗng · `413` quá `ANH_MAX_BYTES` (mặc định 10 MiB; gateway chặn trước ở `GW_UPLOAD_MAX_BODY_BYTES`, 20 MiB) · `415` không phải JPEG/PNG/WebP theo magic bytes |
+| `POST /workflow/tai-len/su-co/{incident_id}/anh`, body = nội dung ảnh | `201 {id, incident_id, object_key, content_type, size_bytes, sha256, uploaded_by, uploader_role, uploaded_at, scan_status, scanned_at, scan_engine, link}` · `400` body rỗng · `422 anh_nhiem_ma_doc` tệp có mã độc (#111) · `503 chua_quet_duoc` máy quét không chạy khi `ANH_QUET_BAT_BUOC=1` · `413` quá `ANH_MAX_BYTES` (mặc định 10 MiB; gateway chặn trước ở `GW_UPLOAD_MAX_BODY_BYTES`, 20 MiB) · `415` không phải JPEG/PNG/WebP theo magic bytes |
 | `GET /workflow/su-co/{incident_id}/anh` | `200 {incident_id, anh: [{id, content_type, size_bytes, sha256, uploaded_by, uploaded_at, scan_status, link}]}` |
 | `GET /workflow/anh/{media_id}/link?han_giay=N` | `200 {…, link: {url, han_giay, het_han_luc}}` · `422` `han_giay` ngoài 1..`ANH_LINK_HAN_GIAY` |
 

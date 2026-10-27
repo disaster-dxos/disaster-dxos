@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: up up-bi up-ai danh-gia-ai luu-tru luu-tru-truy-van gia-lap gia-lap-vuot-nguong gia-lap-tran-lu down logs ps migrate seed test-db test-py license check lint smoke bao-init bao-unseal bao-status
+.PHONY: up up-bi up-ai up-sec danh-gia-ai luu-tru luu-tru-truy-van gia-lap gia-lap-vuot-nguong gia-lap-tran-lu down logs ps migrate seed test-db test-py license check lint smoke bao-init bao-unseal bao-status
 
 # Dùng .env nếu có, nếu không thì .env.example (để CI/máy sạch vẫn kiểm được compose)
 ENV_FILE := $(if $(wildcard .env),.env,.env.example)
@@ -41,10 +41,13 @@ up-ai:         ## Ollama + tải mô hình LLM_MODEL (#102, profile ai, lần đ
 	docker compose --profile core --profile app --profile ai run --rm ollama-pull
 	@grep -Eq '^LLM_PROVIDER=ollama' $(ENV_FILE) || echo "Đã có mô hình. Đặt LLM_PROVIDER=ollama trong .env rồi chạy make up để cuu-tro-api dùng Ollama."
 
+up-sec:        ## ClamAV quét mã độc ảnh tải lên (#111, profile sec, cần make up trước): lần đầu tải image ~190 MB, nạp chữ ký ~1 phút
+	docker compose --profile core --profile app --profile sec up -d clamav
+
 danh-gia-ai:   ## Đo độ đúng AI bóc tách (#102) trên tin mẫu giả, với LLM_PROVIDER đang chạy (cần make up)
 	python3 scripts/danh-gia-ai.py
 
-smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS, ràng buộc DB, phân quyền GraphQL, workflow phân công, luồng cảm biến MQTT, ảnh hiện trường, sổ cái minh bạch, web điều phối qua gateway, thông báo realtime Centrifugo, bản đồ tin kêu cứu realtime (GraphQL subscription), màn phân công 2 vai, API kêu cứu Poka-yoke, bản sao số trạm đo NGSI-LD trên Scorpio + trận lũ mẫu, thông báo cảnh báo vượt ngưỡng qua Temporal, tiền cứu trợ + xác minh sổ cái, lưu trữ Parquet + DuckDB, Grafana dashboard điều hành (tự bật profile bi), lớp trạm đo mực nước của web, trang Minh bạch công khai tự kiểm sổ cái trong trình duyệt, hàng chờ duyệt tin AI (HITL), đường gọi của app hiện trường (PKCE dxos-mobile, Idempotency-Key), AI bóc tách tin kêu cứu (cần make up trước)
+smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS, ràng buộc DB, phân quyền GraphQL, workflow phân công, luồng cảm biến MQTT, ảnh hiện trường, quét mã độc ClamAV (tự bật profile sec), sổ cái minh bạch, web điều phối qua gateway, thông báo realtime Centrifugo, bản đồ tin kêu cứu realtime (GraphQL subscription), màn phân công 2 vai, API kêu cứu Poka-yoke, bản sao số trạm đo NGSI-LD trên Scorpio + trận lũ mẫu, thông báo cảnh báo vượt ngưỡng qua Temporal, tiền cứu trợ + xác minh sổ cái, lưu trữ Parquet + DuckDB, Grafana dashboard điều hành (tự bật profile bi), lớp trạm đo mực nước của web, trang Minh bạch công khai tự kiểm sổ cái trong trình duyệt, hàng chờ duyệt tin AI (HITL), đường gọi của app hiện trường (PKCE dxos-mobile, Idempotency-Key), AI bóc tách tin kêu cứu (cần make up trước)
 	bash scripts/smoke-openbao.sh
 	bash scripts/smoke-jwt.sh
 	bash scripts/smoke-gateway.sh
@@ -56,6 +59,8 @@ smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/Seaweed
 	bash scripts/smoke-cam-bien.sh
 	bash scripts/smoke-canh-bao.sh
 	bash scripts/smoke-anh.sh
+	# Tự bật profile sec (ClamAV) rồi dừng lại khi xong, các smoke sau chạy như không có máy quét (#111)
+	bash scripts/smoke-clamav.sh
 	bash scripts/smoke-ledger.sh
 	bash scripts/smoke-so-cai.sh
 	bash scripts/smoke-web.sh
