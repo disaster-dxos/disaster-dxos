@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Module mẫu muon-thiet-bi (#110) không có backend riêng: chỉ dùng lõi (Keycloak, APISIX, Hasura trên
+# PostgreSQL) qua GraphQL `/graphql`. Lõi luôn nạp apps/${DXOS_APP}/compose.yaml bằng include, nên tệp này
+# phải có dù không khai dịch vụ nào. Module có backend thì khai dịch vụ <app>-api (cổng 8000) và/hoặc
+# <app>-web (cổng 3000) ở đây, profile "app": APISIX tự trỏ /workflow/* và / tới đó (docs/viet-module.md).
+services: {}

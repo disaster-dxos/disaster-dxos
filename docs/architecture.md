@@ -739,11 +739,11 @@ flowchart LR
   subgraph a1["apps/cuu-tro/ · Ứng dụng cứu trợ thiên tai"]
     r1["realm + vai trò"] --- s1["schema PostGIS"] --- w1["workflow kêu cứu"] --- u1["web + app"]
   end
-  subgraph a2["apps/&lt;ứng-dụng-khác&gt;/ · ví dụ quản lý kho"]
-    r2["realm + vai trò"] --- s2["schema"] --- w2["workflow"]
+  subgraph a2["apps/muon-thiet-bi/ · module mẫu mượn trả thiết bị (#110)"]
+    r2["realm thiet-bi + 2 vai"] --- s2["schema + Poka-yoke"] --- h2["Hasura metadata"]
   end
   a1 -->|"DXOS_APP=cuu-tro"| core
-  a2 -.->|"DXOS_APP=&lt;khác&gt;"| core
+  a2 -->|"DXOS_APP=muon-thiet-bi"| core
 ```
 
 Cách cắm ứng dụng vào lõi: đặt biến `DXOS_APP` trong `.env` là tên thư mục trong `apps/`. Lõi nạp cấu hình do ứng dụng cung cấp qua các điểm cắm cố định:
@@ -756,14 +756,19 @@ Cách cắm ứng dụng vào lõi: đặt biến `DXOS_APP` trong `.env` là t�
 | Backend (worker + API) | `compose.yaml`, `workflow/` (Python) | `docker-compose.yml` nạp `apps/${DXOS_APP}/compose.yaml` bằng `include` (profile `app`); route `/workflow/*` trỏ vào `<DXOS_APP>-api:8000` (mục 7.3) | Có (#29) |
 | Role DB dịch vụ | `db/migrations/` (GRANT) | `postgres-roles` tạo role `<schema>_app` không quyền gì; migration của ứng dụng cấp đúng bảng/cột (mục 7.3) | Có (#29) |
 | Bí mật của ứng dụng | `openbao/policies/*.hcl` | `openbao-init` nạp thành policy + AppRole `app-<DXOS_APP>-<dịch vụ>` | Có (#29) |
-| Route gateway riêng | `gateway/routes.yaml` | Gộp với route lõi khi khởi động APISIX | Chưa cần (tuần 3+) |
+| Route gateway riêng | `gateway/routes.yaml` | Gộp với route lõi khi khởi động APISIX | Chưa làm: module dùng `/graphql`, `/files/*`, `/workflow/*`, `/ngsi-ld/v1/*`, `/realtime/websocket`, `/` |
 | Dữ liệu mẫu | `db/seed/` | `make seed` (`migrate seed`) | Có (#25) |
+| Bucket S3, bí mật riêng, dashboard | `s3/buckets.conf`, `openbao/secrets.conf`, `grafana/dashboards/` | `s3-buckets`, `openbao-init`, Grafana (đều tùy chọn) | Có (#27, #87, #92) |
+| Smoke riêng | `tests/smoke.sh` | `make smoke-app` chạy sau smoke lõi dùng chung + test DB | Có (#110) |
 
-Lợi ích: cùng một lõi, cắm thêm ứng dụng khác chỉ bằng cấu hình, không sửa `core/`. Đây là bằng chứng lõi dùng lại được, sẽ trình bày trong phần demo.
+Lợi ích: cùng một lõi, cắm thêm ứng dụng khác chỉ bằng cấu hình, không sửa `core/`.
+
+**Bằng chứng (#110):** module mẫu `apps/muon-thiet-bi/` (mượn trả thiết bị dùng chung, khác đề tài) chỉ có realm, migration, metadata Hasura, `compose.yaml` rỗng. Lõi chạy với `DXOS_APP=muon-thiet-bi` trên volume trống mà không sửa `core/`: migration tạo schema `muon_thiet_bi` và role `muon_thiet_bi_{owner,app,bi}`, OpenBao sinh bí mật `secret/app/muon-thiet-bi/*`, NATS có user `muon-thiet-bi-{app,thiet-bi}`, Hasura nhận JWT realm `thiet-bi`. `make smoke-app` chạy smoke lõi dùng chung (OpenBao, Hasura, SeaweedFS, Temporal, NATS), test DB và smoke của module. `make check` kiểm compose hợp lệ với mọi module. Hướng dẫn cho lập trình viên: [`viet-module.md`](viet-module.md).
 
 Còn ràng buộc (tuần 2 xử lý):
 - Tên realm (`KEYCLOAK_REALM`, mặc định `disaster`) là cấu hình triển khai, không phải nghiệp vụ. Từ #12, `core/apisix/apisix.yaml` đọc tên realm qua `${{KEYCLOAK_REALM:=disaster}}`, không còn ghi cứng. Từ #29, upstream của `/workflow/*` cũng là biến (`GW_WORKFLOW_UPSTREAM_HOST/PORT`, mặc định `<DXOS_APP>-api:8000`). Còn lại: gộp route riêng của ứng dụng (`apps/<DXOS_APP>/gateway/routes.yaml`) với route lõi lúc khởi động, khi ứng dụng cần route ngoài `/graphql`, `/files`, `/workflow`.
-- `scripts/smoke-jwt.sh` dùng người dùng mẫu của `apps/cuu-tro` để kiểm thử lõi.
+- `scripts/smoke-jwt.sh`, `smoke-gateway.sh` dùng người dùng mẫu của `apps/cuu-tro`. `smoke-openbao.sh` và `smoke-core.sh` dùng được cho mọi module (`smoke-core.sh` đọc user mẫu từ `SMOKE_CORE_USERS`, #110).
+- Grafana (profile `bi`) mặc định đọc bằng `cuu_tro_bi` và dashboard chính `dieu-hanh.json`: module khác đặt `APP_BI_DB_USER` (`viet-module.md` mục 6).
 
 ### 7.1. Tầng dữ liệu của ứng dụng (#25)
 
