@@ -27,7 +27,8 @@ Hàng chờ duyệt HITL (#104, cuu_tro_workflow/hang_cho.py; đọc hàng chờ
   POST /hang-cho/{id}/duyet         duyệt (body tùy chọn {"tin_keu_cuu": {…}} đã sửa) → tạo tin kêu cứu qua
                                     Poka-yoke của /keu-cuu, lưu vết trường sửa + người duyệt (chỉ dieu-phoi)
   POST /hang-cho/{id}/huy           hủy {"ly_do"}: không tạo tin (chỉ dieu-phoi)
-Ảnh hiện trường (#27, luật quyền: cuu_tro_workflow/anh.py, apps/cuu-tro/README.md):
+Ảnh hiện trường (#27, luật quyền: cuu_tro_workflow/anh.py, apps/cuu-tro/README.md; quét mã độc ClamAV trước khi
+lưu, #111, cuu_tro_workflow/quet_ma_doc.py: nhiễm → 422 anh_nhiem_ma_doc):
   POST /tai-len/su-co/{incident_id}/anh   body = nội dung ảnh (route gateway /workflow/tai-len/*)
   GET  /su-co/{incident_id}/anh           liệt kê ảnh của tin kèm link xem ngắn hạn
   GET  /anh/{media_id}/link?han_giay=N    link xem presigned ngắn hạn cho một ảnh
@@ -73,7 +74,7 @@ from temporalio.common import Priority, WorkflowIDConflictPolicy, WorkflowIDReus
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.service import RPCError
 
-from . import anh, boc_tach, config, hang_cho, idempotency, keu_cuu, so_cai, so_cai_csdl, thong_bao
+from . import anh, boc_tach, config, hang_cho, idempotency, keu_cuu, quet_ma_doc, so_cai, so_cai_csdl, thong_bao
 from .auth import VAI_TRO_CUU_HO, VAI_TRO_DIEU_PHOI, VAI_TRO_TINH_NGUYEN, NguoiDung, XacThuc, can_vai_tro
 from .s3 import KhoAnh, LoiS3
 from .logic import PhanHoi, TrangThaiPhanCong, XacNhan, YeuCauHuy, uu_tien
@@ -116,15 +117,19 @@ class SoAnh:
         self._pool = pool
 
     async def them(self, conn: asyncpg.Connection | None = None, **d: Any) -> dict[str, Any]:
+        # Kết quả quét mã độc (#111, migration 0016): scanned_at do CSDL đặt khi đã quét
         row = await (conn or self._pool).fetchrow(
             """INSERT INTO cuu_tro.incident_media
-                 (id, incident_id, object_key, content_type, size_bytes, sha256, uploaded_by, uploader_role)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-               RETURNING uploaded_at, scan_status""",
+                 (id, incident_id, object_key, content_type, size_bytes, sha256, uploaded_by, uploader_role,
+                  scan_status, scan_engine, scanned_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CASE WHEN $9 = 'chua_quet' THEN NULL ELSE now() END)
+               RETURNING uploaded_at, scan_status, scanned_at""",
             uuid.UUID(d["id"]), uuid.UUID(d["incident_id"]), d["object_key"], d["content_type"],
             d["size_bytes"], d["sha256"], d["uploaded_by"], d["uploader_role"],
+            d.get("scan_status", "chua_quet"), d.get("scan_engine"),
         )
-        return {"uploaded_at": row["uploaded_at"].isoformat(), "scan_status": row["scan_status"]}
+        return {"uploaded_at": row["uploaded_at"].isoformat(), "scan_status": row["scan_status"],
+                "scanned_at": row["scanned_at"].isoformat() if row["scanned_at"] else None}
 
 
 class SoPhieu:
@@ -231,6 +236,8 @@ async def lifespan(app: FastAPI):
                 st.boc_tach = boc_tach.tao(cfg, http_llm)
             if not hasattr(st, "so_cai"):
                 st.so_cai = so_cai.SoCai(http_ledger, cfg.ledger_write_token, cfg.ledger_verifier_key)
+            if not hasattr(st, "may_quet"):
+                st.may_quet = quet_ma_doc.MayQuet(cfg.clamav_host, cfg.clamav_port, cfg.clamav_timeout_giay)
             if not hasattr(st, "kho_anh"):
                 st.kho_anh = KhoAnh(endpoint=cfg.s3_endpoint, bucket=cfg.anh_bucket, access_key=cfg.s3_access_key,
                                     secret_key=cfg.s3_secret_key, gateway_public_url=cfg.gateway_public_url,
@@ -687,6 +694,8 @@ async def tai_anh(request: Request, incident_id: uuid.UUID, nd: NguoiDungDep, re
         du_lieu = await doc_body_gioi_han(request, cfg.anh_max_bytes)
     if not du_lieu:
         raise HTTPException(400, "Body rỗng: gửi nội dung ảnh trong body request")
+    # Quét mã độc TRƯỚC mọi bước lưu (#111): tệp nhiễm bị từ chối dù đội lốt ảnh hay không, không chạm S3/CSDL
+    quet = await _quet_anh(st, str(incident_id), du_lieu)
     # Loại thật từ magic bytes; Content-Type và tên tệp của client bị bỏ qua
     loai = anh.nhan_dang(du_lieu[: anh.SO_BYTE_DAU])
     if loai is None:
@@ -701,7 +710,7 @@ async def tai_anh(request: Request, incident_id: uuid.UUID, nd: NguoiDungDep, re
         log.error("ghi S3 lỗi: %s", e)
         raise HTTPException(502, "Không ghi được ảnh lên kho lưu trữ") from e
     ban_ghi = {"id": media_id, "incident_id": str(incident_id), "object_key": key, "content_type": loai,
-               "size_bytes": len(du_lieu), "sha256": sha, "uploaded_by": nd.sub, "uploader_role": vai_tro}
+               "size_bytes": len(du_lieu), "sha256": sha, "uploaded_by": nd.sub, "uploader_role": vai_tro, **quet}
 
     async def xu_ly(conn: asyncpg.Connection | None) -> tuple[int, dict[str, Any], dict[str, Any]]:
         them = await (st.so_anh.them(conn=conn, **ban_ghi) if conn else st.so_anh.them(**ban_ghi))
@@ -728,6 +737,30 @@ async def tai_anh(request: Request, incident_id: uuid.UUID, nd: NguoiDungDep, re
         # Yêu cầu cùng khóa chạy song song đã ghi trước: object vừa ghi của yêu cầu này thừa
         await xoa_mo_coi()
     return _tra(response, _them_link(request, kq))
+
+
+async def _quet_anh(st: Any, incident_id: str, du_lieu: bytes) -> dict[str, Any]:
+    """Quét bằng clamd (#111) → {scan_status, scan_engine}. Nhiễm → 422. Không quét được → chua_quet (mặc định,
+    ảnh cứu nạn không mất vì máy quét tắt) hoặc 503 khi ANH_QUET_BAT_BUOC=1."""
+    may = getattr(st, "may_quet", None)
+    try:
+        if may is None:
+            raise quet_ma_doc.LoiQuet("chưa cấu hình máy quét")
+        kq = await may.quet(du_lieu)
+    except quet_ma_doc.LoiQuet as e:
+        if st.cfg.anh_quet_bat_buoc:
+            log.error("không quét được ảnh, từ chối (ANH_QUET_BAT_BUOC): %s", e)
+            raise HTTPException(503, {"ma": "chua_quet_duoc",
+                                      "thong_bao": "Máy quét mã độc đang không hoạt động, chưa nhận ảnh. Thử lại sau."}) from None
+        if may is not None and may.bat:
+            log.warning("không quét được ảnh, nhận với scan_status chua_quet: %s", e)
+        return {"scan_status": "chua_quet", "scan_engine": None}
+    if not kq.sach:
+        # Chỉ ghi mã tin và tên chữ ký, không ghi nội dung
+        log.warning("ảnh tải lên cho tin %s có mã độc (%s), đã từ chối", incident_id, kq.chu_ky)
+        raise HTTPException(422, {"ma": "anh_nhiem_ma_doc", "chu_ky": kq.chu_ky,
+                                  "thong_bao": f"Tệp có mã độc ({kq.chu_ky}), không lưu."})
+    return {"scan_status": "sach", "scan_engine": kq.dong_co}
 
 
 def _them_link(request: Request, kq: idempotency.KetQua) -> idempotency.KetQua:

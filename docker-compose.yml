@@ -15,7 +15,8 @@
 #   bi     Grafana OSS (AGPL-3.0, dịch vụ riêng) dashboard điều hành (#92): make up-bi
 #   ai     Ollama (MIT, dịch vụ riêng) chạy mô hình mở cho AI bóc tách tin kêu cứu (#102): make up-ai.
 #          Không bật thì ứng dụng dùng LLM_PROVIDER=gia-lap (bộ luật) hoặc API ngoài openai-compatible
-#   sec    xem TODO cuối file
+#   sec    ClamAV (GPL-2.0, dịch vụ riêng) quét mã độc tệp tải lên (#111): make up-sec. Không bật thì ứng dụng
+#          vẫn nhận tệp với trạng thái "chưa quét" (hoặc từ chối nếu ứng dụng bắt buộc quét)
 #
 # Chạy: cp .env.example .env && make up   (make up tự khởi tạo/mở khóa OpenBao lần đầu)
 # Bí mật của dịch vụ lõi nằm trong OpenBao, không nằm trong .env (#14). bao agent render
@@ -894,8 +895,30 @@ services:
         echo "LLM_MODEL=$$LLM_MODEL không được phép (giấy phép không phải Apache-2.0/OSI)" >&2; exit 1; fi;
         ollama pull "$$LLM_MODEL"
 
-  # ===================== TODO các profile sau =====================
-  # sec (tuần 2-4): ClamAV (GPL-2.0, dịch vụ riêng). Sổ cái Tessera đã vào core (#28, dịch vụ ledger)
+  # ===================== profile sec =====================
+  clamav:
+    <<: *restart
+    # Quét mã độc tệp tải lên (#111). ClamAV là GPL-2.0: DỊCH VỤ RIÊNG bằng image gốc, không sửa, không liên
+    # kết vào mã dự án; ứng dụng nói chuyện qua giao thức mạng clamd (TCP 3310, INSTREAM). Lõi không biết tệp gì
+    # được quét: backend của ứng dụng gọi tới clamav:3310 trong mạng nội bộ. Không mở cổng ra host, không qua APISIX.
+    # Image bản đầy đủ có sẵn bộ chữ ký (main/daily/bytecode) nên quét được ngay cả khi không có mạng; volume
+    # clamavdata nhận bản đó lần đầu, freshclam (trong cùng container) cập nhật mỗi ngày CLAMAV_FRESHCLAM_LAN lần
+    # khi có mạng. CLAMAV_NO_FRESHCLAMD=true để tắt cập nhật (máy không ra Internet). Nạp bộ chữ ký mất ~20–60 giây.
+    image: clamav/clamav:1.5.4-debian13-slim
+    profiles: [sec]
+    environment:
+      CLAMAV_NO_FRESHCLAMD: ${CLAMAV_NO_FRESHCLAMD:-false}
+      CLAMAV_NO_MILTERD: "true"
+      FRESHCLAM_CHECKS: ${CLAMAV_FRESHCLAM_LAN:-2}
+      # Tệp lớn nhất nhận qua INSTREAM: lớn hơn giới hạn ảnh của ứng dụng (ANH_MAX_BYTES 10 MiB)
+      CLAMD_CONF_StreamMaxLength: 25M
+      CLAMD_CONF_MaxFileSize: 25M
+      CLAMD_CONF_MaxScanSize: 100M
+    volumes:
+      - clamavdata:/var/lib/clamav
+    # Healthcheck của image (clamdcheck.sh, chờ tối đa 6 phút lúc khởi động)
+    mem_limit: ${CLAMAV_MEM_LIMIT:-2g}
+    security_opt: ["no-new-privileges:true"]
 
 volumes:
   pgdata:
@@ -905,6 +928,7 @@ volumes:
   ledgerdata:
   grafanadata:
   ollamadata:
+  clamavdata:
   secrets-keycloak: *secrets-tmpfs
   secrets-postgres: *secrets-tmpfs
   secrets-apisix: *secrets-tmpfs

@@ -226,8 +226,10 @@ class SoGia:
     async def them(self, **d):
         if self.ht.loi_db:
             raise RuntimeError("mất kết nối CSDL")
-        self.ht.anh[d["id"]] = {**d, "uploaded_at": "2026-10-20T08:00:00+00:00", "scan_status": "chua_quet"}
-        return {"uploaded_at": "2026-10-20T08:00:00+00:00", "scan_status": "chua_quet"}
+        trang_thai = d.get("scan_status", "chua_quet")
+        self.ht.anh[d["id"]] = {**d, "uploaded_at": "2026-10-20T08:00:00+00:00", "scan_status": trang_thai}
+        return {"uploaded_at": "2026-10-20T08:00:00+00:00", "scan_status": trang_thai,
+                "scanned_at": None if trang_thai == "chua_quet" else "2026-10-20T08:00:00+00:00"}
 
 
 @pytest.fixture

@@ -107,7 +107,8 @@ Sơ đồ chi tiết, luồng JWT, route gateway, quản lý bí mật: [`docs/a
 | Dữ liệu lịch sử, dashboard | Parquet trên SeaweedFS + DuckDB (#91); Grafana OSS 13 dịch vụ riêng, profile `bi` (#92) | MIT; AGPL-3.0 (dịch vụ riêng, image gốc) |
 | AI (Tầng [I]) | Ollama 0.40 dịch vụ riêng, profile `ai` + Qwen2.5 7B Instruct; hoặc API ngoài chuẩn OpenAI; mặc định bộ luật không cần mô hình (#102) | MIT; Apache-2.0 |
 | App hiện trường (#106) | React Native 0.80 + TypeScript, React Navigation, TanStack Query, Zustand, i18next, MapLibre React Native, react-native-app-auth (PKCE) | MIT |
-| Sắp có | Qdrant, ClamAV | Apache-2.0, GPL-2.0 (dịch vụ riêng) |
+| Quét mã độc tệp tải lên (#111) | ClamAV 1.5 dịch vụ riêng, profile `sec` (`make up-sec`) | GPL-2.0 (dịch vụ riêng, image gốc) |
+| Sắp có | Qdrant | Apache-2.0 |
 
 Phiên bản và giấy phép từng image, thư viện: [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
@@ -255,7 +256,7 @@ Mở issue tại [GitHub Issues](https://github.com/disaster-dxos/disaster-dxos/
 Mã nguồn phát hành theo [Apache-2.0](LICENSE). Bản quyền và ghi nhận thành phần bên thứ ba: [`NOTICE`](NOTICE). Phiên bản và giấy phép từng image, thư viện: [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
 - Chỉ dùng thành phần có giấy phép được OSI công nhận.
-- Thành phần copyleft (PostGIS GPL-2.0, Grafana AGPL-3.0; sắp có ClamAV GPL-2.0) chạy như dịch vụ riêng bằng image gốc, không sửa, không nhúng vào mã của dự án.
+- Thành phần copyleft (PostGIS GPL-2.0, Grafana AGPL-3.0, ClamAV GPL-2.0) chạy như dịch vụ riêng bằng image gốc, không sửa, không nhúng vào mã của dự án.
 - Ảnh minh họa trong `docs/images/` do đội tạo bằng công cụ AI, sơ đồ SVG do đội vẽ; cấp phép cùng repo. Biểu tượng trong ảnh kiến trúc là hình minh họa, không phải logo chính thức ([`docs/images/README.md`](docs/images/README.md)).
 
 ## 📝 CHANGELOG

@@ -176,6 +176,12 @@ services:
       ANH_BUCKET: cuu-tro-media
       ANH_MAX_BYTES: ${ANH_MAX_BYTES:-10485760}
       ANH_LINK_HAN_GIAY: ${ANH_LINK_HAN_GIAY:-300}
+      # Quét mã độc ảnh (#111): clamd của lõi (profile sec, make up-sec). Chưa bật → ảnh nhận với chua_quet,
+      # trừ khi ANH_QUET_BAT_BUOC=1 (503). CLAMAV_HOST trống = tắt hẳn
+      CLAMAV_HOST: ${CLAMAV_HOST-clamav}
+      CLAMAV_PORT: ${CLAMAV_PORT:-3310}
+      CLAMAV_TIMEOUT_GIAY: ${CLAMAV_TIMEOUT_GIAY:-30}
+      ANH_QUET_BAT_BUOC: ${ANH_QUET_BAT_BUOC:-0}
       GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL:-http://localhost:9080}
       # Tiếp nhận tin kêu cứu (#66): vùng phục vụ kinh_do_min,vi_do_min,kinh_do_max,vi_do_max (trống = Việt Nam).
       # INSERT bằng APP_DB_URL (role cuu_tro_app, migration 0008)

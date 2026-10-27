@@ -9,7 +9,8 @@
                 không liệt kê ảnh của tin; chỉ xem lại được ảnh chính mình tải lên
   "Tin của đội mình" / "tin mình tạo" không viết lại ở đây: API hỏi Hasura bằng JWT + vai trò của
   người dùng, Hasura trả null nghĩa là không thấy (apps/cuu-tro/workflow/cuu_tro_workflow/api.py).
-- Chừa chỗ quét mã độc: cột scan_status (mặc định chua_quet). ClamAV ở biên (profile sec) là việc sau.
+- Quét mã độc (#111, quet_ma_doc.py): clamd của lõi (profile sec) quét nội dung trước khi lưu; scan_status
+  sach | chua_quet (máy quét không có hoặc lỗi). Tệp nhiễm không bao giờ được lưu.
 """
 
 from dataclasses import dataclass
