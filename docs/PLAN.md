@@ -16,11 +16,11 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [x] [V1] `docs/architecture.md`: sơ đồ Tầng 1/Tầng 2 (Mermaid), luồng JWT, luồng kêu cứu và cảm biến
 - [x] [V1] `docker-compose.yml` profile `core`: PostgreSQL+PostGIS, Keycloak (realm 3 vai trò), APISIX standalone + route JWT mẫu; `.env.example`
 - [x] [V1] Repo GitHub công khai, bật Issues, nhãn, bảo vệ `main`/`develop`
-- [ ] [V1] Mẫu PR + CONTRIBUTING mô tả quy trình issue → nhánh → PR
-- [ ] [V1] Script SPDX quét `.vue`, `.dart`, `Dockerfile*`, `.toml`
-- [ ] [V2] `DEPENDENCIES.md`: phiên bản, giấy phép, nguồn gốc từng thành phần
-- [ ] [V1] Gán vai cho từng dòng kế hoạch, tạo issue tuần 2
-- [ ] [V1] Release v0.0.1 (`.tar.gz`)
+- [x] [V1] Mẫu PR + CONTRIBUTING mô tả quy trình issue → nhánh → PR (#1, PR #6; quy trình phát hành thêm ở #109)
+- [x] [V1] Script SPDX quét `.vue`, `.dart`, `Dockerfile*`, `.toml` (#2, PR #7; `.go` ở #34, mã native app ở #106)
+- [x] [V2] `DEPENDENCIES.md`: phiên bản, giấy phép, nguồn gốc từng thành phần (#4, PR #9)
+- [x] [V1] Gán vai cho từng dòng kế hoạch, tạo issue tuần 2 (#5, PR #10)
+- [x] [V1] Release v0.0.1 (`.tar.gz`) (PR #23, #24; 19/10/2026)
 
 ## Tuần 2 · 22–28/10 · Lõi headless → v0.1.0
 - [x] [V1] Tách `core/` (Tầng 1, không chứa nghiệp vụ) và `apps/` (nghiệp vụ thiên tai); cập nhật `docs/architecture.md`
@@ -36,7 +36,7 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [x] [V3] Temporal worker Python "hello" gọi được qua gateway (#29; mở rộng thành khung `PhanCongCuuHo` + API `/workflow/*`, role DB `cuu_tro_app`, `scripts/smoke-workflow.sh` 20 ca)
 - [x] [V3] NATS JetStream bật MQTT, gửi thử bản tin cảm biến (#30; MQTT + NATS bắt buộc xác thực từ OpenBao, bộ giả lập `gia_lap`, stream `CUU_TRO_CAM_BIEN` → `sensor_readings`, cảnh báo vượt ngưỡng lên `cuu-tro.canh-bao.cam-bien.*`, `scripts/smoke-cam-bien.sh`)
 - [x] [V1] CI: lint/test cho từng thành phần (shellcheck, yamllint, pytest khi có mã Python)
-- [ ] [V1] README song ngữ: hướng dẫn chạy từ máy sạch · Release v0.1.0
+- [x] [V1] README song ngữ: hướng dẫn chạy từ máy sạch · Release v0.1.0 (#32, PR #50, #52, #54, #55, #56; 22/10/2026)
 
 ## Tuần 3 · 29/10–04/11 · Luồng nghiệp vụ chính → v0.2.0 (phát hành 23/10/2026)
 - [x] [V2] API kêu cứu + Poka-yoke (bắt buộc tọa độ, chặn trùng SĐT trong bán kính 200 m) (#66, PR #75)
@@ -57,13 +57,13 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [ ] [V1] Thuê VPS + tên miền, HTTPS, CI tự triển khai từ `main` — **còn mở**: chờ người hướng dẫn (VPS, tên miền)
 - [ ] [V3] Cuối tuần: mời 3–5 người dùng thật thử, ghi phản hồi thành issue `user-feedback` — **còn mở**: chờ người hướng dẫn (cần bản chạy trên VPS)
 - [ ] [V1] Grafana đăng nhập SSO Keycloak (generic OAuth) thay tài khoản admin — **còn mở**, để sau #92 (realm chỉ import lần đầu: cần hướng dẫn thêm client cho máy đã chạy)
-- [ ] [V1] Release v0.3.0 (#94: PR chốt CHANGELOG + phiên bản về `develop`, rồi `develop` → `main`, tag, Release)
+- [x] [V1] Release v0.3.0 (#94, PR #95, #96; tag `v0.3.0` trên `main`, Release kèm `.tar.gz` + `SHA256SUMS`, 24/10/2026)
 
 ## Tuần 5 · 12–18/11 · Tầng [I] + demo công khai
 - [x] [V3] AI bóc tách tin kêu cứu tự do → JSON (địa chỉ, số người, mức khẩn cấp); `LLM_PROVIDER` chọn Ollama + Qwen2.5 7B hoặc API ngoài (#102)
 - [x] [V3] Hàng chờ duyệt HITL trên web điều phối (#104: `vao_hang_cho` trên `/workflow/ai/boc-tach`, bảng vết `ai_intake_reviews`, `POST /workflow/hang-cho/{id}/duyet|huy` qua Poka-yoke của #66, trang web "Duyệt tin AI" có bản đồ chọn vị trí)
 - [x] [V3] App hiện trường React Native (D-011, thay Flutter): gửi kêu cứu/cập nhật hiện trường, hàng đợi offline (#106: `apps/cuu-tro/mobile/`, đăng nhập Keycloak PKCE client `dxos-mobile`, MapLibre, hàng đợi mã hóa trong Keychain/Keystore, API nhận `Idempotency-Key` cho kêu cứu/ảnh/chuyển tin, job CI `mobile`)
-- [ ] [V1] Demo công khai trên tên miền, bật GitHub Discussions
+- [ ] [V1] Demo công khai trên tên miền, bật GitHub Discussions — Discussions **đã bật**; demo trên tên miền còn chờ người hướng dẫn (VPS, tên miền)
 
 ## Tuần 6 · 19–25/11 · Tuần UX + cộng đồng → v0.4.0
 - [ ] [V3] Sửa theo phản hồi người dùng (mỗi phản hồi một issue `user-feedback`)
