@@ -1,0 +1,59 @@
+{
+  "id": "urn:ngsi-ld:WindStation:VD-GIO-01",
+  "type": "WindStation",
+  "name": {
+    "type": "Property",
+    "value": "Trạm gió ví dụ (giả định)"
+  },
+  "stationCode": {
+    "type": "Property",
+    "value": "VD-GIO-01"
+  },
+  "location": {
+    "type": "GeoProperty",
+    "value": {
+      "type": "Point",
+      "coordinates": [
+        108.25,
+        15.88
+      ]
+    }
+  },
+  "windSpeed": {
+    "type": "Property",
+    "value": 19.4,
+    "unitCode": "MTS",
+    "observedAt": "2026-10-24T01:00:00.000Z"
+  },
+  "alertLevel": {
+    "type": "Property",
+    "value": "canh_bao",
+    "observedAt": "2026-10-24T01:00:00.000Z"
+  },
+  "warningThreshold": {
+    "type": "Property",
+    "value": 17.0,
+    "unitCode": "MTS"
+  },
+  "dangerThreshold": {
+    "type": "Property",
+    "value": 25.0,
+    "unitCode": "MTS"
+  },
+  "@context": [
+    {
+      "dxos": "https://github.com/disaster-dxos/disaster-dxos/blob/main/apps/cuu-tro/ngsi-ld/README.md#",
+      "WaterLevelStation": "dxos:WaterLevelStation",
+      "RainGauge": "dxos:RainGauge",
+      "WindStation": "dxos:WindStation",
+      "name": "https://schema.org/name",
+      "stationCode": "dxos:stationCode",
+      "waterLevel": "dxos:waterLevel",
+      "precipitation": "dxos:precipitation",
+      "windSpeed": "dxos:windSpeed",
+      "alertLevel": "dxos:alertLevel",
+      "warningThreshold": "dxos:warningThreshold",
+      "dangerThreshold": "dxos:dangerThreshold"
+    }
+  ]
+}

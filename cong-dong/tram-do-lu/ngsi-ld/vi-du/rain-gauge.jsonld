@@ -1,0 +1,59 @@
+{
+  "id": "urn:ngsi-ld:RainGauge:AL-LM-01",
+  "type": "RainGauge",
+  "name": {
+    "type": "Property",
+    "value": "Lượng mưa UBND xã (giả định)"
+  },
+  "stationCode": {
+    "type": "Property",
+    "value": "AL-LM-01"
+  },
+  "location": {
+    "type": "GeoProperty",
+    "value": {
+      "type": "Point",
+      "coordinates": [
+        108.0995,
+        15.854
+      ]
+    }
+  },
+  "precipitation": {
+    "type": "Property",
+    "value": 120.0,
+    "unitCode": "MMT",
+    "observedAt": "2026-10-24T01:00:00.000Z"
+  },
+  "alertLevel": {
+    "type": "Property",
+    "value": "canh_bao",
+    "observedAt": "2026-10-24T01:00:00.000Z"
+  },
+  "warningThreshold": {
+    "type": "Property",
+    "value": 100.0,
+    "unitCode": "MMT"
+  },
+  "dangerThreshold": {
+    "type": "Property",
+    "value": 200.0,
+    "unitCode": "MMT"
+  },
+  "@context": [
+    {
+      "dxos": "https://github.com/disaster-dxos/disaster-dxos/blob/main/apps/cuu-tro/ngsi-ld/README.md#",
+      "WaterLevelStation": "dxos:WaterLevelStation",
+      "RainGauge": "dxos:RainGauge",
+      "WindStation": "dxos:WindStation",
+      "name": "https://schema.org/name",
+      "stationCode": "dxos:stationCode",
+      "waterLevel": "dxos:waterLevel",
+      "precipitation": "dxos:precipitation",
+      "windSpeed": "dxos:windSpeed",
+      "alertLevel": "dxos:alertLevel",
+      "warningThreshold": "dxos:warningThreshold",
+      "dangerThreshold": "dxos:dangerThreshold"
+    }
+  ]
+}

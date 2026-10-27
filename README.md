@@ -246,6 +246,8 @@ Quy trình: issue → nhánh `feature/<số-issue>-<tên-ngắn>` tách từ `de
 
 Chi tiết: [`CONTRIBUTING.md`](CONTRIBUTING.md). Quy tắc ứng xử: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 
+Dùng lại mà không cần cả hệ thống: [`cong-dong/tram-do-lu/`](cong-dong/tram-do-lu/README.md) là bộ mô phỏng trạm đo lũ (chỉ cần Python, gửi MQTT hoặc NGSI-LD) kèm mô hình dữ liệu NGSI-LD trạm đo, JSON Schema và ví dụ · *standalone flood gauge simulator + NGSI-LD station model for your own projects*.
+
 ## 🐛 Báo lỗi
 
 Mở issue tại [GitHub Issues](https://github.com/disaster-dxos/disaster-dxos/issues) theo mẫu "Báo lỗi": mô tả, cách tái hiện, môi trường (hệ điều hành, RAM, `docker compose version`).

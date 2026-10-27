@@ -68,7 +68,7 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 ## Tuần 6 · 19–25/11 · Tuần UX + cộng đồng → v0.4.0
 - [ ] [V3] Sửa theo phản hồi người dùng (mỗi phản hồi một issue `user-feedback`)
 - [ ] [V3] Rà soát UX hiện trường: thao tác một tay, mạng yếu, chữ lớn, tương phản
-- [ ] [V2] Công bố bộ mô phỏng cảm biến + mô hình dữ liệu NGSI-LD trạm đo cho cộng đồng (tài liệu + ví dụ)
+- [x] [V2] Công bố bộ mô phỏng cảm biến + mô hình dữ liệu NGSI-LD trạm đo cho cộng đồng (tài liệu + ví dụ) (#112: `cong-dong/tram-do-lu/`, `mo_phong.py` chỉ thư viện chuẩn, JSON Schema, ví dụ, pytest giữ khớp backend)
 - [ ] [V1] README song ngữ đầy đủ, hướng dẫn viết module cắm–rút trong `apps/` + 1 module mẫu
 - [ ] [V1][V2][V3] **Tập trình bày lần 1** (15 phút, có giám khảo thử)
 - [ ] [V1] Release v0.4.0
