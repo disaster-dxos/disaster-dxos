@@ -6,10 +6,12 @@ import { Check, Crosshair } from 'lucide-react-native';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { BanDo } from '@/components/BanDo';
 import { Nut } from '@/components/Nut';
 import { useViTri } from '@/hooks/useViTri';
 import type { RootStackParamList } from '@/navigation/types';
+import { useMangStore } from '@/stores/mangStore';
 import { useNhapTinStore } from '@/stores/nhapTinStore';
 import { CHU, KHOANG, MAU } from '@/theme';
 
@@ -22,6 +24,7 @@ export function ChonViTriScreen({ navigation }: Props) {
     form.lat !== null && form.lon !== null ? [form.lon, form.lat] : null,
   );
   const viTri = useViTri();
+  const coMang = useMangStore(s => s.coMang);
 
   const viTriCuaToi = async () => {
     const p = await viTri.lay();
@@ -32,9 +35,11 @@ export function ChonViTriScreen({ navigation }: Props) {
 
   return (
     <View style={styles.nen}>
-      <Text style={[CHU.phu, styles.huongDan]}>{t('banDo.huongDan')}</Text>
+      <Text style={[CHU.phu, styles.huongDan]}>
+        {coMang ? t('banDo.huongDan') : `${t('banDo.huongDan')} ${t('banDo.matMang')}`}
+      </Text>
       <BanDo diem={diem} onChon={setDiem} testID="ban-do-chon" />
-      <View style={styles.chan}>
+      <SafeAreaView edges={['bottom']} style={styles.chan}>
         {diem ? <Text style={CHU.phu}>{`${diem[1].toFixed(5)}, ${diem[0].toFixed(5)}`}</Text> : null}
         {viTri.loi ? <Text style={styles.loi}>{t(viTri.loi)}</Text> : null}
         <Nut nhan={t('banDo.viTriCuaToi')} kieu="phu" BieuTuong={Crosshair} onPress={viTriCuaToi} dangChay={viTri.dangLay} />
@@ -44,13 +49,13 @@ export function ChonViTriScreen({ navigation }: Props) {
           tat={!diem}
           onPress={() => {
             if (diem) {
-              useNhapTinStore.getState().sua({ lon: diem[0], lat: diem[1] });
+              useNhapTinStore.getState().datViTri(diem[1], diem[0], null);
               navigation.goBack();
             }
           }}
           testID="nut-xac-nhan-vi-tri"
         />
-      </View>
+      </SafeAreaView>
     </View>
   );
 }

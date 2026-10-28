@@ -15,6 +15,7 @@ import { useTinCuaToi } from '@/hooks/useDuLieuHienTruong';
 import type { RootStackParamList } from '@/navigation/types';
 import { chupAnh, LoiQuyenCamera } from '@/services/chupAnh';
 import { useHangDoiStore } from '@/stores/hangDoiStore';
+import { useMangStore } from '@/stores/mangStore';
 import { CHU, KHOANG, MAU } from '@/theme';
 import { taoKhoa } from '@/utils/khoaIdempotency';
 import { maNgan } from '@/utils/thoiGian';
@@ -25,6 +26,7 @@ export function ChiTietTinScreen({ route }: Props) {
   const { t } = useTranslation();
   const tin = useTinCuaToi().data?.find(x => x.id === route.params.id) ?? null;
   const [bao, setBao] = useState<{ ok: boolean; chu: string } | null>(null);
+  const coMang = useMangStore(s => s.coMang);
 
   const anh = async (nguon: 'camera' | 'thu_vien') => {
     setBao(null);
@@ -48,12 +50,13 @@ export function ChiTietTinScreen({ route }: Props) {
         <View style={styles.khoi}>
           <View style={styles.hang}>
             <NhanMucKhan muc={tin.urgency} />
-            <Text style={CHU.phu}>{t(`trangThaiTin.${tin.status}`)}</Text>
+            <Text style={CHU.nhan}>{t(`trangThaiTin.${tin.status}`)}</Text>
           </View>
           <Text style={CHU.thuong}>{tin.description}</Text>
           {tin.address_text ? <Text style={CHU.phu}>{tin.address_text}</Text> : null}
           <Text style={CHU.phu}>{t('hienTruong.soNguoi', { count: tin.people_count })}</Text>
           {tin.toaDo ? <BanDo diem={tin.toaDo} cao={200} /> : null}
+          {tin.toaDo && !coMang ? <Text style={CHU.phu}>{t('banDo.matMang')}</Text> : null}
         </View>
       ) : null}
       <Nut nhan={t('hienTruong.chupAnh')} BieuTuong={Camera} onPress={() => anh('camera')} testID="nut-chup" />
@@ -65,5 +68,5 @@ export function ChiTietTinScreen({ route }: Props) {
 
 const styles = StyleSheet.create({
   khoi: { gap: KHOANG.sm },
-  hang: { flexDirection: 'row', alignItems: 'center', gap: KHOANG.sm },
+  hang: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: KHOANG.sm },
 });

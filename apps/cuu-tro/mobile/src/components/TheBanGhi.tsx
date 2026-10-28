@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, Clock, Loader } from 'lucide-react-native'
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
+import { useChuLon } from '@/hooks/useChuLon';
 import { CHU, KHOANG, MAU, THE } from '@/theme';
 import type { BanGhi, TrangThai } from '@/utils/hangDoi';
 import { maNgan, thoiGianTruoc } from '@/utils/thoiGian';
@@ -48,6 +49,7 @@ export function TheBanGhi({ banGhi: b, now, choTinGoc, onGuiLai, onXoa }: Props)
   const { t } = useTranslation();
   const { Icon, mau } = BIEU_TUONG[b.trangThai];
   const gio = new Date(b.lanThuTiep).toLocaleTimeString();
+  const chuLon = useChuLon();
   return (
     <View style={[THE.coBan, styles.the]} testID={`ban-ghi-${b.id}`}>
       <View style={styles.dau}>
@@ -75,11 +77,11 @@ export function TheBanGhi({ banGhi: b, now, choTinGoc, onGuiLai, onXoa }: Props)
       {b.ketQua?.maHangCho ? <Text style={CHU.nhan}>{t('hangDoi.maHangCho', { ma: maNgan(b.ketQua.maHangCho) })}</Text> : null}
       {b.ketQua?.phatLai ? <Text style={CHU.phu}>{t('hangDoi.phatLai')}</Text> : null}
       {b.trangThai === 'loi' || b.trangThai === 'cho_gui' ? (
-        <View style={styles.nut}>
-          <View style={styles.o}>
+        <View style={[styles.nut, chuLon && styles.nutDoc]}>
+          <View style={chuLon ? undefined : styles.o}>
             <Nut nhan={t('hangDoi.guiLai')} kieu="phu" onPress={onGuiLai} testID={`gui-lai-${b.id}`} />
           </View>
-          <View style={styles.o}>
+          <View style={chuLon ? undefined : styles.o}>
             <Nut nhan={t('chung.xoa')} kieu="nguy" onPress={onXoa} testID={`xoa-${b.id}`} />
           </View>
         </View>
@@ -90,10 +92,11 @@ export function TheBanGhi({ banGhi: b, now, choTinGoc, onGuiLai, onXoa }: Props)
 
 const styles = StyleSheet.create({
   the: { gap: KHOANG.xs },
-  dau: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: KHOANG.sm },
+  dau: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: KHOANG.sm },
   trangThai: { flexDirection: 'row', alignItems: 'center', gap: KHOANG.xs },
   chuTrangThai: { fontWeight: '700' },
   loi: { color: MAU.loi, fontWeight: '600' },
   nut: { flexDirection: 'row', gap: KHOANG.sm, marginTop: KHOANG.sm },
+  nutDoc: { flexDirection: 'column' },
   o: { flex: 1 },
 });
