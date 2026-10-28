@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-// Băng trạng thái ở đầu màn hình: mất mạng (nói rõ dữ liệu vẫn được giữ) và số bản ghi chờ gửi.
+// Băng trạng thái ở đầu màn hình: mất mạng (nói rõ dữ liệu vẫn được giữ) và số bản ghi chờ gửi. Chữ cỡ thường,
+// đậm (không dùng cỡ nhỏ cho thông tin quan trọng nhất của màn, #113).
 import { CloudOff, Upload } from 'lucide-react-native';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
@@ -17,7 +18,7 @@ export function BangMang() {
   }
   return (
     <View style={[styles.bang, coMang ? styles.cho : styles.mat]} accessibilityLiveRegion="polite" testID="bang-mang">
-      {coMang ? <Upload color={MAU.navy} size={20} /> : <CloudOff color={MAU.canhBao} size={20} />}
+      {coMang ? <Upload color={MAU.navy} size={24} /> : <CloudOff color={MAU.canhBao} size={24} />}
       <Text style={styles.chu}>{coMang ? t('mang.choGui', { count: cho }) : t('mang.matMang')}</Text>
     </View>
   );
@@ -27,5 +28,5 @@ const styles = StyleSheet.create({
   bang: { flexDirection: 'row', alignItems: 'center', gap: KHOANG.sm, padding: KHOANG.md },
   mat: { backgroundColor: MAU.canhBaoNhat },
   cho: { backgroundColor: MAU.navyNhat },
-  chu: { flex: 1, fontSize: CO_CHU.nho, color: MAU.chu, fontWeight: '600' },
+  chu: { flex: 1, fontSize: CO_CHU.thuong, color: MAU.chu, fontWeight: '700' },
 });

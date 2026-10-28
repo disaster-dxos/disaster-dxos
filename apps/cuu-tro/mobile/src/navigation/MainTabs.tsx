@@ -52,7 +52,7 @@ export function MainTabs() {
           title: t('tab.hangDoi'),
           tabBarIcon: IconHangDoi,
           tabBarBadge: cho > 0 ? cho : undefined,
-          tabBarBadgeStyle: { backgroundColor: MAU.cam, color: MAU.trang },
+          tabBarBadgeStyle: { backgroundColor: MAU.cam, color: MAU.chu, fontWeight: '700' },
         }}
       />
       <Tab.Screen

@@ -60,6 +60,10 @@ export const en = {
     soAnhKem_other: '{{count}} photos attached',
     xoaForm: 'New request',
     deXuatAi: 'Filled in from the AI suggestion: check every field before sending.',
+    conLoi_one: 'Not sent: {{count}} field needs fixing ({{ds}}). Tap to go to it.',
+    conLoi_other: 'Not sent: {{count}} fields need fixing ({{ds}}). Tap to go to the first one.',
+    saiSo: 'GPS accuracy about {{m}} m',
+    saiSoLon: 'GPS is not accurate yet (about {{m}} m). Move to open sky and try again, or adjust on the map.',
   },
   mucKhan: {
     khan_cap: 'Critical',
@@ -86,6 +90,7 @@ export const en = {
     daChuyen: 'Saved. The message will be sent to the coordinator for review.',
     canMang: 'AI extraction needs a connection. Offline, use "Send to coordinator for review".',
     trong: 'Paste the message text above.',
+    goiYChuyen: 'Weak network or no AI answer: choose "Send to dispatcher for review", no need to wait.',
   },
   nguon: {
     sms: 'SMS',
@@ -99,6 +104,9 @@ export const en = {
     huongDan: 'Tap the map to drop a pin where help is needed.',
     xacNhan: 'Use this location',
     viTriCuaToi: 'My location',
+    nhan: 'Map',
+    nhanChon: 'Map: tap to drop a pin',
+    matMang: 'Offline: the base map may not appear. GPS location still works.',
   },
   hienTruong: {
     tieuDe: 'Field',
@@ -115,6 +123,8 @@ export const en = {
     soNguoi_one: '{{count}} person',
     soNguoi_other: '{{count}} people',
     dangTaiCu: 'Showing previously loaded data.',
+    capNhat: 'Updated {{luc}}',
+    banLuu: 'Offline: showing the list loaded {{luc}}, it may be out of date.',
   },
   hangDoi: {
     tieuDe: 'Outbox',

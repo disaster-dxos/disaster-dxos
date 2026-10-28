@@ -50,7 +50,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: KHOANG.md,
     borderRadius: BO_GOC.nho,
     borderWidth: 1.5,
-    borderColor: MAU.vien,
+    borderColor: MAU.vienO,
     backgroundColor: MAU.beMat,
     flexDirection: 'row',
     alignItems: 'center',

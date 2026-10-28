@@ -5,6 +5,17 @@
 ## [Unreleased]
 
 ### Added
+- Rà soát UX app hiện trường theo 4 tiêu chí một tay, mạng yếu, chữ lớn, tương phản (#113). Kết quả: `docs/ra-soat-ux-hien-truong.md` (15 phát hiện, 8 mức P1, đã sửa cả 15; việc còn mở: thử trên máy thật, gói bản đồ offline). App (`apps/cuu-tro/mobile/`):
+  - form kêu cứu sai thì tóm tắt lỗi hiện ngay trên nút Gửi ở chân màn, trình đọc màn hình đọc to, màn tự cuộn tới ô lỗi đầu tiên, sửa ô nào lỗi ô đó tắt ngay;
+  - màn Hiện trường luôn ghi "Cập nhật … trước"; mất mạng thì nói rõ đang xem bản đã tải;
+  - bản sao danh sách tin và đội lưu mã hóa trong Keychain/Keystore (gắn người dùng + vai, tối đa 7 ngày), nên mở lại app khi mất mạng vẫn thấy nhiệm vụ và vẫn cập nhật được vị trí đội (`services/banSao.ts`);
+  - GPS hiện sai số, cảnh báo khi từ 100 m trở lên. Mất mạng thì báo nền bản đồ có thể không hiện;
+  - bóc tách AI lỗi thì gợi ý "Chuyển cho điều phối duyệt"; hai nút của màn Dán tin xuống chân màn;
+  - chân màn chừa vùng an toàn dưới (Android 15 bắt buộc edge-to-edge);
+  - từ cỡ chữ hệ thống 1,3× thì hai nút cạnh nhau xếp dọc (`hooks/useChuLon.ts`), hàng nhãn tự xuống dòng.
+- Kiểm thử (#113): Jest 56 → 106 ca:
+  - `__tests__/tuongPhan.test.ts` tính tỷ lệ WCAG 2.2 cho mọi cặp màu khai báo ở `CAP_MAU` trong `src/theme/mau.ts`: chữ đọc chính ≥ 7:1, chữ khác ≥ 4,5:1, viền thành phần ≥ 3:1;
+  - các tệp mới `__tests__/HienTruongScreen.test.tsx`, `__tests__/banSao.test.ts`; thêm ca vào `KeuCuuScreen.test.tsx`.
 - App hiện trường React Native `apps/cuu-tro/mobile/` (#106, D-011, thay Flutter): React Native bare 0.80.3 (New Architecture), TypeScript strict, khung theo cách tổ chức app VietEntry của nhóm (không chép mã): React Navigation 7, TanStack Query 5 + axios, Zustand 5, i18next (tiếng Việt mặc định, tiếng Anh), NetInfo, AsyncStorage, react-native-keychain; `src/{config,navigation,screens,services,stores,hooks,i18n,theme,types,utils}`. Màn: Đăng nhập (Keycloak OIDC + PKCE bằng react-native-app-auth), Kêu cứu (form, GPS hoặc chọn trên bản đồ MapLibre React Native, ảnh kèm, Poka-yoke trên máy cùng luật API), Dán tin (AI bóc tách điền sẵn form, hoặc chuyển cho điều phối duyệt #104), Hiện trường (tin của mình / nhiệm vụ của đội, ảnh hiện trường, vị trí đội cho `cuu-ho`), Hàng đợi, Cài đặt (ngôn ngữ, máy chủ). Màu và logo Team 1, giao diện sáng chữ lớn, vùng chạm ≥ 52 dp. Không Firebase, Stripe, Google/Apple Sign-in, react-native-maps. README có hướng dẫn build Android (APK/AAB, ký bằng khóa ngoài repo) và iOS (CocoaPods, MapLibre qua Swift Package Manager).
 - Hàng đợi offline của app (#106): mọi thao tác ghi (kêu cứu, chuyển tin, ảnh, vị trí đội) lưu mã hóa trong Keychain/Keystore, gửi theo thứ tự khi có mạng / app trở lại / tới hạn thử lại (lùi 5 s → 10 phút); mỗi bản ghi một khóa idempotency UUID v4 giữ nguyên khi gửi lại; lỗi vĩnh viễn (422, 409 tin trùng…) dừng bản ghi đó, không chặn bản ghi sau; ảnh chụp kèm tin chưa gửi chờ tin có mã thật; app bị tắt giữa lúc gửi thì gửi lại an toàn.
 - API nhận header `Idempotency-Key` (#106) trên `POST /workflow/keu-cuu`, `POST /workflow/tai-len/su-co/{id}/anh`, `POST /workflow/ai/boc-tach` (khi `vao_hang_cho`): gửi lại cùng khóa → phản hồi cũ + `Idempotent-Replayed: true`, không tạo tin/ảnh/mục hàng chờ thứ hai; khóa theo người dùng, băm đường dẫn + nội dung (khóa dùng lại cho yêu cầu khác → 422), chỉ lưu phản hồi 2xx, hết hạn 72 giờ. Bảng `cuu_tro.idempotency_keys` (migration `0015`), khóa giữ trong cùng transaction với bản ghi nên yêu cầu đồng thời cùng khóa chỉ tạo một bản ghi.
@@ -24,6 +35,11 @@
 - Web điều phối: lớp trạm đo mực nước trên bản đồ MapLibre (#62). Dữ liệu từ bản sao số NGSI-LD trên Scorpio qua API Gateway (GeoJSON, JWT mọi vai); hình thoi màu theo cấp báo động (bình thường, cảnh báo, nguy hiểm), nhãn mã + mực nước từ zoom 11, công tắc bật/tắt và số trạm từng cấp trong ô chú thích. Bấm trạm → popup mực nước mới nhất, khoảng cách tới ngưỡng, biểu đồ nhỏ 24 giờ có vạch ngưỡng (GraphQL `sensor_readings`). Tải lại mỗi 60 giây và ngay khi người điều phối nhận cảnh báo mực nước qua Centrifugo. Vitest `tests/tram-do.test.ts`, smoke mới `scripts/smoke-tram-do.sh` (trong `make smoke`).
 
 ### Changed
+- App hiện trường, màu (#113):
+  - nút cam (Gửi tin kêu cứu) và huy hiệu tab dùng chữ tối thay chữ trắng: từ 2,78:1 lên 6,2:1;
+  - viền ô nhập, ô chọn, nút phụ dùng token mới `vienO`: từ 1,38:1 lên ≥ 3:1;
+  - chữ phụ `#424F63` (7,7:1 trên nền màn);
+  - băng mất mạng và chữ báo lỗi từ 14 lên 17 sp; trạng thái tin lên cỡ chữ thường.
 - App hiện trường đổi từ Flutter sang React Native (D-011): README, `docs/architecture.md` (sơ đồ, mục 6.6), `docs/PLAN.md`, `DEPENDENCIES.md`, `NOTICE`, `docs/images/kien-truc.svg` (#106).
 - Script SPDX (`scripts/spdx-files.sh`) quét thêm mã native của app: `*.kt`, `*.java`, `*.gradle`, `*.swift`, `*.h`, `*.m`, `*.mm`, `Podfile`, `Gemfile`, `*.properties`, `*.pro`, và tệp XML (`*.xml`, `*.plist`, `*.storyboard`, `*.xcprivacy`; header chèn sau dòng `<?xml …?>`) (#106).
 - `POST /workflow/ai/boc-tach` từ chối văn bản có ký tự điều khiển (trừ xuống dòng, tab) → 422 (#104); `utils/workflow-api.ts` của web giữ `detail` gốc của lỗi API để hiện lỗi theo trường.

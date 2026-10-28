@@ -5,6 +5,7 @@
 import { Camera, Map as BanDoMapLibre, Marker, type CameraRef } from '@maplibre/maplibre-react-native';
 import { MapPin } from 'lucide-react-native';
 import React, { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { StyleSheet, View } from 'react-native';
 import { MAC_DINH, TAM_MAC_DINH } from '@/config/env';
 import { BO_GOC, MAU } from '@/theme';
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export function BanDo({ diem, onChon, cao, testID }: Props) {
+  const { t } = useTranslation();
   const cam = useRef<CameraRef>(null);
   useEffect(() => {
     if (diem) {
@@ -32,7 +34,7 @@ export function BanDo({ diem, onChon, cao, testID }: Props) {
         logo={false}
         compass={false}
         onPress={onChon ? e => onChon(e.nativeEvent.lngLat) : undefined}
-        accessibilityLabel="map"
+        accessibilityLabel={onChon ? t('banDo.nhanChon') : t('banDo.nhan')}
       >
         <Camera ref={cam} initialViewState={{ center: diem ?? TAM_MAC_DINH, zoom: diem ? 15 : 10 }} />
         {diem ? (
