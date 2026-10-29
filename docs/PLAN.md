@@ -77,7 +77,7 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 ## Tuần 7 · 26/11–06/12 · Nộp bài → v1.0.0
 - [ ] [V1] Rà 6 tiêu chí PoF đạt toàn bộ · đóng băng tính năng · release v1.0.0
 - [ ] [V1] Gửi email nộp bài trước 17:00 06/12
-- [ ] [V3] Slide 15 phút + video demo dự phòng
+- [ ] [V3] Slide 15 phút + video demo dự phòng — kịch bản, script dữ liệu demo, script quay video và dàn ý slide đã có (#130: `docs/trinh-bay/kich-ban-demo.md`, `scripts/demo/`); còn làm slide
 - [ ] [V1][V2][V3] **Tập trình bày lần 2**
 
 ## 07–10/12 · Trước chung kết
