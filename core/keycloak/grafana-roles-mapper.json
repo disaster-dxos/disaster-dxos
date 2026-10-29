@@ -1,0 +1,15 @@
+{
+  "name": "dxos-realm-roles",
+  "protocol": "openid-connect",
+  "protocolMapper": "oidc-usermodel-realm-role-mapper",
+  "consentRequired": false,
+  "config": {
+    "claim.name": "roles",
+    "multivalued": "true",
+    "jsonType.label": "String",
+    "id.token.claim": "true",
+    "userinfo.token.claim": "true",
+    "access.token.claim": "false",
+    "introspection.token.claim": "false"
+  }
+}

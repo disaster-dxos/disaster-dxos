@@ -185,6 +185,8 @@ do_setup() {
   kv_seed core/scorpio-db     password=@rand:24
   # Grafana (#92, profile bi): mật khẩu tài khoản admin
   kv_seed core/grafana        admin_password=@rand:24
+  # Secret của client Keycloak dxos-grafana (#126): Keycloak (keycloak-grafana-client) và Grafana cùng đọc
+  kv_seed core/grafana-oauth  client_secret=@rand:32
   kv_seed core/s3             access_key=@rand:10 secret_key=@rand:24
   # Khóa ký checkpoint Tessera (#28): tạo chỗ trống rồi ledger_key sinh khóa đúng một lần
   kv_seed core/ledger         signing_key=@empty

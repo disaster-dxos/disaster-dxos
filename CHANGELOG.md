@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+### Added
+- Grafana đăng nhập SSO Keycloak (#126): generic OAuth với client `dxos-grafana` (confidential + PKCE S256, chỉ standard flow, redirect đúng `/grafana/login/generic_oauth`), secret `secret/core/grafana-oauth` trong OpenBao. Vai realm → vai Grafana qua claim `roles` (mapper `dxos-realm-roles`): `dieu-phoi` → Editor, `cuu-ho` → Viewer, vai khác bị từ chối (`role_attribute_strict`); không gán Grafana Admin qua SSO. Luồng OTP của `dieu-phoi` áp cả khi vào Grafana. Đăng xuất Grafana đăng xuất phiên Keycloak.
+- Container một lần `keycloak-grafana-client` (profile `bi`, image Keycloak gốc, `core/keycloak/grafana-client.sh` bằng `kcadm.sh`): tạo hoặc cập nhật client và mapper mỗi lần bật profile `bi`, idempotent, nên máy đã có realm cũ (realm chỉ import khi CSDL trống) cũng nhận client; áp được cho realm của mọi ứng dụng.
+- Kiểm thử (#126): `scripts/smoke-grafana.sh` mục 5 (21 ca mới) và `scripts/grafana-sso.py` (đăng nhập như trình duyệt, tự cài OTP): client đúng cấu hình, secret khớp OpenBao, chạy lại không tạo trùng, thiếu PKCE hoặc redirect lạ bị từ chối, form đăng nhập tắt, admin khẩn cấp vẫn gọi được API; user `dieu-phoi` tạm → Editor, `cuuho01` → Viewer, cả hai lấy được dashboard qua APISIX; `tinhnguyen01` không có phiên, không có tài khoản.
+
+### Changed
+- Grafana tắt form đăng nhập (`GRAFANA_LOGIN_FORM_DISABLED`, mặc định `true`) và tự chuyển sang Keycloak. Tài khoản `admin` (mật khẩu `secret/core/grafana`) giữ cho khẩn cấp: Basic auth cho API, hoặc mở lại form khi Keycloak hỏng (`apps/cuu-tro/README.md`).
+- Cookie phiên Grafana SameSite `strict` → `lax`: lần quay về từ Keycloak (khác site khi triển khai thật) phải mang cookie `oauth_state` và PKCE verifier.
+- APISIX route `/grafana/*`: tham số `iss` (RFC 9207) được miễn luật SSRF/RFI như `/auth/callback` của web; luật XSS/SQLi vẫn kiểm.
+- `make up-bi` tạo lại `bao-agent-keycloak`, `bao-agent-grafana` khi còn chạy cấu hình cũ chưa render secret client mới. Máy đã chạy: `make up`, `docker compose restart apisix`, `make up-bi`.
+
 ## [0.4.0] - 2026-10-29
 Tuần 5 và tuần 6: Tầng [I] và tuần UX, cộng đồng. AI bóc tách tin kêu cứu viết tự do thành đề xuất có cấu trúc (`LLM_PROVIDER`: bộ luật mặc định, Qwen2.5 7B qua Ollama ở profile `ai`, OpenAI-compatible), điều phối viên duyệt ở hàng chờ Human-in-the-loop trước khi thành tin thật, vết duyệt không sửa được. App hiện trường React Native (D-011, thay Flutter) gửi kêu cứu, cập nhật hiện trường, có hàng đợi offline với `Idempotency-Key`, đã rà UX một tay, mạng yếu, chữ lớn, tương phản. ClamAV quét ảnh hiện trường trước khi lưu (profile `sec`). Hướng dẫn viết module cắm–rút kèm module mẫu thứ hai (mượn trả thiết bị). Công bố bộ mô phỏng trạm đo lũ và mô hình NGSI-LD trạm đo cho cộng đồng, dùng độc lập. Rà PoF, quy trình phát hành trong `CONTRIBUTING.md`.
 
