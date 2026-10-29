@@ -16,6 +16,7 @@
 - `make up-bi` tạo lại `bao-agent-keycloak`, `bao-agent-grafana` khi còn chạy cấu hình cũ chưa render secret client mới. Máy đã chạy: `make up`, `docker compose restart apisix`, `make up-bi`.
 
 ### Documentation
+- Tài liệu trình bày chung kết 15 phút (#130): `docs/trinh-bay/kich-ban-demo.md` (kịch bản theo phút, 7 luồng demo qua H-P-D-I với lời thoại và lệnh dự phòng, chuẩn bị, phân vai, phương án khi demo hỏng, câu hỏi giám khảo kèm trả lời, dàn ý 12 slide). `scripts/demo/luong.sh`: dựng dữ liệu demo (10 đội giả, tin nền, trận lũ mẫu, kho, quỹ, Grafana) và chạy lại từng luồng qua APISIX (AI bóc tách → duyệt, bản đồ realtime + chặn trùng, phân công tự động, gửi lại offline với Idempotency-Key, vượt ngưỡng → cảnh báo, phiếu kho → sổ cái → `ledger-verify`, Grafana); `scripts/demo/quay-video.mjs`: quay video dự phòng bằng Playwright trên stack thật, ghép MP4 bằng ffmpeg (video không nằm trong repo).
 - README song ngữ đầy đủ (#128): mọi mục có phần tiếng Việt và tiếng Anh (tiêu đề, bảng có cột/ô song ngữ), mục lục, mục **Quick start (English)** đủ để người ngoài chạy từ máy sạch (yêu cầu máy, lệnh, địa chỉ các giao diện, tài khoản mẫu, thử API, lỗi thường gặp), mục **Nâng cấp** từ v0.4.0 (`make up`, `docker compose restart apisix`, `make up-bi`). Số liệu khớp v0.4.0: bảng chức năng thêm quét mã độc, bảng công nghệ thêm Centrifugo, web Nuxt và phiên bản SeaweedFS/NATS/OpenBao; mục Hướng phát triển chia phần đã xong và phần còn lại; sửa mức RAM/ổ trong bảng lỗi cho khớp yêu cầu máy (6 GB, 15 GB).
 
 ## [0.4.0] - 2026-10-29
