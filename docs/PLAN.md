@@ -56,7 +56,7 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [x] [V3] Web: trang Minh bạch công khai cho phiếu kho + bút toán tiền, trình duyệt tự kiểm sổ cái (#63: `/workflow/minh-bach/xac-minh`, WebCrypto Ed25519 + Merkle)
 - [ ] [V1] Thuê VPS + tên miền, HTTPS, CI tự triển khai từ `main` — **còn mở**: chờ người hướng dẫn (VPS, tên miền)
 - [ ] [V3] Cuối tuần: mời 3–5 người dùng thật thử, ghi phản hồi thành issue `user-feedback` — **còn mở**: chờ người hướng dẫn (cần bản chạy trên VPS)
-- [ ] [V1] Grafana đăng nhập SSO Keycloak (generic OAuth) thay tài khoản admin — **còn mở**, để sau #92 (realm chỉ import lần đầu: cần hướng dẫn thêm client cho máy đã chạy)
+- [x] [V1] Grafana đăng nhập SSO Keycloak (#126: generic OAuth, client `dxos-grafana` confidential + PKCE do container `keycloak-grafana-client` tạo/cập nhật idempotent; `dieu-phoi` → Editor, `cuu-ho` → Viewer, vai khác bị từ chối; form tắt, admin khẩn cấp trong OpenBao)
 - [x] [V1] Release v0.3.0 (#94, PR #95, #96; tag `v0.3.0` trên `main`, Release kèm `.tar.gz` + `SHA256SUMS`, 24/10/2026)
 
 ## Tuần 5 · 12–18/11 · Tầng [I] + demo công khai

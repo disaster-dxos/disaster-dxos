@@ -780,10 +780,39 @@ Grafana OSS của lõi (profile `bi`, dịch vụ riêng, AGPL-3.0, image gốc)
 | Cảnh báo vượt ngưỡng đã gửi | hộp thư thông báo (#87) |
 
 ```bash
-make up-bi                      # sau make up; mở http://localhost:9080/grafana/  (tài khoản admin)
+make up-bi                      # sau make up; mở http://localhost:9080/grafana/ → chuyển sang trang đăng nhập Keycloak
+```
+
+Sửa dashboard: sửa tệp JSON (Grafana nạp lại sau tối đa 60 giây); sửa trên giao diện không lưu được. Panel mới chỉ đọc được cột mà migration 0012 cấp cho `cuu_tro_bi`; cần cột khác thì thêm GRANT trong migration mới (không cấp cột định danh). Kiểm thử: `scripts/smoke-grafana.sh` (trong `make smoke`, tự bật profile `bi`); mục 5 đăng nhập SSO như trình duyệt qua APISIX (`scripts/grafana-sso.py`): user `dieu-phoi` tạm có cài OTP → Editor, `cuuho01` → Viewer, cả hai lấy được dashboard, `tinhnguyen01` bị từ chối, client chạy lại không tạo trùng.
+
+### Đăng nhập SSO (#126)
+
+Grafana đăng nhập bằng tài khoản Keycloak của realm (client `dxos-grafana`, confidential + PKCE S256). Không có form mật khẩu của Grafana: mở `/grafana/` là sang Keycloak, đăng nhập xong quay về dashboard. Đăng xuất Grafana đăng xuất luôn phiên Keycloak.
+
+| Vai realm | Vai Grafana | Làm được |
+|---|---|---|
+| `dieu-phoi` (phải có OTP, như web điều phối) | Editor | xem dashboard, Explore, tạo dashboard riêng; dashboard **Điều hành cứu trợ** provisioned nên không sửa được trên giao diện |
+| `cuu-ho` | Viewer | xem dashboard |
+| `tinh-nguyen`, vai khác | (bị từ chối) | Keycloak đăng nhập được nhưng Grafana không tạo tài khoản, quay về trang đăng nhập |
+
+Lý do: điều phối viên cần tự khám phá số liệu khi có sự cố; mọi truy vấn vẫn chạy bằng role chỉ đọc `cuu_tro_bi` nên Editor không đọc được SĐT, họ tên, không ghi được gì. Đội cứu hộ chỉ cần xem. Tình nguyện viên không cần số liệu điều hành. Không ai thành Grafana Admin qua SSO. Thử với user mẫu: `cuuho01` (mật khẩu `KC_DEMO_USER_PASSWORD` trong `.env`) vào thẳng; `dieuphoi01` lần đầu phải cài OTP.
+
+**Máy đã chạy bản trước #126:** realm chỉ import khi CSDL Keycloak trống, nên client không nằm trong `realm.json` mà do container một lần `keycloak-grafana-client` tạo hoặc cập nhật mỗi lần bật profile `bi` (`core/keycloak/grafana-client.sh`, chạy lại bao nhiêu lần cũng được). Sau khi kéo mã mới:
+
+```bash
+make up                          # openbao-init thêm secret/core/grafana-oauth
+docker compose restart apisix    # nạp lại core/apisix/apisix.yaml (route /grafana/ miễn luật SSRF cho tham số iss)
+make up-bi                       # tạo lại bao agent nếu còn cấu hình cũ, tạo client dxos-grafana, khởi động lại Grafana
+```
+
+**Khẩn cấp (Keycloak hỏng):** tài khoản `admin` (Grafana Admin) vẫn còn, mật khẩu trong OpenBao:
+
+```bash
 curl -s -H "X-Vault-Token: $(cat .data/openbao/root.token)" http://127.0.0.1:8200/v1/secret/data/core/grafana \
   | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["data"]["admin_password"])'   # mật khẩu admin
 ```
 
-Sửa dashboard: sửa tệp JSON (Grafana nạp lại sau tối đa 60 giây); sửa trên giao diện không lưu được. Panel mới chỉ đọc được cột mà migration 0012 cấp cho `cuu_tro_bi`; cần cột khác thì thêm GRANT trong migration mới (không cấp cột định danh). Kiểm thử: `scripts/smoke-grafana.sh` (trong `make smoke`, tự bật profile `bi`).
+- Gọi API bằng Basic auth thì luôn dùng được (`curl -u admin:<mật khẩu> http://localhost:9080/grafana/api/...`).
+- Cần giao diện: đặt `GRAFANA_LOGIN_FORM_DISABLED=false` trong `.env`, `make up-bi`, mở `http://localhost:9080/grafana/login?disableAutoLogin=true`. Xong việc đặt lại `true` (hoặc xóa dòng) rồi `make up-bi`.
+
 

@@ -325,7 +325,7 @@ flowchart LR
 | ~~`gis`~~ | Gộp vào `core` ở #85: Scorpio (CSDL riêng trên postgis của lõi). Bộ giả lập cảm biến ở profile `gia-lap` của ứng dụng (#30) | – | Scorpio ~150 MiB (đo ở bảng dưới) |
 | `sec` | ClamAV 1.5.4 (#111, `make up-sec`; `make smoke` tự bật rồi dừng) | có | Đo thật: ~960 MiB RAM sau khi nạp bộ chữ ký (`CLAMAV_MEM_LIMIT` 2g), healthy sau ~12 giây khi volume đã có chữ ký; image 569 MB, volume `clamavdata` ~176 MB. `ledger` (Tessera) đã vào `core` (#28) |
 | `ai` (#102) | ollama (Ollama `0.40.3`, MIT, image gốc), ollama-pull (tải `LLM_MODEL` vào volume `ollamadata`, chạy một lần) | `make up-ai`, rồi `LLM_PROVIDER=ollama` trong `.env` + `make up` | Qwen2.5 7B: đo ở mục 6.4. Không bật thì `LLM_PROVIDER=gia-lap` (bộ luật, mặc định) |
-| `bi` (#92) | bao-agent-grafana, grafana (Grafana OSS 13.0.2, AGPL-3.0, image gốc) | `make up-bi` (`make smoke` tự bật) | grafana ~150 MiB (đo ở mục 7.6) |
+| `bi` (#92) | bao-agent-grafana, keycloak-grafana-client (chạy một lần: tạo/cập nhật client SSO `dxos-grafana`, #126), grafana (Grafana OSS 13.0.2, AGPL-3.0, image gốc) | `make up-bi` (`make smoke` tự bật) | grafana ~150 MiB (đo ở mục 7.6) |
 
 RAM từng dịch vụ của `core` (MiB; "sau smoke" = sau khi chạy `make smoke` khoảng 10 phút):
 
@@ -977,7 +977,7 @@ flowchart LR
     s3[("SeaweedFS S3<br/>bucket cuu-tro-lakehouse")]
     gf["Grafana OSS (profile bi)<br/>provisioning từ tệp"]
     gw["APISIX /grafana/*<br/>WAF (không đọc body)"]
-    bao[("OpenBao<br/>core/grafana, app/&lt;APP&gt;/bi-db")]
+    bao[("OpenBao<br/>core/grafana, core/grafana-oauth,<br/>app/&lt;APP&gt;/bi-db")]
   end
   subgraph app["Tầng 2: apps/cuu-tro"]
     mig["migration 0012<br/>GRANT SELECT cột không định danh"]
@@ -1005,8 +1005,12 @@ flowchart LR
 | DuckDB trong tiến trình | Thư viện Python (wheel có sẵn Parquet), không tải extension lúc chạy; `make luu-tru-truy-van` tải tệp về thư mục tạm rồi tạo view `su_co`, `so_do`, `phan_phoi`, `khoan_tien` | Không thêm dịch vụ; chạy được offline |
 | Grafana là dịch vụ riêng (AGPL-3.0) | Image gốc `grafana/grafana-oss:13.0.2`, không sửa mã, không nhúng; dự án chỉ cung cấp tệp provisioning (datasource lõi `core/grafana/provisioning`, dashboard của ứng dụng `apps/cuu-tro/grafana/dashboards`) | Tuân thủ giấy phép (CLAUDE.md quy tắc 3); lõi không biết dashboard nào (D-005) |
 | Provisioning từ tệp | Datasource `dxos-app-pg` (mật khẩu `$__file{…}` do bao agent render), dashboard `cuu-tro-dieu-hanh` (`editable: false`, `allowUiUpdates: false`) | Không cấu hình tay; dashboard là mã, review được trong PR |
-| Đăng nhập | Tài khoản `admin`, mật khẩu `secret/core/grafana` (`GF_SECURITY_ADMIN_PASSWORD__FILE`); tắt đăng ký, tắt ẩn danh, cookie SameSite strict. SSO Keycloak (generic OAuth) để sau | Realm Keycloak chỉ import lần đầu: thêm client mới buộc mọi máy đã chạy phải sửa tay; bản đầu giữ đơn giản |
-| Qua gateway | APISIX `/grafana/*` (Grafana `serve_from_sub_path`), WAF kiểm URI/tham số/header nhưng **không đọc body** | Truy vấn panel (`POST /api/ds/query`) mang SQL trong body, luật SQLi của CRS chặn nhầm; giới hạn thật nằm ở role chỉ đọc |
+| Đăng nhập (#126) | SSO Keycloak bằng generic OAuth: client `dxos-grafana` **confidential + PKCE S256** (secret `secret/core/grafana-oauth`), chỉ standard flow, redirect đúng `<GATEWAY_PUBLIC_URL>/grafana/login/generic_oauth`. Trình duyệt đi tới Keycloak bằng `KEYCLOAK_PUBLIC_URL`, Grafana đổi code lấy token và gọi userinfo trong mạng nội bộ (`http://keycloak:8080`). Form đăng nhập tắt, vào `/grafana/` là chuyển thẳng sang Keycloak (auto login); đăng xuất Grafana đăng xuất luôn phiên Keycloak. Luồng đăng nhập của realm áp nguyên: `dieu-phoi` vẫn phải có OTP | Một danh tính cho mọi giao diện, MFA của vai điều phối có hiệu lực cả ở dashboard; secret không nằm trong `.env`. Confidential vì Grafana là backend giữ được secret; PKCE thêm lớp chống đánh cắp code |
+| Vai Grafana theo vai realm | Mapper `dxos-realm-roles` đưa vai realm vào claim `roles` (id token + userinfo). `role_attribute_path`: `dieu-phoi` → **Editor**, `cuu-ho` → **Viewer**, vai khác (vd `tinh-nguyen`) → chuỗi rỗng, `role_attribute_strict` nên **bị từ chối**, không tạo tài khoản. `allow_assign_grafana_admin = false`: không ai thành Grafana Admin qua SSO. Vai đồng bộ lại mỗi lần đăng nhập | Điều phối viên cần khám phá số liệu khi có sự cố (Explore, dashboard riêng), nên Editor; dữ liệu vẫn chỉ đọc và không định danh vì giới hạn nằm ở role `<schema>_bi`, dashboard provisioned không sửa được trên giao diện. Đội cứu hộ chỉ cần xem tình hình: Viewer. Tình nguyện viên không cần số liệu điều hành (tồn kho, quỹ chi tiết theo ngày), tối thiểu quyền: không vào. Quản trị Grafana không gắn với vai nghiệp vụ |
+| Tài khoản `admin` khẩn cấp | Mật khẩu `secret/core/grafana` (`GF_SECURITY_ADMIN_PASSWORD__FILE`), là Grafana Admin. Form tắt nên chỉ dùng được bằng Basic auth cho API (smoke, script). Keycloak hỏng: `GRAFANA_LOGIN_FORM_DISABLED=false` + `make up-bi` để mở lại form, vào `/grafana/login?disableAutoLogin=true`, xong đặt lại `true` (`apps/cuu-tro/README.md`). Tắt đăng ký, tắt ẩn danh | Không khóa mình ra ngoài khi SSO hỏng, nhưng ngày thường không có đường đăng nhập bằng mật khẩu trên giao diện |
+| Client có trên máy đã chạy | Realm chỉ import khi CSDL Keycloak trống, nên client của dịch vụ lõi không đặt trong `apps/<app>/keycloak/realm.json` mà do container một lần `keycloak-grafana-client` (image Keycloak gốc, `kcadm.sh`, `core/keycloak/grafana-client.sh`) tạo hoặc cập nhật mỗi lần bật profile `bi`: chưa có thì tạo, có rồi thì ghi đè cấu hình + secret theo OpenBao, thêm mapper còn thiếu. `make up-bi` tạo lại `bao-agent-keycloak`/`bao-agent-grafana` nếu còn chạy cấu hình cũ chưa render secret mới | Idempotent, không sửa tay trên giao diện Keycloak, máy cũ và máy mới như nhau; dùng được cho mọi ứng dụng (realm của `apps/muon-thiet-bi` cũng nhận client) |
+| Cookie phiên | SameSite **lax** (trước #126 là strict) | Quay về từ Keycloak là điều hướng từ site khác (khi triển khai thật), cookie strict không được gửi nên Grafana mất `oauth_state` và PKCE verifier. Lax vẫn không gửi cookie cho request ghi từ site khác; Grafana còn kiểm Origin |
+| Qua gateway | APISIX `/grafana/*` (Grafana `serve_from_sub_path`), WAF kiểm URI/tham số/header nhưng **không đọc body**; tham số `iss` (RFC 9207) trên `/grafana/login/generic_oauth` được miễn luật SSRF/RFI như `/auth/callback` của web (#126) | Truy vấn panel (`POST /api/ds/query`) mang SQL trong body, luật SQLi của CRS chặn nhầm; giới hạn thật nằm ở role chỉ đọc. `iss` là URL realm nên luật SSRF/RFI chặn nhầm lần quay về từ Keycloak |
 | Không gọi Internet | `GF_PLUGINS_PREINSTALL_DISABLED`, tắt kiểm cập nhật, tin tức, thống kê, Gravatar | Chạy offline được; không gửi dữ liệu ra ngoài |
 
 Ví dụ truy vấn DuckDB (chạy `make luu-tru` trước):
@@ -1035,7 +1039,8 @@ OpenBao 2.7.1 (MPL-2.0, nhánh nguồn mở của Vault) chạy như dịch vụ
 | `secret/core/hasura` | `admin_secret` | Hasura (`HASURA_GRAPHQL_ADMIN_SECRET`) | ✔ (#11) |
 | `secret/core/temporal-db` | `password` | Temporal (`POSTGRES_PWD`), `postgres-roles` (role `temporal`) | ✔ (#11) |
 | `secret/core/scorpio-db` | `password` | Scorpio (`DBPASS`), `postgres-roles` (role `scorpio`) | ✔ (#85) |
-| `secret/core/grafana` | `admin_password` | Grafana (`GF_SECURITY_ADMIN_PASSWORD__FILE`, profile `bi`) | ✔ (#92) |
+| `secret/core/grafana` | `admin_password` | Grafana (`GF_SECURITY_ADMIN_PASSWORD__FILE`, profile `bi`): tài khoản admin khẩn cấp | ✔ (#92) |
+| `secret/core/grafana-oauth` | `client_secret` | Client Keycloak `dxos-grafana`: `keycloak-grafana-client` ghi vào Keycloak, Grafana (`GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET__FILE`) | ✔ (#126) |
 | `secret/app/<DXOS_APP>/bi-db` | `password` | `postgres-roles` (role chỉ đọc `<schema>_bi`), Grafana (datasource), `cuu-tro-luu-tru` (`BI_DB_URL`) | ✔ (#91, #92) |
 | `secret/core/s3` | `access_key`, `secret_key` | SeaweedFS (`-s3.config` do agent render) | ✔ (#11) |
 | `secret/core/ledger` | `signing_key`, `verifier_key` | `core/ledger` (khóa ký checkpoint Ed25519 dạng note, D-007); `scripts/openbao-init.sh` sinh một lần. `verifier_key` là khóa công khai, chỉ để tra cứu | ✔ (#28) |
@@ -1070,13 +1075,13 @@ Mỗi dịch vụ một AppRole, mỗi AppRole một policy **chỉ đọc** đ�
 
 | AppRole | Policy | Đọc được |
 |---|---|---|
-| `keycloak` | `core-keycloak` | `core/keycloak-db`, `core/keycloak-admin`, `core/gateway` (#11: thôi render cho PostgreSQL) |
+| `keycloak` | `core-keycloak` | `core/keycloak-db`, `core/keycloak-admin`, `core/gateway` (#11: thôi render cho PostgreSQL), `core/grafana-oauth` (#126) |
 | `apisix` | `core-apisix` | `core/gateway` |
 | `postgres` | `core-postgres` | `core/postgres`, `core/keycloak-db`, `core/hasura-db`, `core/temporal-db`, `core/scorpio-db` (#85), `app/+/db` (#29) |
 | `hasura` | `core-hasura` | `core/hasura-db`, `core/hasura` |
 | `temporal` | `core-temporal` | `core/temporal-db` |
 | `scorpio` | `core-scorpio` | `core/scorpio-db` (#85) |
-| `grafana` | `core-grafana` | `core/grafana`, `app/+/bi-db` (#92) |
+| `grafana` | `core-grafana` | `core/grafana`, `app/+/bi-db` (#92), `core/grafana-oauth` (#126) |
 | `seaweedfs` | `core-seaweedfs` | `core/s3`, `app/+/s3` (#27) |
 | `ledger` | `core-ledger` | `core/ledger`, `app/+/ledger` (#28) |
 | `nats` | `core-nats` | `app/+/nats` (#30) |

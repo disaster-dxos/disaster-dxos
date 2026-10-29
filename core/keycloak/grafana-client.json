@@ -1,0 +1,24 @@
+{
+  "clientId": "dxos-grafana",
+  "name": "Grafana dashboard điều hành (lõi, profile bi)",
+  "description": "Đăng nhập SSO cho Grafana OSS (#126). Confidential + PKCE S256. Tạo/cập nhật bởi core/keycloak/grafana-client.sh",
+  "enabled": true,
+  "protocol": "openid-connect",
+  "publicClient": false,
+  "clientAuthenticatorType": "client-secret",
+  "secret": "${KC_GRAFANA_CLIENT_SECRET}",
+  "bearerOnly": false,
+  "standardFlowEnabled": true,
+  "directAccessGrantsEnabled": false,
+  "implicitFlowEnabled": false,
+  "serviceAccountsEnabled": false,
+  "consentRequired": false,
+  "frontchannelLogout": false,
+  "rootUrl": "${GATEWAY_PUBLIC_URL}/grafana/",
+  "redirectUris": ["${GATEWAY_PUBLIC_URL}/grafana/login/generic_oauth"],
+  "webOrigins": ["${GATEWAY_PUBLIC_URL}"],
+  "attributes": {
+    "pkce.code.challenge.method": "S256",
+    "post.logout.redirect.uris": "${GATEWAY_PUBLIC_URL}/grafana/login"
+  }
+}

@@ -35,8 +35,14 @@ bao-unseal:    ## Mở khóa OpenBao bằng key trong .data/openbao (khi tắt O
 bao-status:    ## Trạng thái seal của OpenBao
 	docker compose exec openbao bao status
 
-up-bi:         ## Grafana OSS dashboard điều hành (#92, profile bi; cần make up trước): http://localhost:9080/grafana/
+up-bi:         ## Grafana OSS dashboard điều hành (#92, profile bi; cần make up trước), đăng nhập SSO Keycloak (#126): http://localhost:9080/grafana/
 	bash scripts/openbao-init.sh
+	@# Máy đã chạy bản trước #126: bao agent đang chạy cấu hình cũ, chưa render secret client dxos-grafana → tạo lại agent
+	@docker compose --profile core exec -T bao-agent-keycloak test -s /out/keycloak/KC_GRAFANA_CLIENT_SECRET 2>/dev/null \
+	  || docker compose --profile core up -d --force-recreate --no-deps bao-agent-keycloak
+	@if [ -n "$$(docker compose --profile bi ps -q bao-agent-grafana 2>/dev/null)" ]; then \
+	  docker compose --profile bi exec -T bao-agent-grafana test -s /out/grafana/oauth_client_secret 2>/dev/null \
+	  || docker compose --profile core --profile bi up -d --force-recreate --no-deps bao-agent-grafana; fi
 	docker compose --profile core --profile app --profile bi up -d grafana
 
 up-ai:         ## Ollama + tải mô hình LLM_MODEL (#102, profile ai, lần đầu ~4,7 GB cho qwen2.5:7b); rồi đặt LLM_PROVIDER=ollama trong .env và make up
