@@ -142,7 +142,7 @@ b2_ban_do() {
 
 b3_phan_cong() {
   local tin=${TIN_ID:-$(doc tin)}
-  [ -n "$tin" ] && [ "$tin" != None ] || { echo "Chưa có tin: chạy bước 2 trước"; return 1; }
+  if [ -z "$tin" ] || [ "$tin" = None ]; then echo "Chưa có tin: chạy bước 2 trước"; return 1; fi
   xanh "3. Phân công tự động: workflow Temporal phan-cong-$tin"
   for _ in $(seq 1 15); do
     r=$(goi dieuphoi01 GET "/workflow/phan-cong-$tin")
