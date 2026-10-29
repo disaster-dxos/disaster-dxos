@@ -53,7 +53,9 @@ get_token() { # get_token <username>
     | python3 -c 'import sys,json; print(json.load(sys.stdin)["access_token"])'
 }
 gql='{"query":"{ __typename }"}'
-for pair in dieuphoi01:dieu-phoi cuuho01:cuu-ho; do
+# User mẫu "<user>:<vai mặc định>" của ứng dụng đang chọn; mặc định của apps/cuu-tro. Ứng dụng khác đặt
+# SMOKE_CORE_USERS (vd apps/muon-thiet-bi/module.env) để smoke lõi chạy được với realm của nó (#110)
+for pair in ${SMOKE_CORE_USERS:-dieuphoi01:dieu-phoi cuuho01:cuu-ho}; do
   u=${pair%%:*}; want=${pair#*:}
   tok=$(get_token "$u")
   out=$(curl -s -K <(printf 'header = "Authorization: Bearer %s"\n' "$tok") -H 'Content-Type: application/json' -d "$gql" "$HS/v1/graphql")

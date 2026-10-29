@@ -1,0 +1,3 @@
+# SPDX-License-Identifier: Apache-2.0
+- "!include muon_thiet_bi_devices.yaml"
+- "!include muon_thiet_bi_loans.yaml"

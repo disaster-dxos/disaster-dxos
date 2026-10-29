@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: Apache-2.0
+# Thiết bị dùng chung. quan-ly: đọc, thêm, sửa (tình trạng, chỗ để). nguoi-muon: chỉ đọc. Không ai xóa
+# (ngừng dùng = condition ngung_dung, lịch sử lượt mượn còn nguyên).
+table:
+  name: devices
+  schema: muon_thiet_bi
+configuration:
+  custom_name: devices
+  column_config: {}
+  custom_column_names: {}
+  custom_root_fields: {}
+array_relationships:
+  - name: loans
+    using:
+      foreign_key_constraint_on:
+        column: device_id
+        table:
+          name: loans
+          schema: muon_thiet_bi
+insert_permissions:
+  - role: quan-ly
+    permission:
+      check: {}
+      columns: [code, name, kind, condition, location, note]
+select_permissions:
+  - role: quan-ly
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+  - role: nguoi-muon
+    permission:
+      columns: [id, code, name, kind, condition, location, updated_at]
+      filter: {}
+update_permissions:
+  - role: quan-ly
+    permission:
+      columns: [name, kind, condition, location, note]
+      filter: {}
+      check: {}

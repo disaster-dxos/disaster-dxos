@@ -1,0 +1,187 @@
+{
+  "realm": "thiet-bi",
+  "displayName": "Mượn trả thiết bị (module mẫu)",
+  "enabled": true,
+  "sslRequired": "${KC_REALM_SSL_REQUIRED}",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 900,
+  "roles": {
+    "realm": [
+      {
+        "name": "quan-ly",
+        "description": "Người quản lý kho thiết bị dùng chung"
+      },
+      {
+        "name": "nguoi-muon",
+        "description": "Người mượn thiết bị"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "dxos-gateway",
+      "name": "APISIX API Gateway",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_GATEWAY_CLIENT_SECRET}",
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "implicitFlowEnabled": false
+    },
+    {
+      "clientId": "dxos-dev-cli",
+      "name": "CHỈ DÙNG KHI DEV: lấy token bằng mật khẩu để thử API",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "implicitFlowEnabled": false,
+      "protocolMappers": [
+        {
+          "name": "hasura-allowed-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true",
+            "claim.name": "https://hasura\\.io/jwt/claims.x-hasura-allowed-roles",
+            "jsonType.label": "String",
+            "multivalued": "true"
+          }
+        },
+        {
+          "name": "hasura-default-role",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true",
+            "claim.name": "https://hasura\\.io/jwt/claims.x-hasura-default-role",
+            "user.attribute": "hasura_default_role",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "aggregate.attrs": "false"
+          }
+        },
+        {
+          "name": "hasura-user-id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true",
+            "claim.name": "https://hasura\\.io/jwt/claims.x-hasura-user-id",
+            "user.attribute": "id",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "id": "9c000000-0000-4000-8000-000000000001",
+      "username": "quanly01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Quản lý",
+      "lastName": "Mẫu",
+      "email": "quanly01@example.invalid",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_DEMO_USER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-thiet-bi",
+        "quan-ly"
+      ],
+      "attributes": {
+        "hasura_default_role": [
+          "quan-ly"
+        ]
+      }
+    },
+    {
+      "id": "9c000000-0000-4000-8000-000000000002",
+      "username": "nguoimuon01",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Người mượn",
+      "lastName": "Một",
+      "email": "nguoimuon01@example.invalid",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_DEMO_USER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-thiet-bi",
+        "nguoi-muon"
+      ],
+      "attributes": {
+        "hasura_default_role": [
+          "nguoi-muon"
+        ]
+      }
+    },
+    {
+      "id": "9c000000-0000-4000-8000-000000000003",
+      "username": "nguoimuon02",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Người mượn",
+      "lastName": "Hai",
+      "email": "nguoimuon02@example.invalid",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_DEMO_USER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "default-roles-thiet-bi",
+        "nguoi-muon"
+      ],
+      "attributes": {
+        "hasura_default_role": [
+          "nguoi-muon"
+        ]
+      }
+    }
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"validations\": {\"length\": {\"min\": 3, \"max\": 255}, \"username-prohibited-characters\": {}, \"up-username-not-idn-homograph\": {}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}, {\"name\": \"email\", \"displayName\": \"${email}\", \"validations\": {\"email\": {}, \"length\": {\"max\": 255}}, \"required\": {\"roles\": [\"user\"]}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"validations\": {\"length\": {\"max\": 255}, \"person-name-prohibited-characters\": {}}, \"required\": {\"roles\": [\"user\"]}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"validations\": {\"length\": {\"max\": 255}, \"person-name-prohibited-characters\": {}}, \"required\": {\"roles\": [\"user\"]}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false}, {\"name\": \"hasura_default_role\", \"displayName\": \"Vai trò mặc định (Hasura)\", \"validations\": {\"options\": {\"options\": [\"quan-ly\", \"nguoi-muon\"]}}, \"annotations\": {\"inputType\": \"select\"}, \"permissions\": {\"view\": [\"admin\"], \"edit\": [\"admin\"]}, \"multivalued\": false}], \"groups\": [{\"name\": \"user-metadata\", \"displayHeader\": \"User metadata\", \"displayDescription\": \"Attributes, which refer to user metadata\"}]}"
+          ]
+        }
+      }
+    ]
+  }
+}

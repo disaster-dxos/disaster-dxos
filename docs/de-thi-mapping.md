@@ -43,7 +43,7 @@ Trạng thái: ☐ chưa làm · ◐ đang làm · ☑ xong (ghi đường dẫn
 | Việc | Trạng thái |
 |---|---|
 | README song ngữ, CONTRIBUTING, CODE_OF_CONDUCT | ◐ |
-| Hướng dẫn viết module cắm–rút + module mẫu | ☐ |
+| Hướng dẫn viết module cắm–rút + module mẫu (#110): `docs/viet-module.md` (hợp đồng lõi ↔ module, quy ước tên suy từ `DXOS_APP`, các bước, cách chạy, điều cấm, giới hạn); module mẫu `apps/muon-thiet-bi/` khác đề tài (mượn trả thiết bị dùng chung: realm, schema có Poka-yoke, Hasura theo vai, không backend) chạy trên lõi không sửa `core/`, `make smoke-app` đạt trên volume trống; `make check` kiểm compose với mọi module | ☑ |
 | Bộ mô phỏng trạm đo lũ + mô hình NGSI-LD trạm đo cho cộng đồng, dùng độc lập (#112): `cong-dong/tram-do-lu/` (`mo_phong.py` chỉ thư viện chuẩn, `@context`, JSON Schema, ví dụ, README song ngữ); `tests/test_cuu_tro_cong_dong.py` giữ khớp backend, `scripts/smoke-ngsi-ld.sh` mục 4b | ☑ |
 | Demo công khai trên Internet, người dùng thật thử | ☐ |
 | Kênh trao đổi (Discussions/Telegram), bài giới thiệu: GitHub Discussions đã bật, chưa có bài mở đầu; chưa có bài giới thiệu | ◐ |

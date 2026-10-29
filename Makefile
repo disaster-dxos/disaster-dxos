@@ -1,8 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: up up-bi up-ai up-sec danh-gia-ai luu-tru luu-tru-truy-van gia-lap gia-lap-vuot-nguong gia-lap-tran-lu down logs ps migrate seed test-db test-py license check lint smoke bao-init bao-unseal bao-status
+# SMOKE_CORE_USERS (tên user mẫu cho smoke lõi), APP_BI_DB_USER đặt trong .env hoặc apps/<app>/module.env (#110)
+.PHONY: smoke-app up up-bi up-ai up-sec danh-gia-ai luu-tru luu-tru-truy-van gia-lap gia-lap-vuot-nguong gia-lap-tran-lu down logs ps migrate seed test-db test-py license check lint smoke bao-init bao-unseal bao-status
 
 # Dùng .env nếu có, nếu không thì .env.example (để CI/máy sạch vẫn kiểm được compose)
 ENV_FILE := $(if $(wildcard .env),.env,.env.example)
+# Ứng dụng Tầng 2 đang chọn (#110): biến môi trường, không có thì đọc DXOS_APP trong .env, mặc định cuu-tro
+DXOS_APP ?= $(or $(shell sed -n 's/^DXOS_APP=//p' $(ENV_FILE) | tail -n 1),cuu-tro)
 
 # Scorpio theo kiến trúc máy (#99): bản native (mặc định trong compose) cần AVX/AVX2, Rosetta trong VM của
 # Mac Apple Silicon không có → trên arm64 dùng bản JVM cùng phiên bản, nhiều bộ nhớ hơn. Biến đặt trong
@@ -78,6 +81,12 @@ smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/Seaweed
 	bash scripts/smoke-mobile.sh
 	bash scripts/smoke-ai.sh
 
+smoke-app:     ## Ứng dụng bất kỳ (DXOS_APP, #110): smoke lõi dùng chung (OpenBao, Hasura/SeaweedFS/Temporal/NATS) + test DB + smoke riêng apps/<DXOS_APP>/tests/smoke.sh (cần make up, make seed trước)
+	bash scripts/smoke-openbao.sh
+	bash scripts/smoke-core.sh
+	docker compose --profile core run --rm --no-deps migrate test
+	@f=apps/$(DXOS_APP)/tests/smoke.sh; if [ -f $$f ]; then bash $$f; else echo "Không có $$f (apps/cuu-tro dùng make smoke đầy đủ)"; fi
+
 luu-tru:       ## Xuất dữ liệu cũ (trước đầu tháng này) ra Parquet trên SeaweedFS (#91); DEN=YYYY-MM-DD để đổi mốc
 	docker compose --profile core --profile app --profile luu-tru run --rm --no-deps cuu-tro-luu-tru \
 	  python -m cuu_tro_workflow.luu_tru xuat $(if $(DEN),--den $(DEN))
@@ -122,6 +131,9 @@ license:       ## Thêm header SPDX cho file mới
 lint:          ## shellcheck + yamllint (cần cài sẵn 2 công cụ; CI chạy như nhau)
 	bash scripts/lint.sh all
 
-check:         ## Kiểm tra trước khi nộp: license + compose hợp lệ
+check:         ## Kiểm tra trước khi nộp: license + compose hợp lệ (với mọi ứng dụng trong apps/, #110)
 	bash scripts/check-license.sh
 	docker compose --env-file $(ENV_FILE) --profile '*' config --quiet && echo "OK: docker-compose.yml hợp lệ (mọi profile, $(ENV_FILE))"
+	@for a in apps/*/compose.yaml; do app=$$(basename $$(dirname $$a)); \
+	  DXOS_APP=$$app docker compose --env-file $(ENV_FILE) --profile '*' config --quiet || { echo "LỖI: compose không hợp lệ với DXOS_APP=$$app"; exit 1; }; \
+	  echo "OK: compose hợp lệ với DXOS_APP=$$app"; done
