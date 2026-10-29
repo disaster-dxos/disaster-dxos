@@ -79,7 +79,7 @@ services:
     # "build" (hai dịch vụ cùng build một tên image thì BuildKit báo "already exists")
     build:
       context: ./apps/cuu-tro/workflow
-    image: disaster-dxos/cuu-tro-workflow:0.4.0
+    image: disaster-dxos/cuu-tro-workflow:0.5.0
     restart: unless-stopped
     profiles: [app]
     # APP_DB_URL (role cuu_tro_app) do bao agent render, env-from-files.sh export rồi exec worker.
@@ -131,7 +131,7 @@ services:
 
   cuu-tro-api:
     # Dùng lại image do cuu-tro-worker build (image cục bộ, không kéo từ registry)
-    image: disaster-dxos/cuu-tro-workflow:0.4.0
+    image: disaster-dxos/cuu-tro-workflow:0.5.0
     pull_policy: never
     restart: unless-stopped
     profiles: [app]
@@ -216,7 +216,7 @@ services:
   cuu-tro-cam-bien:
     # Consumer luồng cảm biến (#30): tạo stream/consumer JetStream theo apps/cuu-tro/nats/streams.json,
     # ghi chuỗi đo vào sensor_readings, cập nhật sensors.last_*, phát cảnh báo vượt ngưỡng lên NATS.
-    image: disaster-dxos/cuu-tro-workflow:0.4.0
+    image: disaster-dxos/cuu-tro-workflow:0.5.0
     pull_policy: never
     restart: unless-stopped
     profiles: [app]
@@ -253,7 +253,7 @@ services:
     # ghi-csdl), upsert thực thể NGSI-LD của trạm lên Scorpio của lõi (scorpio:9090, mạng nội bộ); bản tin
     # cũ hơn lần đo đang có thì bỏ qua, Scorpio lỗi thì giao lại có hẹn giờ. Đọc tên, tọa độ, ngưỡng của
     # trạm bằng role cuu_tro_app (migration 0009, chỉ đọc). @context: apps/cuu-tro/ngsi-ld/context.jsonld.
-    image: disaster-dxos/cuu-tro-workflow:0.4.0
+    image: disaster-dxos/cuu-tro-workflow:0.5.0
     pull_policy: never
     restart: unless-stopped
     profiles: [app]
@@ -294,7 +294,7 @@ services:
     # lý, tin mới, thông báo cảnh báo trạm đo do workflow #87 đã gửi), chỉ chép trường không định danh, POST
     # /api/publish của Centrifugo (idempotency_key = Nats-Msg-Id), Centrifugo nhận mới ack.
     # Bí mật: NATS_URL + CENTRIFUGO_API_KEY (volume riêng), không có mật khẩu DB.
-    image: disaster-dxos/cuu-tro-workflow:0.4.0
+    image: disaster-dxos/cuu-tro-workflow:0.5.0
     pull_policy: never
     restart: unless-stopped
     profiles: [app]
@@ -330,7 +330,7 @@ services:
     #   docker compose --profile core --profile app run --rm --no-deps cuu-tro-gia-lap python -m cuu_tro_workflow.gia_lap --mot-lan
     # Chạy liên tục: docker compose --profile core --profile app --profile gia-lap up -d cuu-tro-gia-lap
     # Chỉ có mật khẩu thiết bị (MQTT, chỉ được gửi vào cuu-tro.>), không có bí mật nào khác.
-    image: disaster-dxos/cuu-tro-workflow:0.4.0
+    image: disaster-dxos/cuu-tro-workflow:0.5.0
     pull_policy: never
     restart: unless-stopped
     profiles: [gia-lap]
@@ -358,7 +358,7 @@ services:
     # đọc CSDL bằng role CHỈ ĐỌC cuu_tro_bi (migration 0012: không có cột định danh), ghi Parquet phân vùng
     # theo tháng lên bucket cuu-tro-lakehouse của SeaweedFS (khóa S3 của ứng dụng), truy vấn bằng DuckDB.
     # Bí mật riêng (volume secrets-cuu-tro-luu-tru): BI_DB_URL, S3_ACCESS_KEY, S3_SECRET_KEY.
-    image: disaster-dxos/cuu-tro-workflow:0.4.0
+    image: disaster-dxos/cuu-tro-workflow:0.5.0
     pull_policy: never
     restart: "no"
     profiles: [luu-tru]
@@ -387,7 +387,7 @@ services:
       # Bộ logo của repo nằm ngoài thư mục web (nuxt.config.ts phục vụ ở /logo)
       additional_contexts:
         logo: ./docs/images/logo
-    image: disaster-dxos/cuu-tro-web:0.4.0
+    image: disaster-dxos/cuu-tro-web:0.5.0
     restart: unless-stopped
     profiles: [app]
     environment:

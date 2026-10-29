@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-29
+Tuần 6 và tuần 7: hoàn thiện cho trình bày và người ngoài dùng thử. Grafana đăng nhập SSO Keycloak (generic OAuth + PKCE, vai realm → vai Grafana, tắt form, tài khoản admin khẩn cấp lấy từ OpenBao), client tạo idempotent nên máy đã có realm cũ cũng nhận. README song ngữ đầy đủ với Quick start tiếng Anh chạy từ máy sạch và mục nâng cấp. Tài liệu trình bày chung kết 15 phút: kịch bản theo phút qua H-P-D-I, script dựng dữ liệu demo và chạy lại 7 luồng, script quay video dự phòng.
+
+Kiểm chứng: `make up` + `make seed` + `make smoke` 1033/1033 trên volume trống ngày 29/10/2026 (project tạm, OpenBao riêng, MacBook Apple Silicon, OrbStack) ở commit chốt phiên bản này. CI: các job bắt buộc `license`, `build-from-source`, `shellcheck`, `yamllint`, `pytest`, `go-test`, `go-licenses`, cùng `web` và `mobile` chạy trên mọi PR.
+
+
 ### Added
 - Grafana đăng nhập SSO Keycloak (#126): generic OAuth với client `dxos-grafana` (confidential + PKCE S256, chỉ standard flow, redirect đúng `/grafana/login/generic_oauth`), secret `secret/core/grafana-oauth` trong OpenBao. Vai realm → vai Grafana qua claim `roles` (mapper `dxos-realm-roles`): `dieu-phoi` → Editor, `cuu-ho` → Viewer, vai khác bị từ chối (`role_attribute_strict`); không gán Grafana Admin qua SSO. Luồng OTP của `dieu-phoi` áp cả khi vào Grafana. Đăng xuất Grafana đăng xuất phiên Keycloak.
 - Container một lần `keycloak-grafana-client` (profile `bi`, image Keycloak gốc, `core/keycloak/grafana-client.sh` bằng `kcadm.sh`): tạo hoặc cập nhật client và mapper mỗi lần bật profile `bi`, idempotent, nên máy đã có realm cũ (realm chỉ import khi CSDL trống) cũng nhận client; áp được cho realm của mọi ứng dụng.
@@ -284,7 +290,8 @@ Kiểm chứng: `make smoke` 339/339 trên máy sạch ngày 22/10/2026 (clone t
 - Tách `core/` (Tầng 1, không chứa nghiệp vụ) và `apps/cuu-tro/` (Tầng 2): `deploy/apisix`, `deploy/nats`, `deploy/postgres` → `core/`; realm Keycloak → `apps/cuu-tro/keycloak/realm.json`; chọn ứng dụng bằng biến `DXOS_APP`; `docs/architecture.md` thêm mục 7 giải thích vì sao lõi độc lập với nghiệp vụ (#3).
 - `docs/PLAN.md` theo lộ trình mới: VPS + tên miền tuần 4, tuần UX tuần 6, 2 lần tập trình bày, công bố bộ mô phỏng cảm biến và mô hình NGSI-LD; gán vai V1/V2/V3 cho từng việc (#5).
 
-[Unreleased]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.1.0...v0.2.0
