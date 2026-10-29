@@ -251,7 +251,7 @@ async def lifespan(app: FastAPI):
 # Đường dẫn công khai /workflow/... phía sau gateway: uvicorn --root-path /workflow (compose)
 app = FastAPI(
     title="cuu-tro workflow API",
-    version="0.3.0",
+    version="0.4.0",
     docs_url=None,
     redoc_url=None,
     lifespan=lifespan,

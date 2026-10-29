@@ -72,7 +72,7 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [x] [V1] Hướng dẫn viết module cắm–rút trong `apps/` + 1 module mẫu (#110: `docs/viet-module.md`, `apps/muon-thiet-bi/`, `make smoke-app`)
 - [ ] [V1] README song ngữ đầy đủ
 - [ ] [V1][V2][V3] **Tập trình bày lần 1** (15 phút, có giám khảo thử)
-- [ ] [V1] Release v0.4.0
+- [x] [V1] Release v0.4.0 (#123; tag `v0.4.0` trên `main`, Release kèm `.tar.gz` + `SHA256SUMS`, 29/10/2026)
 
 ## Tuần 7 · 26/11–06/12 · Nộp bài → v1.0.0
 - [ ] [V1] Rà 6 tiêu chí PoF đạt toàn bộ · đóng băng tính năng · release v1.0.0

@@ -1,6 +1,6 @@
 {
   "name": "cuu-tro-mobile",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "license": "Apache-2.0",
   "description": "App hiện trường (Tầng 2) của Disaster DX-OS: gửi kêu cứu, cập nhật hiện trường, hàng đợi offline",

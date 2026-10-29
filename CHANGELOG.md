@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-29
+Tuần 5 và tuần 6: Tầng [I] và tuần UX, cộng đồng. AI bóc tách tin kêu cứu viết tự do thành đề xuất có cấu trúc (`LLM_PROVIDER`: bộ luật mặc định, Qwen2.5 7B qua Ollama ở profile `ai`, OpenAI-compatible), điều phối viên duyệt ở hàng chờ Human-in-the-loop trước khi thành tin thật, vết duyệt không sửa được. App hiện trường React Native (D-011, thay Flutter) gửi kêu cứu, cập nhật hiện trường, có hàng đợi offline với `Idempotency-Key`, đã rà UX một tay, mạng yếu, chữ lớn, tương phản. ClamAV quét ảnh hiện trường trước khi lưu (profile `sec`). Hướng dẫn viết module cắm–rút kèm module mẫu thứ hai (mượn trả thiết bị). Công bố bộ mô phỏng trạm đo lũ và mô hình NGSI-LD trạm đo cho cộng đồng, dùng độc lập. Rà PoF, quy trình phát hành trong `CONTRIBUTING.md`.
+
+Kiểm chứng: `make smoke` 1012/1012 trên volume trống ngày 29/10/2026 (project tạm, OpenBao riêng, MacBook Apple Silicon, OrbStack) ở commit chốt phiên bản này. CI: các job bắt buộc `license`, `build-from-source`, `shellcheck`, `yamllint`, `pytest`, `go-test`, `go-licenses`, cùng `web` và `mobile` chạy trên mọi PR.
+
+
 ### Added
 - Bộ mô phỏng trạm đo lũ + mô hình NGSI-LD trạm đo công bố cho cộng đồng, dùng độc lập với Disaster DX-OS (#112): `cong-dong/tram-do-lu/`. `mo_phong.py` chỉ cần Python 3.9+ (thư viện chuẩn: MQTT 3.1.1 QoS 1 tự viết, HTTP), 3 kịch bản như bộ giả lập của lõi (`binh-thuong`, `vuot-nguong`, `tran-lu` 49 giờ × 9 trạm, dữ liệu giả lập), đầu ra NDJSON, MQTT tới broker bất kỳ, thực thể NGSI-LD, hoặc upsert vào context broker (Scorpio, Orion-LD, Stellio). Kèm `@context`, JSON Schema (draft 2020-12) cho thực thể trạm đo và bản tin MQTT, thực thể mẫu `WaterLevelStation`/`RainGauge`/`WindStation` có context nội tuyến; README song ngữ (topic, payload, quy định kiểm bản tin, thuộc tính, cách truy vấn, cách dùng với Disaster DX-OS).
 - Kiểm thử (#112): pytest 518 → 543 ca (`tests/test_cuu_tro_cong_dong.py`: dữ liệu, context, giá trị từng kịch bản cùng seed, topic, payload, thực thể và tệp ví dụ phải trùng `gia_lap.py`/`cam_bien.py`/`ngsi_ld.py`; MQTT với broker giả, upsert với HTTP server giả; chỉ thư viện chuẩn). `scripts/smoke-ngsi-ld.sh` mục 4b: chạy `mo_phong.py` vào NATS thật của lõi, 9 thực thể trên Scorpio trùng thực thể theo mô hình công bố.
@@ -263,7 +269,8 @@ Kiểm chứng: `make smoke` 339/339 trên máy sạch ngày 22/10/2026 (clone t
 - Tách `core/` (Tầng 1, không chứa nghiệp vụ) và `apps/cuu-tro/` (Tầng 2): `deploy/apisix`, `deploy/nats`, `deploy/postgres` → `core/`; realm Keycloak → `apps/cuu-tro/keycloak/realm.json`; chọn ứng dụng bằng biến `DXOS_APP`; `docs/architecture.md` thêm mục 7 giải thích vì sao lõi độc lập với nghiệp vụ (#3).
 - `docs/PLAN.md` theo lộ trình mới: VPS + tên miền tuần 4, tuần UX tuần 6, 2 lần tập trình bày, công bố bộ mô phỏng cảm biến và mô hình NGSI-LD; gán vai V1/V2/V3 cho từng việc (#5).
 
-[Unreleased]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.0.1...v0.1.0
