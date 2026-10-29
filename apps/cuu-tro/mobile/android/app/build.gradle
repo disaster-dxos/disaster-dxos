@@ -83,8 +83,8 @@ android {
         applicationId "org.disasterdxos.cuutro"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
-        versionName "0.4.0"
+        versionCode 3
+        versionName "0.5.0"
         // react-native-app-auth: nhận URL chuyển hướng OAuth org.disasterdxos.cuutro:/oauthredirect (PKCE)
         manifestPlaceholders = [appAuthRedirectScheme: "org.disasterdxos.cuutro"]
     }

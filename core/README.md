@@ -10,6 +10,8 @@ Cấu hình các dịch vụ dùng chung của DX-OS. Mỗi dịch vụ chạy b
 | `postgres/` | `init/`: khởi tạo lần đầu (CSDL Keycloak, PostGIS); `sync-roles.sh`: role riêng cho Keycloak, Hasura, Temporal (container `postgres-roles`) |
 | `seaweedfs/` | `create-buckets.sh`: tạo bucket ứng dụng khai báo ở `apps/<DXOS_APP>/s3/buckets.conf`, tên bắt buộc tiền tố `<DXOS_APP>-` (container `s3-buckets`, #27). Khóa S3: `openbao/agent-seaweedfs.hcl` (định danh quản trị + định danh của ứng dụng chỉ bucket `<DXOS_APP>-*`) |
 | `ledger/` | Sổ cái minh bạch (Go + Tessera, driver POSIX, #28): `cmd/ledger` (dịch vụ: ghi chỉ nội bộ bằng token, đọc công khai theo tlog-tiles), `cmd/ledger-verify` (CLI tự kiểm chứng từ tile công khai), `leaf/` (định dạng lá, JSON chuẩn tắc), `Dockerfile` (image `scratch`). Khóa ký: `openbao/agent-ledger.hcl`. Kiểm thử: `go test ./...` |
+| `keycloak/` | Client của dịch vụ lõi trong realm của ứng dụng (#126): `grafana-client.json` + `grafana-roles-mapper.json` (client SSO `dxos-grafana`, mapper vai realm → claim `roles`), `grafana-client.sh` (container một lần `keycloak-grafana-client`, `kcadm.sh`: tạo hoặc cập nhật, idempotent, vì realm chỉ import khi CSDL Keycloak trống) |
+| `grafana/` | `provisioning/`: datasource PostgreSQL bằng role chỉ đọc `<schema>_bi`, nạp dashboard của ứng dụng (#92) |
 | `nats/` | NATS JetStream + MQTT: `nats.conf` (giới hạn JetStream, MQTT), `auth.conf.ctmpl` (user `<DXOS_APP>-app` / `<DXOS_APP>-thiet-bi`, bao agent render từ OpenBao, #30) |
 
 **Quy tắc:** không đặt vào đây bảng, vai trò, quy trình, dữ liệu mẫu hay giao diện của một đề tài cụ thể. Những thứ đó thuộc `apps/<tên>/`. Xem `docs/architecture.md` mục 7.

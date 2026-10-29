@@ -1,0 +1,13 @@
+{
+  "name": "demo-trinh-bay",
+  "private": true,
+  "description": "Quay video demo dự phòng 15 phút (#130) bằng Playwright trên stack thật",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "quay": "node quay-video.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.64.0"
+  }
+}

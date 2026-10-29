@@ -56,7 +56,7 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [x] [V3] Web: trang Minh bạch công khai cho phiếu kho + bút toán tiền, trình duyệt tự kiểm sổ cái (#63: `/workflow/minh-bach/xac-minh`, WebCrypto Ed25519 + Merkle)
 - [ ] [V1] Thuê VPS + tên miền, HTTPS, CI tự triển khai từ `main` — **còn mở**: chờ người hướng dẫn (VPS, tên miền)
 - [ ] [V3] Cuối tuần: mời 3–5 người dùng thật thử, ghi phản hồi thành issue `user-feedback` — **còn mở**: chờ người hướng dẫn (cần bản chạy trên VPS)
-- [ ] [V1] Grafana đăng nhập SSO Keycloak (generic OAuth) thay tài khoản admin — **còn mở**, để sau #92 (realm chỉ import lần đầu: cần hướng dẫn thêm client cho máy đã chạy)
+- [x] [V1] Grafana đăng nhập SSO Keycloak (#126: generic OAuth, client `dxos-grafana` confidential + PKCE do container `keycloak-grafana-client` tạo/cập nhật idempotent; `dieu-phoi` → Editor, `cuu-ho` → Viewer, vai khác bị từ chối; form tắt, admin khẩn cấp trong OpenBao)
 - [x] [V1] Release v0.3.0 (#94, PR #95, #96; tag `v0.3.0` trên `main`, Release kèm `.tar.gz` + `SHA256SUMS`, 24/10/2026)
 
 ## Tuần 5 · 12–18/11 · Tầng [I] + demo công khai
@@ -70,14 +70,15 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 - [x] [V3] Rà soát UX hiện trường: thao tác một tay, mạng yếu, chữ lớn, tương phản (#113: `docs/ra-soat-ux-hien-truong.md`, 15 phát hiện đã sửa, Jest kiểm tương phản mọi cặp màu; còn thử trên máy thật)
 - [x] [V2] Công bố bộ mô phỏng cảm biến + mô hình dữ liệu NGSI-LD trạm đo cho cộng đồng (tài liệu + ví dụ) (#112: `cong-dong/tram-do-lu/`, `mo_phong.py` chỉ thư viện chuẩn, JSON Schema, ví dụ, pytest giữ khớp backend)
 - [x] [V1] Hướng dẫn viết module cắm–rút trong `apps/` + 1 module mẫu (#110: `docs/viet-module.md`, `apps/muon-thiet-bi/`, `make smoke-app`)
-- [ ] [V1] README song ngữ đầy đủ
+- [x] [V1] README song ngữ đầy đủ (#128: mọi mục có tiếng Việt và tiếng Anh, Quick start tiếng Anh từ máy sạch, mục nâng cấp)
 - [ ] [V1][V2][V3] **Tập trình bày lần 1** (15 phút, có giám khảo thử)
 - [x] [V1] Release v0.4.0 (#123; tag `v0.4.0` trên `main`, Release kèm `.tar.gz` + `SHA256SUMS`, 29/10/2026)
+- [x] [V1] Release v0.5.0 (#133; Grafana SSO #126, README song ngữ #128, tài liệu trình bày #130; tag `v0.5.0` trên `main`, Release kèm `.tar.gz` + `SHA256SUMS`, 29/10/2026)
 
 ## Tuần 7 · 26/11–06/12 · Nộp bài → v1.0.0
 - [ ] [V1] Rà 6 tiêu chí PoF đạt toàn bộ · đóng băng tính năng · release v1.0.0
 - [ ] [V1] Gửi email nộp bài trước 17:00 06/12
-- [ ] [V3] Slide 15 phút + video demo dự phòng
+- [ ] [V3] Slide 15 phút + video demo dự phòng — kịch bản, script dữ liệu demo, script quay video và dàn ý slide đã có (#130: `docs/trinh-bay/kich-ban-demo.md`, `scripts/demo/`); còn làm slide
 - [ ] [V1][V2][V3] **Tập trình bày lần 2**
 
 ## 07–10/12 · Trước chung kết

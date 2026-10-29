@@ -45,3 +45,10 @@ template {
   perms       = "0444"
   contents    = "{{ with secret \"secret/data/core/gateway\" }}{{ .Data.data.client_secret }}{{ end }}"
 }
+
+# Secret client dxos-grafana (#126): container keycloak-grafana-client đọc để tạo/cập nhật client
+template {
+  destination = "/out/keycloak/KC_GRAFANA_CLIENT_SECRET"
+  perms       = "0444"
+  contents    = "{{ with secret \"secret/data/core/grafana-oauth\" }}{{ .Data.data.client_secret }}{{ end }}"
+}

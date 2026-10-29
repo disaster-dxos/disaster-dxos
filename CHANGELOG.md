@@ -4,6 +4,27 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-29
+Tuần 6 và tuần 7: hoàn thiện cho trình bày và người ngoài dùng thử. Grafana đăng nhập SSO Keycloak (generic OAuth + PKCE, vai realm → vai Grafana, tắt form, tài khoản admin khẩn cấp lấy từ OpenBao), client tạo idempotent nên máy đã có realm cũ cũng nhận. README song ngữ đầy đủ với Quick start tiếng Anh chạy từ máy sạch và mục nâng cấp. Tài liệu trình bày chung kết 15 phút: kịch bản theo phút qua H-P-D-I, script dựng dữ liệu demo và chạy lại 7 luồng, script quay video dự phòng.
+
+Kiểm chứng: `make up` + `make seed` + `make smoke` 1033/1033 trên volume trống ngày 29/10/2026 (project tạm, OpenBao riêng, MacBook Apple Silicon, OrbStack) ở commit chốt phiên bản này. CI: các job bắt buộc `license`, `build-from-source`, `shellcheck`, `yamllint`, `pytest`, `go-test`, `go-licenses`, cùng `web` và `mobile` chạy trên mọi PR.
+
+
+### Added
+- Grafana đăng nhập SSO Keycloak (#126): generic OAuth với client `dxos-grafana` (confidential + PKCE S256, chỉ standard flow, redirect đúng `/grafana/login/generic_oauth`), secret `secret/core/grafana-oauth` trong OpenBao. Vai realm → vai Grafana qua claim `roles` (mapper `dxos-realm-roles`): `dieu-phoi` → Editor, `cuu-ho` → Viewer, vai khác bị từ chối (`role_attribute_strict`); không gán Grafana Admin qua SSO. Luồng OTP của `dieu-phoi` áp cả khi vào Grafana. Đăng xuất Grafana đăng xuất phiên Keycloak.
+- Container một lần `keycloak-grafana-client` (profile `bi`, image Keycloak gốc, `core/keycloak/grafana-client.sh` bằng `kcadm.sh`): tạo hoặc cập nhật client và mapper mỗi lần bật profile `bi`, idempotent, nên máy đã có realm cũ (realm chỉ import khi CSDL trống) cũng nhận client; áp được cho realm của mọi ứng dụng.
+- Kiểm thử (#126): `scripts/smoke-grafana.sh` mục 5 (21 ca mới) và `scripts/grafana-sso.py` (đăng nhập như trình duyệt, tự cài OTP): client đúng cấu hình, secret khớp OpenBao, chạy lại không tạo trùng, thiếu PKCE hoặc redirect lạ bị từ chối, form đăng nhập tắt, admin khẩn cấp vẫn gọi được API; user `dieu-phoi` tạm → Editor, `cuuho01` → Viewer, cả hai lấy được dashboard qua APISIX; `tinhnguyen01` không có phiên, không có tài khoản.
+
+### Changed
+- Grafana tắt form đăng nhập (`GRAFANA_LOGIN_FORM_DISABLED`, mặc định `true`) và tự chuyển sang Keycloak. Tài khoản `admin` (mật khẩu `secret/core/grafana`) giữ cho khẩn cấp: Basic auth cho API, hoặc mở lại form khi Keycloak hỏng (`apps/cuu-tro/README.md`).
+- Cookie phiên Grafana SameSite `strict` → `lax`: lần quay về từ Keycloak (khác site khi triển khai thật) phải mang cookie `oauth_state` và PKCE verifier.
+- APISIX route `/grafana/*`: tham số `iss` (RFC 9207) được miễn luật SSRF/RFI như `/auth/callback` của web; luật XSS/SQLi vẫn kiểm.
+- `make up-bi` tạo lại `bao-agent-keycloak`, `bao-agent-grafana` khi còn chạy cấu hình cũ chưa render secret client mới. Máy đã chạy: `make up`, `docker compose restart apisix`, `make up-bi`.
+
+### Documentation
+- Tài liệu trình bày chung kết 15 phút (#130): `docs/trinh-bay/kich-ban-demo.md` (kịch bản theo phút, 7 luồng demo qua H-P-D-I với lời thoại và lệnh dự phòng, chuẩn bị, phân vai, phương án khi demo hỏng, câu hỏi giám khảo kèm trả lời, dàn ý 12 slide). `scripts/demo/luong.sh`: dựng dữ liệu demo (10 đội giả, tin nền, trận lũ mẫu, kho, quỹ, Grafana) và chạy lại từng luồng qua APISIX (AI bóc tách → duyệt, bản đồ realtime + chặn trùng, phân công tự động, gửi lại offline với Idempotency-Key, vượt ngưỡng → cảnh báo, phiếu kho → sổ cái → `ledger-verify`, Grafana); `scripts/demo/quay-video.mjs`: quay video dự phòng bằng Playwright trên stack thật, ghép MP4 bằng ffmpeg (video không nằm trong repo).
+- README song ngữ đầy đủ (#128): mọi mục có phần tiếng Việt và tiếng Anh (tiêu đề, bảng có cột/ô song ngữ), mục lục, mục **Quick start (English)** đủ để người ngoài chạy từ máy sạch (yêu cầu máy, lệnh, địa chỉ các giao diện, tài khoản mẫu, thử API, lỗi thường gặp), mục **Nâng cấp** từ v0.4.0 (`make up`, `docker compose restart apisix`, `make up-bi`). Số liệu khớp v0.4.0: bảng chức năng thêm quét mã độc, bảng công nghệ thêm Centrifugo, web Nuxt và phiên bản SeaweedFS/NATS/OpenBao; mục Hướng phát triển chia phần đã xong và phần còn lại; sửa mức RAM/ổ trong bảng lỗi cho khớp yêu cầu máy (6 GB, 15 GB).
+
 ## [0.4.0] - 2026-10-29
 Tuần 5 và tuần 6: Tầng [I] và tuần UX, cộng đồng. AI bóc tách tin kêu cứu viết tự do thành đề xuất có cấu trúc (`LLM_PROVIDER`: bộ luật mặc định, Qwen2.5 7B qua Ollama ở profile `ai`, OpenAI-compatible), điều phối viên duyệt ở hàng chờ Human-in-the-loop trước khi thành tin thật, vết duyệt không sửa được. App hiện trường React Native (D-011, thay Flutter) gửi kêu cứu, cập nhật hiện trường, có hàng đợi offline với `Idempotency-Key`, đã rà UX một tay, mạng yếu, chữ lớn, tương phản. ClamAV quét ảnh hiện trường trước khi lưu (profile `sec`). Hướng dẫn viết module cắm–rút kèm module mẫu thứ hai (mượn trả thiết bị). Công bố bộ mô phỏng trạm đo lũ và mô hình NGSI-LD trạm đo cho cộng đồng, dùng độc lập. Rà PoF, quy trình phát hành trong `CONTRIBUTING.md`.
 
@@ -269,7 +290,8 @@ Kiểm chứng: `make smoke` 339/339 trên máy sạch ngày 22/10/2026 (clone t
 - Tách `core/` (Tầng 1, không chứa nghiệp vụ) và `apps/cuu-tro/` (Tầng 2): `deploy/apisix`, `deploy/nats`, `deploy/postgres` → `core/`; realm Keycloak → `apps/cuu-tro/keycloak/realm.json`; chọn ứng dụng bằng biến `DXOS_APP`; `docs/architecture.md` thêm mục 7 giải thích vì sao lõi độc lập với nghiệp vụ (#3).
 - `docs/PLAN.md` theo lộ trình mới: VPS + tên miền tuần 4, tuần UX tuần 6, 2 lần tập trình bày, công bố bộ mô phỏng cảm biến và mô hình NGSI-LD; gán vai V1/V2/V3 cho từng việc (#5).
 
-[Unreleased]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.1.0...v0.2.0

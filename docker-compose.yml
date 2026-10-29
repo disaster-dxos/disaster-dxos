@@ -790,19 +790,46 @@ services:
       - ${OPENBAO_LOCAL_DIR:-./.data/openbao}/approle/grafana:/openbao/approle:ro
       - secrets-grafana:/out/grafana
     healthcheck:
-      test: ["CMD-SHELL", "test -s /out/grafana/admin_password && test -s /out/grafana/bi_db_password"]
+      test: ["CMD-SHELL", "test -s /out/grafana/admin_password && test -s /out/grafana/bi_db_password && test -s /out/grafana/oauth_client_secret"]
       interval: 5s
       timeout: 3s
       retries: 24
+
+  keycloak-grafana-client:
+    # Container một lần (#126): tạo/cập nhật client Keycloak dxos-grafana trong realm đang chạy bằng kcadm.sh
+    # (core/keycloak/grafana-client.sh). Realm chỉ import khi CSDL Keycloak trống, nên máy đã chạy realm cũ
+    # cũng nhận client mỗi lần bật profile bi. Image Keycloak gốc, cùng phiên bản với dịch vụ keycloak.
+    image: quay.io/keycloak/keycloak:26.8.1
+    profiles: [bi]
+    entrypoint: ["bash", "/opt/dxos/keycloak/grafana-client.sh"]
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    environment:
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-disaster}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL:-http://localhost:9080}
+    volumes:
+      - ./core/keycloak:/opt/dxos/keycloak:ro
+      - secrets-keycloak:/run/secrets/dxos:ro
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+    mem_limit: 256m
 
   grafana:
     <<: *restart
     # Dashboard điều hành (#92). Grafana OSS là AGPL-3.0: chạy như DỊCH VỤ RIÊNG bằng image gốc, không sửa mã,
     # không nhúng vào mã dự án (NOTICE, DEPENDENCIES.md). Datasource + dashboard nạp từ tệp (provisioning):
     # core/grafana/provisioning (datasource PostgreSQL bằng role chỉ đọc <schema>_bi), dashboard JSON của ứng
-    # dụng apps/${DXOS_APP}/grafana/dashboards. Đăng nhập: tài khoản admin, mật khẩu trong OpenBao
-    # (secret/core/grafana); không cho đăng ký, không cho vào ẩn danh. Không mở cổng ra host: mở qua APISIX
-    # ${GATEWAY_PUBLIC_URL}/grafana/. Không tải plugin hay tin tức từ Internet lúc chạy.
+    # dụng apps/${DXOS_APP}/grafana/dashboards. Không mở cổng ra host: mở qua APISIX ${GATEWAY_PUBLIC_URL}/grafana/.
+    # Không tải plugin hay tin tức từ Internet lúc chạy.
+    # Đăng nhập (#126): SSO Keycloak (generic OAuth, client dxos-grafana confidential + PKCE S256), form đăng nhập
+    # tắt. Vai realm → vai Grafana: dieu-phoi → Editor, cuu-ho → Viewer, vai khác bị từ chối (role_attribute_strict);
+    # không ai thành Grafana Admin qua SSO. Tài khoản admin (mật khẩu trong OpenBao secret/core/grafana) chỉ để
+    # khẩn cấp: Basic auth cho API, hoặc GRAFANA_LOGIN_FORM_DISABLED=false để mở lại form (apps/cuu-tro/README.md).
+    # Trình duyệt đi tới Keycloak bằng KEYCLOAK_PUBLIC_URL; Grafana đổi code lấy token qua mạng nội bộ.
     image: grafana/grafana-oss:13.0.2
     profiles: [bi]
     depends_on:
@@ -810,11 +837,39 @@ services:
         condition: service_healthy
       postgres-roles:
         condition: service_completed_successfully
+      keycloak-grafana-client:
+        condition: service_completed_successfully
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/dxos/admin_password
       GF_SECURITY_DISABLE_GRAVATAR: "true"
-      GF_SECURITY_COOKIE_SAMESITE: strict
+      # lax (không phải strict): trình duyệt quay về /grafana/login/generic_oauth từ Keycloak (khác site khi
+      # triển khai thật) phải gửi kèm cookie oauth_state + PKCE verifier, nếu không Grafana báo "missing saved state"
+      GF_SECURITY_COOKIE_SAMESITE: lax
+      GF_AUTH_DISABLE_LOGIN_FORM: ${GRAFANA_LOGIN_FORM_DISABLED:-true}
+      GF_AUTH_OAUTH_AUTO_LOGIN: ${GRAFANA_LOGIN_FORM_DISABLED:-true}
+      # Đăng xuất Grafana thì đăng xuất luôn phiên Keycloak rồi quay về /grafana/login (dòng nối bằng "\")
+      GF_AUTH_SIGNOUT_REDIRECT_URL: "${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}/realms/${KEYCLOAK_REALM:-disaster}\
+        /protocol/openid-connect/logout?client_id=dxos-grafana\
+        &post_logout_redirect_uri=${GATEWAY_PUBLIC_URL:-http://localhost:9080}/grafana/login"
+      GF_AUTH_GENERIC_OAUTH_ENABLED: "true"
+      GF_AUTH_GENERIC_OAUTH_NAME: Keycloak
+      GF_AUTH_GENERIC_OAUTH_CLIENT_ID: dxos-grafana
+      GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET__FILE: /run/secrets/dxos/oauth_client_secret
+      GF_AUTH_GENERIC_OAUTH_SCOPES: openid profile email
+      GF_AUTH_GENERIC_OAUTH_USE_PKCE: "true"
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}/realms/${KEYCLOAK_REALM:-disaster}/protocol/openid-connect/auth
+      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: http://keycloak:8080/realms/${KEYCLOAK_REALM:-disaster}/protocol/openid-connect/token
+      GF_AUTH_GENERIC_OAUTH_API_URL: http://keycloak:8080/realms/${KEYCLOAK_REALM:-disaster}/protocol/openid-connect/userinfo
+      GF_AUTH_GENERIC_OAUTH_LOGIN_ATTRIBUTE_PATH: preferred_username
+      GF_AUTH_GENERIC_OAUTH_NAME_ATTRIBUTE_PATH: name
+      GF_AUTH_GENERIC_OAUTH_EMAIL_ATTRIBUTE_PATH: email
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: "contains(roles[*], 'dieu-phoi') && 'Editor' || contains(roles[*], 'cuu-ho') && 'Viewer' || ''"
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_STRICT: "true"
+      GF_AUTH_GENERIC_OAUTH_ALLOW_ASSIGN_GRAFANA_ADMIN: "false"
+      GF_AUTH_GENERIC_OAUTH_SKIP_ORG_ROLE_SYNC: "false"
+      # Tài khoản Grafana tạo khi người dùng Keycloak đăng nhập lần đầu (khác GF_USERS_ALLOW_SIGN_UP: tự đăng ký)
+      GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP: "true"
       GF_SERVER_ROOT_URL: ${GATEWAY_PUBLIC_URL:-http://localhost:9080}/grafana/
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       GF_USERS_ALLOW_SIGN_UP: "false"
