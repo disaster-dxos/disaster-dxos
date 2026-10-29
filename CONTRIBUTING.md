@@ -55,7 +55,7 @@ Mỗi commit một việc. **Ai làm thì người đó commit bằng tài kho�
   - [ ] Không commit `.env`, model, dữ liệu thật
 
 ## 5. Duyệt và merge
-- Cần **1 người khác duyệt** và CI (`license`, `build-from-source`) xanh.
+- Cần **1 người khác duyệt** và CI xanh: 7 job bắt buộc `license`, `build-from-source`, `shellcheck`, `yamllint`, `pytest`, `go-test`, `go-licenses`; job `web` và `mobile` chạy trên mọi PR (chưa bắt buộc nhưng phải xanh).
 - Nhánh phải cập nhật theo `develop` trước khi merge (`git pull --rebase origin develop` hoặc nút *Update branch*).
 - Merge kiểu **squash**, xóa nhánh sau khi merge.
 - Người duyệt kiểm: đúng phạm vi issue, có SPDX, có CHANGELOG, chạy được theo hướng dẫn trong PR.
@@ -64,3 +64,32 @@ Mỗi commit một việc. **Ai làm thì người đó commit bằng tài kho�
 - Chỉ dùng thành phần có giấy phép OSI. Thành phần GPL/AGPL chỉ chạy như dịch vụ riêng bằng image gốc.
 - Không vendor hay sửa mã thư viện. Ghim phiên bản cụ thể, không dùng tag `latest`.
 - Thêm thành phần → cập nhật `NOTICE` và `DEPENDENCIES.md` trong cùng PR.
+
+## 7. Phát hành phiên bản
+Phiên bản theo [SemVer](https://semver.org/lang/vi/). Mỗi bản phát hành là một tag `vX.Y.Z` trên `main`, kèm gói mã nguồn `.tar.gz` và `SHA256SUMS` trên GitHub Releases.
+
+1. **Issue + nhánh** `release/vX.Y.Z` tách từ `develop`. Chạy `make smoke` đầy đủ trên volume trống, ghi số ca vào CHANGELOG.
+2. **Chốt CHANGELOG:** đổi `[Unreleased]` thành `[X.Y.Z] - YYYY-MM-DD`, thêm một đoạn tóm tắt, thêm mục `[Unreleased]` trống ở trên, cập nhật đường so sánh `vX.Y.Z...` ở cuối tệp.
+3. **Nâng phiên bản** ở mọi nơi khai báo:
+   - `apps/cuu-tro/web/package.json` (+ `package-lock.json`), `apps/cuu-tro/mobile/package.json` (+ `versionName` trong `android/app/build.gradle`, `MARKETING_VERSION` trong Xcode);
+   - `apps/cuu-tro/workflow/pyproject.toml` (+ `uv.lock`), `version` của FastAPI trong `cuu_tro_workflow/api.py`;
+   - tag image `disaster-dxos/cuu-tro-web`, `disaster-dxos/cuu-tro-workflow` trong compose (image `disaster-dxos/ledger` chỉ nâng khi `core/ledger` đổi);
+   - README (mục CHANGELOG).
+4. **PR về `develop`**, CI xanh, merge. Sau đó **PR `develop` → `main`** (merge commit, không squash).
+5. **Tag và đóng gói** trên `main`:
+   ```bash
+   git switch main && git pull
+   git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z
+   git archive --format=tar.gz --prefix=disaster-dxos-X.Y.Z/ -o disaster-dxos-X.Y.Z.tar.gz vX.Y.Z
+   shasum -a 256 disaster-dxos-X.Y.Z.tar.gz > SHA256SUMS     # Linux: sha256sum
+   ```
+   `git archive` chỉ lấy tệp trong git: không có `.env`, `.data/`, `node_modules/`, trọng số mô hình.
+6. **GitHub Release** từ tag, nội dung lấy từ mục CHANGELOG của bản, đính kèm `disaster-dxos-X.Y.Z.tar.gz` và `SHA256SUMS`. Tệp `.zip` GitHub tự sinh không cần xử lý.
+
+**Người dùng kiểm và build từ gói phát hành:**
+```bash
+shasum -a 256 -c SHA256SUMS                 # → disaster-dxos-X.Y.Z.tar.gz: OK
+tar -xzf disaster-dxos-X.Y.Z.tar.gz && cd disaster-dxos-X.Y.Z
+cp .env.example .env && make up && make seed && make smoke   # chi tiết: docs/cai-dat.md
+```
+
