@@ -39,13 +39,21 @@ React Native bare 0.80 (New Architecture) và TypeScript strict, theo quyết đ
 | Đăng nhập | mọi vai | Mở trang Keycloak bằng trình duyệt hệ thống (Custom Tabs / ASWebAuthenticationSession), PKCE S256, client công khai `dxos-mobile`. Đổi máy chủ ngay tại đây | Keycloak `/realms/disaster` |
 | Kêu cứu | `tinh-nguyen`, `dieu-phoi` | Form: SĐT, số người, mức khẩn, tình hình, địa chỉ, tên. Vị trí lấy bằng GPS hoặc chọn trên bản đồ. Ảnh kèm theo tin. Lỗi hiện ngay dưới từng ô, theo cùng luật Poka-yoke với API | `POST /workflow/keu-cuu` |
 | Dán tin | `tinh-nguyen`, `dieu-phoi` | Dán tin SMS/Zalo. **Bóc tách bằng AI** (cần mạng): điền sẵn form để người dùng soát rồi mới gửi. **Chuyển cho điều phối duyệt** (không cần mạng): tin vào hàng chờ duyệt trên web (#104) | `POST /workflow/ai/boc-tach` (có hoặc không `vao_hang_cho`) |
-| Hiện trường | `tinh-nguyen`: tin mình gửi; `cuu-ho`: nhiệm vụ của đội | Danh sách tin. Hasura lọc theo vai. Mất mạng vẫn hiện dữ liệu đã tải | `POST /graphql` (`incidents`) |
+| Hiện trường | `tinh-nguyen`: tin mình gửi; `cuu-ho`: nhiệm vụ của đội | Danh sách tin. Hasura lọc theo vai. Luôn ghi "Cập nhật … trước". Mất mạng vẫn hiện dữ liệu đã tải, kể cả sau khi mở lại app (bản sao mã hóa trong Keychain/Keystore, gắn người dùng + vai, tối đa 7 ngày, #113) | `POST /graphql` (`incidents`) |
 | Chi tiết tin | như trên | Chụp hoặc chọn ảnh hiện trường | `POST /workflow/tai-len/su-co/{id}/anh` |
 | Vị trí đội | `cuu-ho` | Gửi vị trí GPS của đội. Chỉ ghi khi mới hơn vị trí đang có | GraphQL `update_rescue_teams` |
 | Hàng đợi | mọi vai | Mọi bản ghi kèm trạng thái (chờ gửi, đang gửi, đã gửi, lỗi), lý do lỗi, mã tin. Có nút Gửi ngay, Gửi lại, Xóa | |
 | Cài đặt | mọi vai | Tài khoản, vai, ngôn ngữ, máy chủ, đăng xuất | |
 
-Giao diện chỉ có bản sáng (dùng ngoài trời), chữ ≥ 17 sp, vùng chạm ≥ 52 dp, nhãn chữ luôn đi kèm biểu tượng. Màu và logo theo nhận diện Team 1:
+Giao diện chỉ có bản sáng (dùng ngoài trời), chữ ≥ 17 sp, vùng chạm ≥ 52 dp, nhãn chữ luôn đi kèm biểu tượng.
+
+Đã rà soát UX hiện trường theo 4 tiêu chí: một tay, mạng yếu, chữ lớn, tương phản. Kết quả và việc còn mở: [`docs/ra-soat-ux-hien-truong.md`](../../../docs/ra-soat-ux-hien-truong.md) (#113). Tóm tắt:
+- nút chính ở chân màn, chừa vùng an toàn dưới; form sai thì tóm tắt lỗi hiện ngay trên nút Gửi, được đọc to, màn tự cuộn tới ô lỗi đầu tiên;
+- chữ đọc chính đạt ≥ 7:1, mọi chữ khác ≥ 4,5:1, viền ô nhập ≥ 3:1. Nút cam dùng chữ tối. Mọi cặp màu khai báo ở `CAP_MAU` và được `__tests__/tuongPhan.test.ts` kiểm;
+- tôn trọng cỡ chữ hệ thống: từ 1,3× thì hai nút cạnh nhau xếp dọc, hàng nhãn tự xuống dòng;
+- GPS hiện sai số và cảnh báo khi từ 100 m trở lên. Mất mạng thì báo nền bản đồ có thể không hiện.
+
+Màu và logo theo nhận diện Team 1:
 - navy `#12355B`, cam cứu hộ `#F07B1D`, xanh nước `#1FA2C9` (`src/theme/mau.ts`);
 - logo lấy thẳng từ `docs/images/logo/` qua alias `@logo`;
 - biểu tượng app sinh bằng `yarn icons` (`scripts/tao-icon.sh`, cần ImageMagick).
@@ -113,7 +121,7 @@ corepack enable          # một lần; Yarn 4 theo trường packageManager
 yarn install
 yarn typecheck           # tsc --noEmit, strict + noUncheckedIndexedAccess
 yarn lint                # ESLint của React Native + cấm mã màu ngoài src/theme, --max-warnings 0
-yarn test                # Jest: hàng đợi, Poka-yoke, lỗi API, khóa, JWT, i18n, store, client API, 2 màn hình
+yarn test                # Jest: hàng đợi, Poka-yoke, lỗi API, khóa, JWT, i18n, store, client API, màn hình, tương phản màu, bản sao offline
 yarn licenses            # giấy phép mọi gói npm
 ```
 
@@ -207,5 +215,6 @@ Keycloak chỉ import `realm.json` khi tạo realm lần đầu. Máy đã chạ
 - Chưa build native trên CI và chưa chạy thử trên máy thật trong lần dựng này: máy dựng không có Android SDK, Xcode. CI chỉ kiểm typecheck, lint, Jest, giấy phép. Đường gọi API của app đã kiểm bằng `scripts/smoke-mobile.sh`:
   - đăng nhập PKCE thật với client `dxos-mobile`;
   - đúng các request app gửi, kèm `Idempotency-Key`.
+- Chưa thử UX trên máy thật (cỡ chữ lớn nhất, TalkBack/VoiceOver, ngoài nắng): xem mục "Chưa làm" của `docs/ra-soat-ux-hien-truong.md`.
 - Chưa có bản đồ offline (gói ô bản đồ tải trước) và thông báo đẩy. Thông báo sẽ dùng Centrifugo hoặc polling, không dùng FCM (D-011).
 - `yarn npm audit` còn cảnh báo ở công cụ dev của React Native 0.80 (ESLint 8, `image-size` trong Metro). Các gói này không vào bản app.

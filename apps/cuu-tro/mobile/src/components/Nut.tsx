@@ -19,8 +19,9 @@ interface Props {
 
 const MAU_KIEU: Record<Kieu, { nen: string; chu: string; vien: string }> = {
   chinh: { nen: MAU.navy, chu: MAU.trang, vien: MAU.navy },
-  cam: { nen: MAU.cam, chu: MAU.trang, vien: MAU.cam },
-  phu: { nen: MAU.beMat, chu: MAU.navy, vien: MAU.vien },
+  // Chữ tối trên cam (6,2:1); chữ trắng trên cam chỉ 2,78:1, không đọc được ngoài nắng (#113)
+  cam: { nen: MAU.cam, chu: MAU.chu, vien: MAU.cam },
+  phu: { nen: MAU.beMat, chu: MAU.navy, vien: MAU.vienO },
   nguy: { nen: MAU.beMat, chu: MAU.loi, vien: MAU.loi },
 };
 

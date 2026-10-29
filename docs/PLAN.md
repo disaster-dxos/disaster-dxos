@@ -67,7 +67,7 @@ Mỗi dòng là một việc, sẽ thành **một issue** trên GitHub (nhãn `t
 
 ## Tuần 6 · 19–25/11 · Tuần UX + cộng đồng → v0.4.0
 - [ ] [V3] Sửa theo phản hồi người dùng (mỗi phản hồi một issue `user-feedback`)
-- [ ] [V3] Rà soát UX hiện trường: thao tác một tay, mạng yếu, chữ lớn, tương phản
+- [x] [V3] Rà soát UX hiện trường: thao tác một tay, mạng yếu, chữ lớn, tương phản (#113: `docs/ra-soat-ux-hien-truong.md`, 15 phát hiện đã sửa, Jest kiểm tương phản mọi cặp màu; còn thử trên máy thật)
 - [x] [V2] Công bố bộ mô phỏng cảm biến + mô hình dữ liệu NGSI-LD trạm đo cho cộng đồng (tài liệu + ví dụ) (#112: `cong-dong/tram-do-lu/`, `mo_phong.py` chỉ thư viện chuẩn, JSON Schema, ví dụ, pytest giữ khớp backend)
 - [x] [V1] Hướng dẫn viết module cắm–rút trong `apps/` + 1 module mẫu (#110: `docs/viet-module.md`, `apps/muon-thiet-bi/`, `make smoke-app`)
 - [ ] [V1] README song ngữ đầy đủ

@@ -15,6 +15,8 @@ module.exports = {
   },
   overrides: [
     { files: ['src/theme/**/*.ts'], rules: { 'no-restricted-syntax': 'off' } },
+    // Kiểm thử công thức tương phản cần màu chuẩn (đen, trắng, xám) không thuộc bảng màu app
+    { files: ['__tests__/tuongPhan.test.ts'], rules: { 'no-restricted-syntax': 'off' } },
     { files: ['jest.setup.js', '**/__tests__/**'], env: { jest: true } },
   ],
 };

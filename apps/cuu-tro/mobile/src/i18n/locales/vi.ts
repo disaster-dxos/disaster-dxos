@@ -58,6 +58,9 @@ export const vi = {
     soAnhKem_other: '{{count}} ảnh kèm theo',
     xoaForm: 'Nhập tin mới',
     deXuatAi: 'Đã điền theo đề xuất của AI: soát lại từng ô trước khi gửi.',
+    conLoi_other: 'Chưa gửi: còn {{count}} ô cần sửa ({{ds}}). Chạm để tới ô đầu tiên.',
+    saiSo: 'GPS sai số khoảng {{m}} m',
+    saiSoLon: 'GPS chưa chính xác (sai số khoảng {{m}} m). Ra chỗ thoáng rồi lấy lại, hoặc chỉnh trên bản đồ.',
   },
   mucKhan: {
     khan_cap: 'Khẩn cấp',
@@ -84,6 +87,7 @@ export const vi = {
     daChuyen: 'Đã lưu. Tin sẽ được chuyển cho điều phối duyệt.',
     canMang: 'Bóc tách bằng AI cần mạng. Không có mạng thì chọn "Chuyển cho điều phối duyệt".',
     trong: 'Dán nội dung tin nhắn vào ô trên.',
+    goiYChuyen: 'Mạng yếu hoặc AI chưa trả lời: chọn "Chuyển cho điều phối duyệt", không cần chờ.',
   },
   nguon: {
     sms: 'SMS',
@@ -97,6 +101,9 @@ export const vi = {
     huongDan: 'Chạm vào bản đồ để đặt ghim ở chỗ người cần cứu.',
     xacNhan: 'Dùng vị trí này',
     viTriCuaToi: 'Về vị trí của tôi',
+    nhan: 'Bản đồ',
+    nhanChon: 'Bản đồ: chạm để đặt ghim',
+    matMang: 'Không có mạng: nền bản đồ có thể không hiện. Vị trí GPS vẫn lấy được.',
   },
   hienTruong: {
     tieuDe: 'Hiện trường',
@@ -112,6 +119,8 @@ export const vi = {
     daLuuAnh: 'Đã lưu ảnh vào hàng đợi.',
     soNguoi_other: '{{count}} người',
     dangTaiCu: 'Đang hiện dữ liệu đã tải trước đó.',
+    capNhat: 'Cập nhật {{luc}}',
+    banLuu: 'Mất mạng: đang xem danh sách đã tải {{luc}}, có thể đã cũ.',
   },
   hangDoi: {
     tieuDe: 'Hàng đợi gửi',
