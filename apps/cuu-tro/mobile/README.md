@@ -75,7 +75,8 @@ sequenceDiagram
 | Thứ tự | Gửi theo thứ tự tạo (FIFO). Ảnh chụp kèm một tin chưa gửi sẽ chờ tin lên máy chủ rồi dùng mã tin thật. Tin đó lỗi vĩnh viễn thì ảnh cũng báo lỗi |
 | Khi nào gửi | Có mạng trở lại (NetInfo), app trở lại foreground, sau khi đăng nhập, đúng lúc bản ghi tới hạn thử lại, hoặc khi bấm "Gửi ngay" |
 | Lỗi tạm | Mất mạng, hết giờ, 5xx, 429: giữ bản ghi, lùi dần rồi tự gửi lại |
-| Hết phiên | 401: làm mới token một lần. Vẫn lỗi thì về màn đăng nhập, bản ghi giữ nguyên, gửi tiếp sau khi đăng nhập |
+| Làm mới token | Chỉ xóa phiên khi Keycloak từ chối refresh token (`invalid_grant`: hết hạn, bị thu hồi, phiên SSO đã đóng; `src/utils/loiPhien.ts`). Mất mạng, Keycloak sập, lỗi chứng chỉ hay thông điệp lạ đều **giữ phiên** và tính là lỗi tạm: người dùng ngoài hiện trường không bị đăng xuất vì mạng (#108) |
+| Hết phiên | 401: làm mới token một lần rồi gọi lại. Vẫn 401 thì bản ghi chờ, lùi dần như lỗi tạm (không thử lại mỗi giây). Đăng nhập lại thì các bản ghi này được gửi ngay |
 | Lỗi vĩnh viễn | 422 (dữ liệu sai, kèm câu lỗi của API), 409 tin trùng (kèm mã tin đang mở), 403, 404, 413, 415: dừng bản ghi đó, không chặn các bản ghi sau. Người dùng bấm Gửi lại (vẫn cùng khóa) hoặc Xóa |
 | App bị tắt giữa lúc gửi | Bản ghi "đang gửi" quay về "chờ gửi" khi mở lại, gửi lại an toàn nhờ khóa |
 | Lưu ở đâu | Hàng đợi và token nằm trong Keychain (iOS) / Keystore (Android) qua react-native-keychain, vì có SĐT và tên người cần cứu. Không dùng AsyncStorage dạng rõ, không ghi log. Ảnh chép vào `DocumentDir/hang-doi/` (tệp tạm của camera có thể bị hệ điều hành dọn) và xóa khi gửi xong. Bản ghi đã gửi giữ 7 ngày để xem lại |

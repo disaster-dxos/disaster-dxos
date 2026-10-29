@@ -12,6 +12,7 @@ import {
   donDaGui,
   guiLai as guiLaiBanGhi,
   khoiPhuc,
+  sauDangNhap as ganLaiSauDangNhap,
   taoBanGhi,
   viecTiep,
   type BanGhi,
@@ -44,6 +45,8 @@ export interface HangDoiState {
   /** Thêm bản ghi (sinh khóa idempotency) và gửi ngay nếu có mạng; trả bản ghi đã thêm */
   them: (duLieu: DuLieu) => Promise<BanGhi>;
   guiLai: (id: string) => Promise<void>;
+  /** Vừa đăng nhập: bản ghi chờ vì hết phiên được gửi ngay */
+  sauDangNhap: () => Promise<void>;
   xoa: (id: string) => Promise<void>;
   /** Gửi lần lượt mọi bản ghi tới hạn; dừng khi mất mạng / chưa đăng nhập / hết việc */
   xuLy: () => Promise<void>;
@@ -103,6 +106,10 @@ export function taoHangDoiStore(pt: PhuThuocHangDoi): UseBoundStore<StoreApi<Han
           await thay(guiLaiBanGhi(b, pt.now()));
           boQua(get().xuLy());
         }
+      },
+      sauDangNhap: async () => {
+        await capNhat(ds => ganLaiSauDangNhap(ds, pt.now()));
+        boQua(get().xuLy());
       },
       xoa: async id => {
         const b = get().ds.find(x => x.id === id);

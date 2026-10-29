@@ -98,6 +98,20 @@ describe('hàng đợi offline', () => {
     expect(h.store.getState().ds[1]).toMatchObject({ trangThai: 'loi', loi: { khoa: 'loi.tinGocLoi' } });
   });
 
+  it('đăng nhập lại: bản ghi đang lùi vì hết phiên được gửi ngay (#108)', async () => {
+    const h = heThong([{ ok: false, loai: 'can_dang_nhap', status: 401, khoa: 'loi.hetPhien' }]);
+    await h.store.getState().nap();
+    const b = await h.store.getState().them(TIN);
+    await cho();
+    expect(h.store.getState().ds[0]).toMatchObject({ trangThai: 'cho_gui', lanThuTiep: 1_000 + 5_000 });
+    await h.store.getState().xuLy();
+    expect(h.goi).toHaveLength(1);
+    await h.store.getState().sauDangNhap();
+    await cho();
+    expect(h.goi.map(g => g.khoa)).toEqual([b.khoa, b.khoa]);
+    expect(h.store.getState().ds[0]).toMatchObject({ trangThai: 'da_gui' });
+  });
+
   it('hết phiên: dừng, giữ bản ghi chờ đăng nhập', async () => {
     const h = heThong([{ ok: false, loai: 'can_dang_nhap', status: 401, khoa: 'loi.hetPhien' }]);
     await h.store.getState().nap();

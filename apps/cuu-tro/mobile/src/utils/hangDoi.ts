@@ -119,12 +119,22 @@ export function apKetQua(b: BanGhi, kq: KetQuaGui, now: number): BanGhi {
       const soLan = b.soLan + 1;
       return { ...b, trangThai: 'cho_gui', soLan, lanThuTiep: now + luiMs(soLan), loi };
     }
-    case 'can_dang_nhap':
-      // Không tính là một lần lỗi: đăng nhập lại xong gửi ngay
-      return { ...b, trangThai: 'cho_gui', lanThuTiep: now, loi };
+    case 'can_dang_nhap': {
+      // Lùi dần như lỗi tạm (máy chủ trả 401 liên tục khi app vẫn tưởng còn phiên thì không thử lại mỗi giây);
+      // đăng nhập lại thì sauDangNhap() đưa bản ghi về gửi ngay (#108)
+      const soLan = b.soLan + 1;
+      return { ...b, trangThai: 'cho_gui', soLan, lanThuTiep: now + luiMs(soLan), loi };
+    }
     case 'vinh_vien':
       return { ...b, trangThai: 'loi', loi };
   }
+}
+
+/** Vừa đăng nhập lại: bản ghi đang chờ vì hết phiên được gửi ngay (giữ khóa idempotency). */
+export function sauDangNhap(ds: BanGhi[], now: number): BanGhi[] {
+  return ds.map(b =>
+    b.trangThai === 'cho_gui' && b.loi?.loai === 'can_dang_nhap' ? { ...b, lanThuTiep: now, loi: undefined } : b,
+  );
 }
 
 /** Người dùng bấm "Gửi lại": giữ nguyên khóa idempotency, gửi ngay. */
