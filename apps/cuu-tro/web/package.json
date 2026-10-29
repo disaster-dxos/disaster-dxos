@@ -1,6 +1,6 @@
 {
   "name": "cuu-tro-web",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "license": "Apache-2.0",
   "description": "Web điều phối cứu trợ (Tầng 2) của Disaster DX-OS",
