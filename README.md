@@ -74,7 +74,7 @@ English:
 
 ![Sáu chức năng chính: kêu cứu, bản đồ thời gian thực, phân công cứu hộ, cảnh báo mực nước, sổ cái minh bạch, AI bóc tách tin kêu cứu](docs/images/vong-chuc-nang.webp)
 
-| Chức năng | Trạng thái (v0.4.0) |
+| Chức năng | Trạng thái (v0.5.0) |
 |---|---|
 | **Kêu cứu** có tọa độ, chặn tin trùng | ✅ Từ v0.1: API GraphQL phân quyền theo vai trò · từ v0.2 (#66): API `POST /workflow/keu-cuu` báo lỗi theo từng trường (422), tin trùng 200 m trả 409 |
 | **Phân công cứu hộ** đội gần nhất, chờ xác nhận | ✅ Từ v0.1: workflow Temporal, API `/workflow` · từ v0.2 (#67): tự khởi chạy khi có tin mới, ưu tiên theo mức khẩn, đội không nhận trong hạn thì giao đội kế tiếp |
@@ -90,7 +90,7 @@ Ngoài ra đã có: tải và xem ảnh hiện trường qua link ngắn hạn. 
 
 English:
 
-| Feature | Status (v0.4.0) |
+| Feature | Status (v0.5.0) |
 |---|---|
 | **SOS reports** with mandatory coordinates and duplicate blocking | ✅ Since v0.1: role-based GraphQL API · since v0.2 (#66): `POST /workflow/keu-cuu` with per-field errors (422) and 409 for a duplicate within 200 m |
 | **Rescue dispatch** to the nearest team, with confirmation | ✅ Since v0.1: Temporal workflow, `/workflow` API · since v0.2 (#67): starts automatically for each new report, ordered by urgency, re-assigned to the next team when the deadline passes |
@@ -201,31 +201,31 @@ API và lệnh mẫu của từng bước: [`apps/cuu-tro/README.md`](apps/cuu-t
 
 ## 🚀 Hướng phát triển · Roadmap
 
-Theo [`docs/PLAN.md`](docs/PLAN.md). Đã xong đến v0.4.0 (tuần 1–6):
+Theo [`docs/PLAN.md`](docs/PLAN.md). Đã xong đến v0.5.0 (tuần 1–7):
 
 - **Tuần 1–2 (v0.0.1, v0.1.0):** lõi Tầng 1 đủ 4 dịch vụ, OpenBao, sổ cái Tessera, ứng dụng cứu trợ, phân công Temporal.
 - **Tuần 3 (v0.2.0):** web điều phối Nuxt UI, bản đồ realtime, phân công tự động, API kêu cứu, thông báo Centrifugo.
 - **Tuần 4 (v0.3.0):** bản sao số NGSI-LD trên Scorpio, trận lũ mẫu, cảnh báo vượt ngưỡng qua Temporal, tiền cứu trợ trên sổ cái, Parquet + DuckDB, Grafana.
 - **Tuần 5–6 (v0.4.0):** AI bóc tách tin kêu cứu + hàng chờ duyệt, app hiện trường React Native offline, ClamAV, module mẫu thứ hai, bộ mô phỏng trạm đo cho cộng đồng.
+- **Tuần 6–7 (v0.5.0):** Grafana đăng nhập SSO Keycloak, README song ngữ + Quick start tiếng Anh, kịch bản demo 15 phút, script dữ liệu demo và video dự phòng.
 
-Còn lại (tuần 6–7, đến v1.0.0):
+Còn lại (tuần 7, đến v1.0.0):
 
-- Grafana đăng nhập SSO Keycloak (đã xong trên `develop`, #126).
 - Thử với người dùng thật và sửa theo phản hồi; build và thử app hiện trường trên máy thật.
 - VPS + tên miền + HTTPS, CI tự triển khai từ `main` (chờ hạ tầng).
 - Bot Telegram cho người dân, Qdrant cho tìm kiếm ngữ nghĩa.
 - Rà 6 tiêu chí PoF, đóng băng tính năng, phát hành v1.0.0 trước hạn nộp 06/12/2026.
 
-English. Following [`docs/PLAN.md`](docs/PLAN.md). Done up to v0.4.0 (weeks 1–6):
+English. Following [`docs/PLAN.md`](docs/PLAN.md). Done up to v0.5.0 (weeks 1–7):
 
 - **Weeks 1–2 (v0.0.1, v0.1.0):** Tier 1 core with the 4 required services, OpenBao, Tessera ledger, relief app, Temporal dispatch.
 - **Week 3 (v0.2.0):** Nuxt UI coordination web, real-time map, automatic dispatch, SOS API, Centrifugo notifications.
 - **Week 4 (v0.3.0):** NGSI-LD digital twins on Scorpio, sample flood, threshold alerts via Temporal, relief money on the ledger, Parquet + DuckDB, Grafana.
 - **Weeks 5–6 (v0.4.0):** AI extraction of SOS messages + review queue, offline React Native field app, ClamAV, a second sample module, a flood-gauge simulator for the community.
+- **Weeks 6–7 (v0.5.0):** Grafana sign-in through Keycloak SSO, a fully bilingual README with an English quick start, the 15-minute demo script, demo data scripts and a backup video.
 
-Remaining (weeks 6–7, towards v1.0.0):
+Remaining (week 7, towards v1.0.0):
 
-- Grafana sign-in through Keycloak SSO (done on `develop`, #126).
 - Tests with real users and fixes from their feedback; build and test the field app on real devices.
 - VPS + domain + HTTPS, CI auto-deploy from `main` (waiting for infrastructure).
 - Telegram bot for residents, Qdrant for semantic search.
@@ -265,9 +265,9 @@ Sau `make up`, mở web điều phối qua gateway: **http://localhost:9080/** (
 |---|---|
 | `cp .env.example .env` | Cấu hình cho máy dev. Không có bí mật nào trong file này; `KC_DEMO_USER_PASSWORD` chỉ là mật khẩu của tài khoản mẫu |
 | `make up` | Chạy OpenBao, khởi tạo (Shamir 3 mảnh, ngưỡng 2), mở khóa, sinh ngẫu nhiên mọi bí mật lõi, rồi chạy profile `core` + `app`: kéo image, build 4 image từ mã nguồn (APISIX + Coraza, sổ cái Go, backend Python, web Nuxt), áp migration, áp metadata Hasura, tạo bucket |
-| `make smoke` | Nạp dữ liệu giả rồi kiểm 1012 ca ở v0.4.0 (1033 ca trên `develop` sau #126): OpenBao, JWT, route gateway + WAF, ràng buộc CSDL, phân quyền GraphQL, workflow phân công, cảm biến MQTT + trận lũ mẫu, bản sao số NGSI-LD, cảnh báo vượt ngưỡng, ảnh hiện trường, ClamAV, sổ cái (hàng + tiền), web điều phối, thông báo realtime, bản đồ, API kêu cứu, Parquet + DuckDB, Grafana, trang Minh bạch, hàng chờ duyệt AI, đường gọi của app hiện trường, AI bóc tách. Tự bật profile `bi` và `sec` khi cần |
+| `make smoke` | Nạp dữ liệu giả rồi kiểm 1033 ca ở v0.5.0: OpenBao, JWT, route gateway + WAF, ràng buộc CSDL, phân quyền GraphQL, workflow phân công, cảm biến MQTT + trận lũ mẫu, bản sao số NGSI-LD, cảnh báo vượt ngưỡng, ảnh hiện trường, ClamAV, sổ cái (hàng + tiền), web điều phối, thông báo realtime, bản đồ, API kêu cứu, Parquet + DuckDB, Grafana, trang Minh bạch, hàng chờ duyệt AI, đường gọi của app hiện trường, AI bóc tách. Tự bật profile `bi` và `sec` khi cần |
 
-Đo thật ngày 22/10/2026 trên bản clone sạch từ GitHub, chạy ở thư mục khác thư mục mã gốc (Mac Apple Silicon, Docker Desktop, Docker Engine 28.5, chưa có image nào trên máy): `make up` lần đầu 2 phút 36 giây (gồm kéo khoảng 6,9 GB image và build), lần sau 48 giây; `make smoke` 72 giây, đạt 339/339 (số đo v0.1.0). Ở v0.4.0, `make up` + `make smoke` trên volume trống (project tạm, MacBook Apple Silicon, OrbStack, image đã có sẵn) mất khoảng 8 phút (475 giây), đạt 1012/1012. Mạng chậm hơn thì lần đầu lâu hơn.
+Đo thật ngày 22/10/2026 trên bản clone sạch từ GitHub, chạy ở thư mục khác thư mục mã gốc (Mac Apple Silicon, Docker Desktop, Docker Engine 28.5, chưa có image nào trên máy): `make up` lần đầu 2 phút 36 giây (gồm kéo khoảng 6,9 GB image và build), lần sau 48 giây; `make smoke` 72 giây, đạt 339/339 (số đo v0.1.0). Ở v0.5.0, `make up` + `make seed` + `make smoke` trên volume trống (project tạm, MacBook Apple Silicon, OrbStack, image đã có sẵn) mất khoảng 9 phút (543 giây), đạt 1033/1033. Mạng chậm hơn thì lần đầu lâu hơn.
 
 **Giữ kín `.data/openbao/`.** Lần đầu `make up` ghi unseal key và root token vào đây (đã nằm trong `.gitignore`); mất thư mục này thì không mở khóa được dữ liệu OpenBao. Sau khi khởi động lại máy, nếu OpenBao còn khóa: `make bao-unseal`.
 
@@ -365,9 +365,9 @@ make smoke
 |---|---|
 | `cp .env.example .env` | Development configuration. It contains no secrets; `KC_DEMO_USER_PASSWORD` is only the password of the sample accounts |
 | `make up` | Starts OpenBao, initialises it (Shamir, 3 shares, threshold 2), unseals it, generates every core secret at random, then starts profiles `core` + `app`: pulls images, builds 4 images from source (APISIX + Coraza, the Go ledger, the Python backend, the Nuxt web app), applies database migrations and Hasura metadata, creates S3 buckets |
-| `make smoke` | Loads fake sample data and runs the end-to-end checks against the real stack: 1012 checks at v0.4.0 (1033 on `develop` after #126). It starts profiles `bi` (Grafana) and `sec` (ClamAV) when needed |
+| `make smoke` | Loads fake sample data and runs the end-to-end checks against the real stack: 1033 checks at v0.5.0. It starts profiles `bi` (Grafana) and `sec` (ClamAV) when needed |
 
-Measured: on a clean clone (Apple Silicon Mac, Docker Desktop, no images cached) the first `make up` took 2 min 36 s including about 6.9 GB of image downloads (v0.1.0). At v0.4.0, `make up` + `make smoke` on empty volumes took about 8 minutes (475 s) with images already present, and passed 1012/1012.
+Measured: on a clean clone (Apple Silicon Mac, Docker Desktop, no images cached) the first `make up` took 2 min 36 s including about 6.9 GB of image downloads (v0.1.0). At v0.5.0, `make up` + `make seed` + `make smoke` on empty volumes took about 9 minutes (543 s) with images already present, and passed 1033/1033.
 
 **Keep `.data/openbao/` safe.** The first `make up` writes the unseal keys and root token there (the folder is in `.gitignore`). Without it you cannot unseal OpenBao's data. After a reboot, if OpenBao is sealed: `make bao-unseal`.
 
@@ -437,7 +437,7 @@ Configuration variables, OpenBao commands, adding an app under `apps/`, tests an
 
 ## ⬆️ Nâng cấp · Upgrading
 
-**Từ v0.4.0 lên bản `develop` hiện tại (#126, Grafana SSO).** Realm Keycloak chỉ import khi CSDL còn trống, và APISIX không tự đọc lại `core/apisix/apisix.yaml` khi tệp được thay bằng `git pull`. Sau khi kéo mã:
+**Từ v0.4.0 lên v0.5.0 (#126, Grafana SSO).** Realm Keycloak chỉ import khi CSDL còn trống, và APISIX không tự đọc lại `core/apisix/apisix.yaml` khi tệp được thay bằng `git pull`. Sau khi kéo mã:
 
 ```bash
 make up                          # openbao-init thêm secret/core/grafana-oauth, cập nhật policy
@@ -447,7 +447,7 @@ make up-bi                       # tạo lại bao agent nếu còn cấu hình 
 
 Dữ liệu cũ giữ nguyên. Chi tiết và cách dùng tài khoản `admin` khẩn cấp của Grafana: [`apps/cuu-tro/README.md`](apps/cuu-tro/README.md) mục "Đăng nhập SSO".
 
-**From v0.4.0 to the current `develop` (#126, Grafana SSO).** The Keycloak realm is imported only into an empty database, and APISIX does not re-read `core/apisix/apisix.yaml` when `git pull` replaces the file. After pulling, run the three commands above: `make up` (adds the `secret/core/grafana-oauth` secret and updates policies), `docker compose restart apisix` (reloads the gateway routes), `make up-bi` (recreates outdated secret agents, creates the `dxos-grafana` client, restarts Grafana). Existing data is kept.
+**From v0.4.0 to v0.5.0 (#126, Grafana SSO).** The Keycloak realm is imported only into an empty database, and APISIX does not re-read `core/apisix/apisix.yaml` when `git pull` replaces the file. After pulling, run the three commands above: `make up` (adds the `secret/core/grafana-oauth` secret and updates policies), `docker compose restart apisix` (reloads the gateway routes), `make up-bi` (recreates outdated secret agents, creates the `dxos-grafana` client, restarts Grafana). Existing data is kept.
 
 Bản phát hành khác: đọc mục của phiên bản trong [`CHANGELOG.md`](CHANGELOG.md) trước khi nâng cấp.
 *Other releases: read the version's section in [`CHANGELOG.md`](CHANGELOG.md) before upgrading.*
@@ -485,6 +485,6 @@ The source code is released under [Apache-2.0](LICENSE). Copyright and third-par
 
 ## 📝 CHANGELOG
 
-Theo [SemVer](https://semver.org/lang/vi/). Bản mới nhất: [v0.4.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.4.0) (29/10/2026, Tầng [I] và tuần UX: AI bóc tách tin kêu cứu có người duyệt, app hiện trường React Native offline, ClamAV, module cắm–rút mẫu, bộ mô phỏng trạm đo cho cộng đồng); bản trước: [v0.3.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.3.0) (24/10/2026, Tầng [D]: bản sao số trạm đo NGSI-LD, trận lũ mẫu, cảnh báo vượt ngưỡng qua Temporal, tiền cứu trợ trên sổ cái minh bạch, Parquet + DuckDB, Grafana), [v0.2.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.2.0) (23/10/2026, web điều phối Nuxt UI: bản đồ realtime, phân công tự động, API kêu cứu, thông báo Centrifugo), [v0.1.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.1.0) (22/10/2026, lõi Tầng 1 đầy đủ + ứng dụng cứu trợ, sổ cái minh bạch), [v0.0.1](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.0.1) (19/10/2026, khung dự án + profile `core`). Thay đổi chưa phát hành và lịch sử: [`CHANGELOG.md`](CHANGELOG.md). Mỗi bản có gói mã nguồn `disaster-dxos-X.Y.Z.tar.gz` + `SHA256SUMS`; cách kiểm, build từ gói và quy trình phát hành: [`CONTRIBUTING.md`](CONTRIBUTING.md) mục 7.
+Theo [SemVer](https://semver.org/lang/vi/). Bản mới nhất: [v0.5.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.5.0) (29/10/2026, hoàn thiện cho trình bày: Grafana đăng nhập SSO Keycloak, README song ngữ + Quick start tiếng Anh, kịch bản demo 15 phút và video dự phòng); bản trước: [v0.4.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.4.0) (29/10/2026, Tầng [I] và tuần UX: AI bóc tách tin kêu cứu có người duyệt, app hiện trường React Native offline, ClamAV, module cắm–rút mẫu, bộ mô phỏng trạm đo cho cộng đồng); bản trước: [v0.3.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.3.0) (24/10/2026, Tầng [D]: bản sao số trạm đo NGSI-LD, trận lũ mẫu, cảnh báo vượt ngưỡng qua Temporal, tiền cứu trợ trên sổ cái minh bạch, Parquet + DuckDB, Grafana), [v0.2.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.2.0) (23/10/2026, web điều phối Nuxt UI: bản đồ realtime, phân công tự động, API kêu cứu, thông báo Centrifugo), [v0.1.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.1.0) (22/10/2026, lõi Tầng 1 đầy đủ + ứng dụng cứu trợ, sổ cái minh bạch), [v0.0.1](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.0.1) (19/10/2026, khung dự án + profile `core`). Thay đổi chưa phát hành và lịch sử: [`CHANGELOG.md`](CHANGELOG.md). Mỗi bản có gói mã nguồn `disaster-dxos-X.Y.Z.tar.gz` + `SHA256SUMS`; cách kiểm, build từ gói và quy trình phát hành: [`CONTRIBUTING.md`](CONTRIBUTING.md) mục 7.
 
-Versioned with [SemVer](https://semver.org/). Latest release: [v0.4.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.4.0) (29/10/2026: tier [I] and the UX week: human-reviewed AI extraction of SOS messages, offline React Native field app, ClamAV, a sample plug-in module, a flood-gauge simulator for the community). Earlier: [v0.3.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.3.0) (24/10/2026, tier [D]: NGSI-LD digital twins, sample flood, threshold alerts via Temporal, relief money on the ledger, Parquet + DuckDB, Grafana), [v0.2.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.2.0) (23/10/2026, Nuxt UI coordination web: real-time map, automatic dispatch, SOS API, Centrifugo notifications), [v0.1.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.1.0) (22/10/2026, complete Tier 1 core + relief app, transparency ledger), [v0.0.1](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.0.1) (19/10/2026, project skeleton + profile `core`). Unreleased changes and history: [`CHANGELOG.md`](CHANGELOG.md) (Vietnamese). Each release ships a source tarball `disaster-dxos-X.Y.Z.tar.gz` with `SHA256SUMS`; how to verify it, build from it, and the release process: [`CONTRIBUTING.md`](CONTRIBUTING.md) §7.
+Versioned with [SemVer](https://semver.org/). Latest release: [v0.5.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.5.0) (29/10/2026: ready for the final presentation: Grafana sign-in through Keycloak SSO, a fully bilingual README with an English quick start, the 15-minute demo script and a backup video). Earlier: [v0.4.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.4.0) (29/10/2026: tier [I] and the UX week: human-reviewed AI extraction of SOS messages, offline React Native field app, ClamAV, a sample plug-in module, a flood-gauge simulator for the community). Earlier: [v0.3.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.3.0) (24/10/2026, tier [D]: NGSI-LD digital twins, sample flood, threshold alerts via Temporal, relief money on the ledger, Parquet + DuckDB, Grafana), [v0.2.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.2.0) (23/10/2026, Nuxt UI coordination web: real-time map, automatic dispatch, SOS API, Centrifugo notifications), [v0.1.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.1.0) (22/10/2026, complete Tier 1 core + relief app, transparency ledger), [v0.0.1](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.0.1) (19/10/2026, project skeleton + profile `core`). Unreleased changes and history: [`CHANGELOG.md`](CHANGELOG.md) (Vietnamese). Each release ships a source tarball `disaster-dxos-X.Y.Z.tar.gz` with `SHA256SUMS`; how to verify it, build from it, and the release process: [`CONTRIBUTING.md`](CONTRIBUTING.md) §7.
