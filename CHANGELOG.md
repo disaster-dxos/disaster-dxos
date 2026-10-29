@@ -15,6 +15,9 @@
 - APISIX route `/grafana/*`: tham số `iss` (RFC 9207) được miễn luật SSRF/RFI như `/auth/callback` của web; luật XSS/SQLi vẫn kiểm.
 - `make up-bi` tạo lại `bao-agent-keycloak`, `bao-agent-grafana` khi còn chạy cấu hình cũ chưa render secret client mới. Máy đã chạy: `make up`, `docker compose restart apisix`, `make up-bi`.
 
+### Documentation
+- README song ngữ đầy đủ (#128): mọi mục có phần tiếng Việt và tiếng Anh (tiêu đề, bảng có cột/ô song ngữ), mục lục, mục **Quick start (English)** đủ để người ngoài chạy từ máy sạch (yêu cầu máy, lệnh, địa chỉ các giao diện, tài khoản mẫu, thử API, lỗi thường gặp), mục **Nâng cấp** từ v0.4.0 (`make up`, `docker compose restart apisix`, `make up-bi`). Số liệu khớp v0.4.0: bảng chức năng thêm quét mã độc, bảng công nghệ thêm Centrifugo, web Nuxt và phiên bản SeaweedFS/NATS/OpenBao; mục Hướng phát triển chia phần đã xong và phần còn lại; sửa mức RAM/ổ trong bảng lỗi cho khớp yêu cầu máy (6 GB, 15 GB).
+
 ## [0.4.0] - 2026-10-29
 Tuần 5 và tuần 6: Tầng [I] và tuần UX, cộng đồng. AI bóc tách tin kêu cứu viết tự do thành đề xuất có cấu trúc (`LLM_PROVIDER`: bộ luật mặc định, Qwen2.5 7B qua Ollama ở profile `ai`, OpenAI-compatible), điều phối viên duyệt ở hàng chờ Human-in-the-loop trước khi thành tin thật, vết duyệt không sửa được. App hiện trường React Native (D-011, thay Flutter) gửi kêu cứu, cập nhật hiện trường, có hàng đợi offline với `Idempotency-Key`, đã rà UX một tay, mạng yếu, chữ lớn, tương phản. ClamAV quét ảnh hiện trường trước khi lưu (profile `sec`). Hướng dẫn viết module cắm–rút kèm module mẫu thứ hai (mượn trả thiết bị). Công bố bộ mô phỏng trạm đo lũ và mô hình NGSI-LD trạm đo cho cộng đồng, dùng độc lập. Rà PoF, quy trình phát hành trong `CONTRIBUTING.md`.
 
