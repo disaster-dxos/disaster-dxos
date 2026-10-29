@@ -26,6 +26,9 @@ Mọi cấu hình qua biến môi trường trong `.env`, có giải thích tron
 | `GW_REALTIME_RATE_LIMIT_COUNT` | `60` | Số lần mở WebSocket `/realtime/websocket` mỗi IP trong `GW_RATE_LIMIT_WINDOW` giây (#68) |
 | `SCORPIO_DB`, `SCORPIO_DB_USER` | `scorpio`, `scorpio` | CSDL và role của Scorpio NGSI-LD trên PostgreSQL của lõi; mật khẩu trong OpenBao `secret/core/scorpio-db` (#85) |
 | `SCORPIO_PLATFORM` | `linux/amd64` | Image Scorpio chỉ có amd64 (như PostGIS) |
+| `SCORPIO_IMAGE` | trống: amd64 → `scorpiobroker/all-in-one-runner:linux-amd64-6.0.2` (native); arm64 → `…:java-6.0.2` (JVM, Makefile tự chọn) | Bản native GraalVM cần AVX/AVX2, Rosetta trong VM của Mac Apple Silicon (Docker Desktop, Colima) không có nên container chết ngay (#99). Makefile dò `uname -m`; đặt biến này để ghi đè, hoặc khi gọi `docker compose` trực tiếp trên arm64. `core/scorpio/chay.sh` chạy đúng lệnh của từng bản |
+| `SCORPIO_MEM_LIMIT` | trống: `384m` (native); `1g` trên arm64 | Bản JVM bị OOM ở 384m |
+| `SCORPIO_JAVA_OPTS` | `-XX:MaxRAMPercentage=60 -XX:+UseSerialGC` | Chỉ bản JVM đọc (`JAVA_TOOL_OPTIONS`) |
 | `SCORPIO_DB_POOL` | `8` | Số kết nối PostgreSQL tối đa của Scorpio (role `scorpio` có `CONNECTION LIMIT 20`); hết thì request xếp hàng |
 | `CANH_BAO_KENH` | `gia-lap` | Kênh thông báo cảnh báo vượt ngưỡng (#87): `gia-lap` (hộp thư nội bộ + web) hoặc `telegram` (token + chat id trong OpenBao `secret/app/cuu-tro/telegram`, cách bật: `apps/cuu-tro/README.md`) |
 | `APP_BI_DB_USER` | `cuu_tro_bi` | Role chỉ đọc của ứng dụng cho Grafana và bộ xuất Parquet (#91, #92); đổi khi `DXOS_APP` khác `cuu-tro` |

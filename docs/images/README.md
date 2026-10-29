@@ -26,8 +26,21 @@
 | `web-nuxt-ui-toi.png` | Bản đồ và phân công ở chế độ tối (#78, 2 × 1440×900, thu nhỏ) | Như trên | Như trên; bản đồ nền OpenFreeMap kiểu `dark` |
 | `web-nuxt-ui-cuu-ho.png` | Ảnh ghép trước/sau (#78): chi tiết nhiệm vụ vai cứu hộ trên điện thoại (2 × 390×844) | Như trên | Như trên |
 | `web-nuxt-ui-minh-bach.png` | Trang Minh bạch cứu trợ công khai (#78): trước (chưa có trang), sau ở 1440 và 390 | Như trên | Như trên |
+| `web-demo-dieu-phoi.gif` | GIF demo web điều phối (#65, ~13 giây, 960×600): đăng nhập Keycloak → bản đồ tin kêu cứu + trạm đo → popup trạm (mực nước, biểu đồ 24 giờ) → chi tiết tin → màn phân công → chi tiết phân công → trang Minh bạch trình duyệt tự kiểm sổ cái | `README.md` mục "Sản phẩm", `apps/cuu-tro/web/README.md` | Đội chụp bằng Playwright (`scripts/chup-anh/chup.mjs`) trên stack thật (project tạm, volume trống), ghép bằng ffmpeg. Dữ liệu giả: seed + `scripts/chup-anh/du-lieu-demo.sh` (8 tin kêu cứu bịa, SĐT 0900065xxx, trận lũ mẫu giả lập tới giờ 30). Bản đồ nền: OpenFreeMap, dữ liệu © những người đóng góp OpenStreetMap (ODbL-1.0) |
+| `web-ban-do-tram-do.webp`, `web-ban-do-tram-do-toi.webp` | Bản đồ điều phối sáng/tối (#62, #65): tin kêu cứu, trạm đo theo cấp báo động, popup trạm Hội An (1440×900) | Như trên | Như trên; chế độ tối: kiểu `dark` của OpenFreeMap |
+| `web-phan-cong.webp`, `web-phan-cong-toi.webp` | Màn phân công vai điều phối sáng/tối (#65, 1440×900) | Như trên | Như trên |
+| `web-minh-bach.webp`, `web-minh-bach-toi.webp` | Trang Minh bạch công khai sáng/tối (#63, #65): phiếu xuất kho, máy chủ xác minh, trình duyệt tự kiểm 5 bước (1440×900) | Như trên | Như trên |
 
-Mọi tệp trong thư mục này do đội DTU_DZ_1 tạo và cấp phép cùng repo: [Apache-2.0](../../LICENSE), trừ phần bản đồ nền trong các ảnh chụp `web-*.png` (dữ liệu OpenStreetMap, ODbL-1.0). Ảnh `.webp` là tranh minh họa, không phải ảnh chụp sự kiện hay người thật.
+Chụp lại toàn bộ ảnh `web-demo-*`, `web-ban-do-tram-do*`, `web-phan-cong*.webp`, `web-minh-bach*` (cần stack đang chạy, ffmpeg, ImageMagick):
+
+```bash
+make up && make seed && bash scripts/chup-anh/du-lieu-demo.sh
+cd scripts/chup-anh && npm ci && npx playwright install chromium && node chup.mjs
+```
+
+Lần đầu kịch bản tự cài TOTP cho tài khoản `dieuphoi01` (bí mật lưu ở `.data/chup-anh-totp.txt`, ngoài git); dựng lại stack thì xóa tệp đó.
+
+Mọi tệp trong thư mục này do đội DTU_DZ_1 tạo và cấp phép cùng repo: [Apache-2.0](../../LICENSE), trừ phần bản đồ nền trong các ảnh chụp `web-*` (dữ liệu OpenStreetMap, ODbL-1.0). Ảnh `.webp` là tranh minh họa, không phải ảnh chụp sự kiện hay người thật.
 
 **Biểu tượng trong `kien-truc-tong-quan.webp` là hình minh họa do công cụ AI vẽ lại, không phải logo chính thức** của các dự án. Tên và nhãn hiệu (Apache APISIX, Keycloak, Hasura, SeaweedFS, Temporal, Tessera, OpenBao, NATS, PostgreSQL, PostGIS) thuộc dự án hoặc tổ chức tương ứng; dùng ở đây chỉ để chỉ thành phần mà hệ thống sử dụng. Ảnh này là tổng quan giản lược; kiến trúc chính xác xem `kien-truc.svg` và [`docs/architecture.md`](../architecture.md).
 

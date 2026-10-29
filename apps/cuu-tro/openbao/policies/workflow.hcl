@@ -40,3 +40,8 @@ path "secret/data/app/cuu-tro/telegram" {
 path "secret/data/app/cuu-tro/bi-db" {
   capabilities = ["read"]
 }
+
+# AI bóc tách (#102): khóa API của nhà cung cấp openai-compatible, render cho cuu-tro-api (volume riêng)
+path "secret/data/app/cuu-tro/llm" {
+  capabilities = ["read"]
+}

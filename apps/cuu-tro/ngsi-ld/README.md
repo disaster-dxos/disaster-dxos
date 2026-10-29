@@ -77,3 +77,5 @@ curl -s -H "Authorization: Bearer $TOKEN" "$GW/ngsi-ld/v1/entities/urn:ngsi-ld:W
 ```
 
 Kiểm thử: `scripts/smoke-ngsi-ld.sh` (trong `make smoke`), `tests/test_cuu_tro_ban_sao_so.py`.
+
+Bản công bố cho cộng đồng (bộ mô phỏng chỉ cần Python, JSON Schema, ví dụ, dùng độc lập với Disaster DX-OS): [`cong-dong/tram-do-lu/`](../../../cong-dong/tram-do-lu/README.md). Sửa mô hình ở đây thì sửa cả bản đó; `tests/test_cuu_tro_cong_dong.py` báo khi hai bên lệch.

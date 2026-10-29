@@ -3,9 +3,11 @@
 
 Ứng dụng Tầng 2 cho người điều phối của xã (bản đồ lớn + danh sách tin kêu cứu bên cạnh, màn phân công cứu hộ) và cho đội cứu hộ ngoài hiện trường (nhận nhiệm vụ, xác nhận đã cứu trên điện thoại). Nuxt 4 + TypeScript + Nuxt UI (Tailwind CSS 4), bản đồ MapLibre GL JS, font Be Vietnam Pro tự host. Chạy thuần phía trình duyệt (`ssr: false`), không có bí mật nào trong mã web.
 
-![Web điều phối: bản đồ và danh sách tin kêu cứu thời gian thực](../../../docs/images/web-dieu-phoi.png)
+![GIF demo: đăng nhập, bản đồ tin kêu cứu và trạm đo, phân công, trang Minh bạch tự kiểm sổ cái](../../../docs/images/web-demo-dieu-phoi.gif)
 
-> Trạng thái: khung web, đăng nhập Keycloak, bố cục, logo (#59); chạy trong stack qua gateway (#64); thông báo realtime qua Centrifugo (#68); bản đồ và danh sách tin kêu cứu **dữ liệu thật, thời gian thực** qua GraphQL subscription (#60); màn phân công cứu hộ cho 2 vai điều phối, cứu hộ (#61). Việc tiếp theo: #62 (trạm đo), #63 (trang minh bạch).
+Ảnh sáng/tối và cách chụp lại (Playwright, `scripts/chup-anh/`): `README.md` mục "Sản phẩm", `docs/images/README.md`.
+
+> Trạng thái: khung web, đăng nhập Keycloak, bố cục, logo (#59); chạy trong stack qua gateway (#64); thông báo realtime qua Centrifugo (#68); bản đồ và danh sách tin kêu cứu **dữ liệu thật, thời gian thực** qua GraphQL subscription (#60); màn phân công cứu hộ cho 2 vai điều phối, cứu hộ (#61); lớp trạm đo mực nước trên bản đồ (#62); trang Minh bạch công khai cho phiếu kho và bút toán tiền, trình duyệt tự kiểm sổ cái (#63); hàng chờ duyệt tin do AI bóc tách (#104).
 
 ## Đăng nhập: OIDC Authorization Code + PKCE
 
@@ -56,9 +58,42 @@ Biến môi trường `NUXT_PUBLIC_*`: xem `.env.example` ở gốc repo (mục 
 
 CSP `connect-src` đã có origin `ws(s)://` của gateway (#68), dùng chung cho `/graphql`. Kiểm trên stack thật: `bash scripts/smoke-ban-do.sh` (trong `make smoke`).
 
+## Lớp trạm đo mực nước (#62)
+
+| Phần | Cách làm | Ở đâu |
+|---|---|---|
+| Nguồn dữ liệu | Bản sao số trạm đo NGSI-LD trên Scorpio (#85) qua API Gateway: `GET /ngsi-ld/v1/entities?type=WaterLevelStation&options=keyValues&limit=200`, `Accept: application/geo+json`, kèm JWT (mọi vai). Gateway tự đặt `@context` nên web dùng tên ngắn (`stationCode`, `waterLevel`, `alertLevel`, `warningThreshold`, `dangerThreshold`). Dữ liệu trạm không định danh | `composables/useTramDo.ts`, `utils/tram-do.ts` |
+| Bản đồ | Hình thoi màu theo cấp báo động (xanh bình thường, vàng cảnh báo, đỏ nguy hiểm; nguy hiểm vẽ trên cùng), nằm dưới lớp tin kêu cứu (bấm trùng thì ưu tiên tin). Từ zoom 11 hiện nhãn `mã · mực nước`. Công tắc "Trạm đo" trong ô chú thích bật/tắt lớp, kèm số trạm từng cấp | `components/BanDo.vue`, `components/ChuThichBanDo.vue` |
+| Popup | Bấm trạm → tên, mã, cấp báo động, mực nước mới nhất, còn bao nhiêu cm tới ngưỡng (hoặc đã vượt), biểu đồ nhỏ 24 giờ có vạch ngưỡng cảnh báo/nguy hiểm. Chuỗi đo lấy bằng GraphQL `sensor_readings` (tối đa 96 lần đo), chỉ khi mở popup; trạm có lần đo mới thì tự tải lại | `components/PopupTram.vue` |
+| Cập nhật | Tải lại mỗi 60 giây (bỏ lượt khi tab ẩn, hiện lại thì tải ngay). Người điều phối nhận cảnh báo mực nước realtime qua Centrifugo (#68, #87) → tải lại ngay, màu trạm đổi cùng lúc với thông báo. Lỗi mạng: giữ dữ liệu cũ trên bản đồ, báo lỗi trong ô chú thích | `pages/index.vue` |
+
+Kiểm thử: `tests/tram-do.test.ts` (đọc GeoJSON của Scorpio, màu, biểu đồ nhỏ, ngưỡng) và `scripts/smoke-tram-do.sh` (gọi đúng đường dẫn và query của web qua gateway cho cả 3 vai; màu/giá trị khớp lần đo mới nhất trong CSDL).
+
 ## Trang Minh bạch cứu trợ (#78, #63)
 
-Trang công khai, không cần đăng nhập, không dùng khung điều phối: `/minh-bach/<mã phiếu>` (đường dẫn in trong mã QR trên phiếu; `/minh-bach?ma=<mã>` cũng tra sẵn). Người dân nhập mã → web kiểm dạng mã (UUID) → `GET /workflow/minh-bach/phieu/{mã}` qua gateway → hiện kết quả xác minh trên sổ cái Tessera: **Đã xác minh**, **Không khớp**, **Chưa ghi lên sổ cái**, **Tạm thời không kiểm được** (màu + biểu tượng khiên khác nhau), hàng gì, bao nhiêu, từ kho nào tới điểm nhận nào, giờ lập phiếu và giờ ghi sổ. Phần "Tự kiểm chứng" (SHA-256, checkpoint, lệnh `ledger-verify`) thu gọn cho người kỹ thuật. Lỗi 404, 429, 5xx, phản hồi sai dạng, mất mạng có câu riêng. Ánh xạ phản hồi → hiển thị: `utils/minh-bach.ts` (test `tests/minh-bach.test.ts`).
+Trang công khai, không cần đăng nhập, không dùng khung điều phối: `/minh-bach/<mã>`. Đây là đường dẫn in trong mã QR trên phiếu; `/minh-bach?ma=<mã>` cũng tra sẵn. Không có dữ liệu cá nhân: API chỉ trả bản ghi đã khử định danh, không có người lập.
+
+| Phần | Cách làm | Ở đâu |
+|---|---|---|
+| Tra một mã | Một ô cho cả **phiếu nhập/xuất kho** và **bút toán tiền thu/chi** (#89). Web kiểm dạng mã (UUID), gọi `GET /workflow/minh-bach/xac-minh/{mã}` qua gateway. Hiện kết luận của máy chủ: **Đã xác minh**, **Không khớp**, **Chưa ghi lên sổ cái**, **Tạm thời không kiểm được** (màu + biểu tượng khiên khác nhau). Phiếu kho: hàng gì, bao nhiêu, từ kho nào tới điểm nhận nào. Bút toán: số tiền, hạng mục, mục đích, điểm nhận, phiếu kho kèm (bấm để tra). Kèm giờ lập, giờ ghi sổ, số lá | `pages/minh-bach/[[ma]].vue`, `utils/minh-bach.ts` |
+| Trình duyệt tự kiểm | Không tin lời máy chủ: trình duyệt chạy lại 5 bước bằng WebCrypto trên bằng chứng công khai và khóa `GET /ledger/verifier`. Kết quả từng bước và kết luận riêng ("hợp lệ" / "phát hiện sai lệch" / "chưa đủ dữ liệu") | `components/TuKiemChung.vue`, `utils/tu-kiem.ts` |
+| Bằng chứng | Thu gọn cho người kỹ thuật: SHA-256 bản ghi, chỉ số lá, leaf hash, kích thước cây, root hash, khóa công khai, inclusion proof (từng hash), checkpoint đã ký nguyên văn, lá, bản ghi chuẩn tắc, lệnh `ledger-verify` | `components/TuKiemChung.vue` |
+| Sổ cái gần đây, quỹ | Tổng thu, tổng chi, số dư quỹ (`/minh-bach/quy`). 8 phiếu/bút toán vừa niêm phong (`/minh-bach/so-cai`), bấm để tra và tự kiểm | `components/SoCaiGanDay.vue` |
+| Lỗi | 404, 429, 5xx, phản hồi sai dạng, mất mạng có câu riêng. Không tải được khóa công khai thì bước chữ ký báo "không kiểm được" | `utils/minh-bach.ts` |
+
+Năm bước tự kiểm dùng cùng thuật toán với máy chủ (`cuu_tro_workflow/so_cai.py`) và CLI `core/ledger/cmd/ledger-verify`:
+
+1. **Băm bản ghi.** Băm lại bản ghi chuẩn tắc. JSON chuẩn tắc: khóa sắp xếp, không khoảng trắng, UTF-8, U+2028/U+2029 viết `\u`. Kết quả SHA-256 phải bằng trường `sha256` trong lá.
+2. **Kiểm lá.** Lá đúng loại và đúng mã.
+3. **Leaf hash.** Leaf hash = SHA-256(0x00 ‖ lá), theo RFC 6962.
+4. **Inclusion proof.** Proof dẫn từ leaf hash tới root của checkpoint (RFC 9162 mục 2.1.3.2).
+5. **Chữ ký checkpoint.** Chữ ký Ed25519 của checkpoint (signed note C2SP) hợp lệ với khóa công khai, và origin trùng tên khóa.
+
+SHA-256 có ở mọi trình duyệt. Ed25519 có ở Chrome 137+, Firefox 129+, Safari 17+; trình duyệt cũ hơn thì bước 5 báo "không kiểm được", 4 bước còn lại vẫn chạy.
+
+**Test:**
+- `tests/tu-kiem.test.ts`: vector JSON chuẩn tắc chung với Go; inclusion proof mọi chỉ số của cây 1–11 lá so với cây Merkle tham chiếu; sổ cái giả lập có khóa Ed25519 thật; mỗi kiểu giả mạo (sửa bản ghi, lá, leaf hash, proof, khóa khác, kích thước cây) đều bị phát hiện.
+- `scripts/smoke-minh-bach.sh`: chạy chính `tu-kiem.ts` bằng Node trên bằng chứng thật của sổ cái Tessera.
 
 ## Thông báo realtime (#68)
 
@@ -85,10 +120,25 @@ Hai đường mới, chỉ gọi lõi qua API Gateway bằng JWT của người 
 
 Ảnh chụp trên stack thật với tin mẫu là dữ liệu giả (`docs/images/README.md`). Kiểm trên stack thật: `bash scripts/smoke-phan-cong.sh` (trong `make smoke`), chạy nguyên văn query GraphQL của web.
 
+## Duyệt tin AI: hàng chờ Human-in-the-loop (#104)
+
+Trang `/hang-cho` (mục "Duyệt tin AI" ở thanh bên, chỉ vai `dieu-phoi`). Tin SMS/Zalo dán vào được AI bóc tách (#102) rồi vào hàng chờ; tin chỉ được tạo khi người điều phối duyệt. Luồng, API, bảng vết: `apps/cuu-tro/README.md` mục "Hàng chờ duyệt tin AI".
+
+| Phần | Gọi gì | Mã |
+|---|---|---|
+| Dán tin + "Bóc tách bằng AI" | `POST /workflow/ai/boc-tach` `{van_ban, nguon, vao_hang_cho: true}` | `composables/useHangCho.ts` |
+| Danh sách, chi tiết, vết | GraphQL HTTP `/graphql` vai `dieu-phoi`: `ai_intake_reviews` theo trạng thái + đếm số chờ duyệt; tải lại mỗi 15 giây | `utils/hang-cho.ts` `queryHangCho`, `mucTuHang` |
+| Form sửa đề xuất | Ô nhập ↔ body `/keu-cuu` (`formTuBody`, `bodyTuForm`: dấu phẩy thập phân, số người nguyên, báo sớm thiếu tọa độ/SĐT/mô tả); trường khác đề xuất có nhãn "đã sửa" + giá trị AI (`truongDaSua`, so sau chuẩn hóa SĐT/số) | `pages/hang-cho.vue`, `utils/hang-cho.ts` |
+| Chọn vị trí | MapLibre, cùng kiểu nền với bản đồ điều phối; bấm hoặc kéo ghim cam điền vĩ độ/kinh độ (6 chữ số thập phân) | `components/ChonViTri.vue` |
+| Duyệt / hủy | `POST /workflow/hang-cho/{id}/duyet` `{tin_keu_cuu}` · `/huy` `{ly_do}` | `composables/useHangCho.ts` |
+| Lỗi | 422 theo trường hiện dưới ô; 409 tin trùng (liên kết "Xem tin đang mở") hoặc đã có người xử lý (tải lại); 401/403/404/429/5xx, mất mạng | `utils/hang-cho.ts` `phanTichLoi` |
+
+Kiểm tra thật nằm ở API (cùng Poka-yoke với `/keu-cuu`); kiểm ở web chỉ để báo sớm. Trang không đọc văn bản gốc của vai khác: Hasura chỉ cho `dieu-phoi`.
+
 ## Kiểm thử
 
 ```bash
-npm test              # Vitest: PKCE (vector RFC 7636), URL OIDC, state/nonce, hạn token, GraphQL → tin → GeoJSON, bộ lọc, tin mới, CSP, thông báo realtime, phân công (nút theo vai, gọi /workflow, mã lỗi)
+npm test              # Vitest: PKCE (vector RFC 7636), URL OIDC, state/nonce, hạn token, GraphQL → tin → GeoJSON, bộ lọc, tin mới, CSP, thông báo realtime, phân công (nút theo vai, gọi /workflow, mã lỗi), trạm đo (GeoJSON NGSI-LD, màu, biểu đồ nhỏ), minh bạch (phản hồi xác minh, tự kiểm 5 bước: JSON chuẩn tắc, Merkle, Ed25519), hàng chờ duyệt tin AI (đọc hàng chờ, form ↔ body /keu-cuu, trường đã sửa, lỗi API)
 npm run typecheck     # vue-tsc
 npm run licenses      # giấy phép mọi gói npm trong package-lock.json
 ```
@@ -102,11 +152,11 @@ CI chạy cả bốn lệnh, `npm run build`, rồi build image Docker và chạ
 | `app.vue`, `app.config.ts`, `layouts/default.vue`, `error.vue` | Khung Nuxt UI (#77): `UApp` (nhãn tiếng Việt), màu theme, thanh bên thu gọn được (trên điện thoại thành ngăn kéo), trang lỗi tiếng Việt |
 | `assets/css/main.css` | Theme: bảng màu nhận diện (navy, cam, xanh nước, mức khẩn), chữ, chế độ tối, vòng focus, MapLibre theo theme (#77) |
 | `public/fonts/be-vietnam-pro/` | Font Be Vietnam Pro (OFL-1.1) tự host, kèm SHA-256 (#77) |
-| `pages/` | `index.vue` (trang điều phối), `phan-cong/index.vue`, `phan-cong/[id].vue` (màn phân công, #61), `minh-bach/[[ma]].vue` (trang minh bạch công khai, #78), `auth/callback.vue` (hai trang sau không dùng khung) |
+| `pages/` | `index.vue` (trang điều phối), `phan-cong/index.vue`, `phan-cong/[id].vue` (màn phân công, #61), `minh-bach/[[ma]].vue` (trang minh bạch công khai, #78), `hang-cho.vue` (duyệt tin AI, #104), `auth/callback.vue` (hai trang sau không dùng khung) |
 | `server/` | Nitro: `plugins/bao-mat.ts` (header bảo mật), `utils/csp.ts` (dựng CSP, hàm thuần có test) |
-| `components/` | `MenuNguoiDung.vue` (người dùng, vai, sáng/tối, đăng xuất), `NhanMucKhan.vue`, `NhanTrangThai.vue`, `DongHoHanNhan.vue` (thành phần dùng chung, #77), `BanDo.vue` (MapLibre, #60), `DanhSachTin.vue`, `BoLocTin.vue`, `ChiTietTin.vue` (#60), `ThongBaoRealtime.vue` (#68), `TheTinPhanCong.vue` (#61) |
-| `composables/` | `useAuth.ts` (phiên đăng nhập), `useTinKeuCuu.ts` (subscription tin kêu cứu, #60), `useThongBao.ts` (kết nối Centrifugo, #68), `usePhanCong.ts` (hàng đợi, workflow, thao tác, #61), `useNow.ts`, `useToi.ts` (đang ở chế độ tối) |
-| `utils/` | Hàm thuần, có test: `pkce.ts`, `oidc.ts`, `session.ts`, `tin.ts`, `tin-graphql.ts`, `ban-do.ts`, `thong-bao.ts`, `phan-cong.ts`, `workflow-api.ts`, `minh-bach.ts` |
+| `components/` | `MenuNguoiDung.vue` (người dùng, vai, sáng/tối, đăng xuất), `NhanMucKhan.vue`, `NhanTrangThai.vue`, `DongHoHanNhan.vue` (thành phần dùng chung, #77), `BanDo.vue` (MapLibre, #60), `DanhSachTin.vue`, `BoLocTin.vue`, `ChiTietTin.vue` (#60), `ThongBaoRealtime.vue` (#68), `TheTinPhanCong.vue` (#61), `ChonViTri.vue` (bản đồ chọn vị trí khi duyệt tin AI, #104) |
+| `composables/` | `useAuth.ts` (phiên đăng nhập), `useTinKeuCuu.ts` (subscription tin kêu cứu, #60), `useThongBao.ts` (kết nối Centrifugo, #68), `usePhanCong.ts` (hàng đợi, workflow, thao tác, #61), `useHangCho.ts` (hàng chờ duyệt tin AI, #104), `useNow.ts`, `useToi.ts` (đang ở chế độ tối) |
+| `utils/` | Hàm thuần, có test: `pkce.ts`, `oidc.ts`, `session.ts`, `tin.ts`, `tin-graphql.ts`, `ban-do.ts`, `thong-bao.ts`, `phan-cong.ts`, `workflow-api.ts`, `minh-bach.ts`, `hang-cho.ts` |
 | `tests/` | Vitest |
 | `scripts/check-licenses.mjs` | Kiểm giấy phép npm |
 

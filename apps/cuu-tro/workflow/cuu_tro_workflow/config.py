@@ -4,6 +4,7 @@
 import os
 from dataclasses import dataclass, field
 
+from .boc_tach import NHA_CUNG_CAP, kiem_mo_hinh
 from .keu_cuu import VUNG_VIET_NAM, VungPhucVu, vung_tu_chuoi
 from .logic import HAN_NHAN_MAC_DINH, URGENCY_RANK, ThamSoPhanCong
 
@@ -53,6 +54,12 @@ class Config:
     anh_max_bytes: int = 10 * 1024 * 1024
     # Hạn link xem mặc định = tối đa (giây); client xin ngắn hơn bằng ?han_giay=
     anh_link_han_giay: int = 300
+    # Quét mã độc ảnh (#111): clamd của lõi (profile sec). Trống = tắt. Máy quét lỗi/không có: nhận ảnh với
+    # scan_status chua_quet, trừ khi anh_quet_bat_buoc (khi đó 503)
+    clamav_host: str = "clamav"
+    clamav_port: int = 3310
+    clamav_timeout_giay: float = 30.0
+    anh_quet_bat_buoc: bool = False
     gateway_public_url: str = "http://localhost:9080"
     # Sổ cái minh bạch (#28): core/ledger trong mạng nội bộ (ghi không đi qua gateway: APISIX chặn mọi
     # phương thức ghi /ledger/*). Token ghi của ứng dụng (secret/app/cuu-tro/ledger) do bao agent render.
@@ -88,6 +95,32 @@ class Config:
     # niêm phong cũ hơn so_cai_cho_giay giây (API niêm phong ngay khi lập; bộ này ghi bù phần sót)
     so_cai_quet_giay: int = 10
     so_cai_cho_giay: int = 5
+    # AI bóc tách tin kêu cứu (#102): gia-lap (bộ luật, mặc định) | ollama | openai-compatible | tat.
+    # LLM_BASE_URL trống với ollama = dịch vụ ollama của profile ai. Khóa API (openai-compatible) do bao agent
+    # render từ OpenBao secret/app/cuu-tro/llm, không ở .env. Quá hạn thì dùng bộ luật dự phòng; hạn phải nhỏ
+    # hơn GW_AI_TIMEOUT_GIAY của gateway (150 s) để kịp trả lời trước khi gateway cắt.
+    llm_provider: str = "gia-lap"
+    llm_base_url: str = ""
+    llm_model: str = "qwen2.5:7b"
+    llm_api_key: str = ""
+    llm_timeout_giay: float = 120.0
+    # Số luồng CPU Ollama dùng cho mỗi request (num_thread); 0 = Ollama tự chọn (mọi lõi). Đo trên Mac M-series,
+    # Docker 10 vCPU: tự chọn 0,4 token/s, 4-6 luồng 13 token/s (docs/architecture.md mục 6.4)
+    llm_so_luong: int = 6
+
+
+def _llm_provider() -> str:
+    p = os.environ.get("LLM_PROVIDER", "gia-lap").strip().lower() or "gia-lap"
+    if p not in NHA_CUNG_CAP:
+        raise ValueError(f"LLM_PROVIDER phải là một trong: {', '.join(NHA_CUNG_CAP)}")
+    return p
+
+
+def _llm_model(provider: str) -> str:
+    m = os.environ.get("LLM_MODEL", "").strip() or "qwen2.5:7b"
+    if provider in ("ollama", "openai-compatible"):
+        kiem_mo_hinh(m)
+    return m
 
 
 def load() -> Config:
@@ -119,6 +152,10 @@ def load() -> Config:
         anh_bucket=os.environ.get("ANH_BUCKET", "cuu-tro-media"),
         anh_max_bytes=_int("ANH_MAX_BYTES", 10 * 1024 * 1024),
         anh_link_han_giay=_int("ANH_LINK_HAN_GIAY", 300),
+        clamav_host=os.environ.get("CLAMAV_HOST", "clamav"),
+        clamav_port=_int("CLAMAV_PORT", 3310),
+        clamav_timeout_giay=min(300.0, max(1.0, float(os.environ.get("CLAMAV_TIMEOUT_GIAY", 30)))),
+        anh_quet_bat_buoc=os.environ.get("ANH_QUET_BAT_BUOC", "0").strip().lower() in ("1", "true", "co"),
         gateway_public_url=os.environ.get("GATEWAY_PUBLIC_URL", "http://localhost:9080"),
         ledger_url=os.environ.get("LEDGER_URL", "http://ledger:8090"),
         ledger_write_token=os.environ.get("LEDGER_WRITE_TOKEN", ""),
@@ -135,6 +172,12 @@ def load() -> Config:
         canh_bao_han_dot_giay=max(60, _int("CANH_BAO_HAN_DOT_GIAY", 7 * 24 * 3600)),
         so_cai_quet_giay=max(1, _int("SO_CAI_QUET_GIAY", 10)),
         so_cai_cho_giay=max(0, _int("SO_CAI_CHO_GIAY", 5)),
+        llm_provider=(llm := _llm_provider()),
+        llm_base_url=os.environ.get("LLM_BASE_URL", "").strip(),
+        llm_model=_llm_model(llm),
+        llm_api_key=os.environ.get("LLM_API_KEY", "").strip(),
+        llm_so_luong=max(0, _int("LLM_SO_LUONG", 6)),
+        llm_timeout_giay=min(600.0, max(1.0, float(os.environ.get("LLM_TIMEOUT_GIAY", 120)))),
     )
 
 

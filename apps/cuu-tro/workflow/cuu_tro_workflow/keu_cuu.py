@@ -186,6 +186,20 @@ def kiem_tra(d: Any, vung: VungPhucVu) -> TinKeuCuu | list[LoiTruong]:
                      people_count=so_nguoi, address_text=dia_chi, reporter_name=ten, source=nguon)
 
 
+# Câu INSERT tin kêu cứu bằng role dịch vụ cuu_tro_app (migration 0008: đúng các cột người báo nhập +
+# created_by; status/assigned_team_id lấy mặc định). Dùng chung cho POST /keu-cuu và duyệt hàng chờ AI (#104).
+SQL_THEM_TIN = """INSERT INTO cuu_tro.incidents
+                    (description, location, address_text, people_count, urgency, reporter_phone, reporter_name,
+                     source, created_by)
+                  VALUES ($1, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, $4, $5, $6, $7, $8, $9, $10)
+                  RETURNING id, status, urgency, people_count, created_at"""
+
+
+def tham_so_them_tin(tin: TinKeuCuu, created_by: str) -> tuple[Any, ...]:
+    return (tin.description, tin.lon, tin.lat, tin.address_text, tin.people_count, tin.urgency,
+            tin.reporter_phone, tin.reporter_name, tin.source, created_by)
+
+
 def loi_422(loi: list[LoiTruong]) -> dict[str, Any]:
     return {"ma": "du_lieu_khong_hop_le",
             "thong_bao": "Chưa gửi được tin kêu cứu: kiểm tra lại các trường bên dưới.",

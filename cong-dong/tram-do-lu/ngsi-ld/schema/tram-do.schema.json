@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/disaster-dxos/disaster-dxos/blob/main/cong-dong/tram-do-lu/ngsi-ld/schema/tram-do.schema.json",
+  "title": "Thực thể NGSI-LD trạm đo (WaterLevelStation, RainGauge, WindStation)",
+  "description": "Dạng chuẩn hóa (normalized), tên ngắn theo ../context.jsonld. Mỗi kiểu có đúng một thuộc tính đo: WaterLevelStation → waterLevel (CMT), RainGauge → precipitation (MMT), WindStation → windSpeed (MTS).",
+  "type": "object",
+  "required": ["id", "type", "name", "stationCode", "location", "alertLevel"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^urn:ngsi-ld:(WaterLevelStation|RainGauge|WindStation):[A-Z0-9][A-Z0-9_-]{1,31}$"},
+    "type": {"enum": ["WaterLevelStation", "RainGauge", "WindStation"]},
+    "name": {"$ref": "#/$defs/chuoi"},
+    "stationCode": {
+      "allOf": [{"$ref": "#/$defs/chuoi"}],
+      "properties": {"value": {"pattern": "^[A-Z0-9][A-Z0-9_-]{1,31}$"}}
+    },
+    "location": {
+      "type": "object",
+      "required": ["type", "value"],
+      "properties": {
+        "type": {"const": "GeoProperty"},
+        "value": {
+          "type": "object",
+          "required": ["type", "coordinates"],
+          "properties": {
+            "type": {"const": "Point"},
+            "coordinates": {
+              "description": "[kinh độ, vĩ độ] WGS 84",
+              "type": "array",
+              "prefixItems": [
+                {"type": "number", "minimum": -180, "maximum": 180},
+                {"type": "number", "minimum": -90, "maximum": 90}
+              ],
+              "minItems": 2,
+              "maxItems": 2
+            }
+          }
+        }
+      }
+    },
+    "waterLevel": {"$ref": "#/$defs/so_do"},
+    "precipitation": {"$ref": "#/$defs/so_do"},
+    "windSpeed": {"$ref": "#/$defs/so_do"},
+    "alertLevel": {
+      "type": "object",
+      "required": ["type", "value", "observedAt"],
+      "properties": {
+        "type": {"const": "Property"},
+        "value": {"enum": ["binh_thuong", "canh_bao", "nguy_hiem"]},
+        "observedAt": {"$ref": "#/$defs/thoi_diem"}
+      }
+    },
+    "warningThreshold": {"$ref": "#/$defs/nguong"},
+    "dangerThreshold": {"$ref": "#/$defs/nguong"},
+    "@context": {"type": ["array", "object", "string"]}
+  },
+  "allOf": [
+    {"if": {"properties": {"type": {"const": "WaterLevelStation"}}},
+     "then": {"required": ["waterLevel"], "properties": {"waterLevel": {"properties": {"unitCode": {"const": "CMT"}}}}}},
+    {"if": {"properties": {"type": {"const": "RainGauge"}}},
+     "then": {"required": ["precipitation"], "properties": {"precipitation": {"properties": {"unitCode": {"const": "MMT"}}}}}},
+    {"if": {"properties": {"type": {"const": "WindStation"}}},
+     "then": {"required": ["windSpeed"], "properties": {"windSpeed": {"properties": {"unitCode": {"const": "MTS"}}}}}}
+  ],
+  "$defs": {
+    "thoi_diem": {"type": "string", "format": "date-time"},
+    "chuoi": {
+      "type": "object",
+      "required": ["type", "value"],
+      "properties": {"type": {"const": "Property"}, "value": {"type": "string", "minLength": 1}}
+    },
+    "so_do": {
+      "type": "object",
+      "required": ["type", "value", "unitCode", "observedAt"],
+      "properties": {
+        "type": {"const": "Property"},
+        "value": {"type": "number"},
+        "unitCode": {"enum": ["CMT", "MMT", "MTS"]},
+        "observedAt": {"$ref": "#/$defs/thoi_diem"}
+      }
+    },
+    "nguong": {
+      "type": "object",
+      "required": ["type", "value", "unitCode"],
+      "properties": {
+        "type": {"const": "Property"},
+        "value": {"type": "number"},
+        "unitCode": {"enum": ["CMT", "MMT", "MTS"]}
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 # Kiến trúc Disaster DX-OS
 
-> Phiên bản tài liệu: v0.3.0 (cập nhật 24/10/2026; từ v0.2.0 thêm Scorpio NGSI-LD #85, cảnh báo vượt ngưỡng qua Temporal #87, tiền cứu trợ trên sổ cái #89, Parquet + DuckDB #91, Grafana #92). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
+> Phiên bản tài liệu: v0.4.0 (cập nhật 29/10/2026; từ v0.3.0 thêm AI bóc tách tin kêu cứu #102, hàng chờ duyệt HITL #104, app hiện trường React Native #106/#108/#113, module cắm–rút mẫu #110, ClamAV #111, bộ mô phỏng trạm đo cho cộng đồng #112). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
 
 Disaster DX-OS gồm hai tầng, đúng mô hình Open-Core của đề:
 
@@ -17,7 +17,7 @@ Sơ đồ dưới vẽ những gì đang chạy thật trong `make up`: Tầng 2
 flowchart TB
   subgraph T2["Tầng 2 · Ứng dụng (H-P-D-I)"]
     WEB["Web điều phối<br/>Nuxt 4 + Nuxt UI + MapLibre"]
-    APP["App hiện trường<br/>Flutter offline-first"]
+    APP["App hiện trường<br/>React Native, offline-first (#106)"]
     BOT["Bot Telegram"]
     SENSOR["Cảm biến mực nước<br/>(mô phỏng)"]
   end
@@ -86,7 +86,7 @@ Hiện profile `core` có `openbao` (+ 10 bao agent), `postgres` (+ `postgres-ro
 | Identity / SSO (+MFA) | **Keycloak 26.8.1** | Realm `disaster`, OIDC, 3 vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen`, client cho gateway, web và CLI dev. Claim `https://hasura.io/jwt/claims` cho Hasura; OTP bắt buộc với vai trò `dieu-phoi` (#13) | `apps/cuu-tro/keycloak/realm.json` (vai trò, client của ứng dụng) | Chạy được (v0.0.1) |
 | API Gateway | **Apache APISIX 3.19** + **Coraza WAF** (coraza-proxy-wasm 0.6.0, OWASP CRS 4.14) | Điểm vào duy nhất của Tầng 2: `/graphql` → Hasura, `/files/*` → SeaweedFS S3, `/workflow/*` → API workflow của ứng dụng (#29, mục 7.3). WAF chặn ở biên, kiểm chữ ký JWT bằng JWKS của Keycloak, rate limit theo IP, CORS, gắn request-id. Chế độ standalone: route nằm trong git (GitOps) | `core/apisix/config.yaml`, `core/apisix/apisix.yaml`, `core/apisix/Dockerfile` | Chạy trong `core` (#12, mục 3.3) |
 | Dữ liệu có cấu trúc | **PostgreSQL 17 + PostGIS 3.5**, **Hasura CE v2.51** | Sự cố, đội cứu hộ, điểm trú ẩn, kho hàng, cảm biến (có tọa độ). Hasura tự sinh GraphQL + subscription, phân quyền theo claim vai trò trong JWT | `docker-compose.yml` (`postgres`, `postgres-roles`, `hasura`), `core/postgres/sync-roles.sh` | Chạy trong `core` (#11); schema nghiệp vụ ở #25, #26 |
-| Dữ liệu phi cấu trúc | **SeaweedFS 4.48** (S3) + ClamAV | Ảnh hiện trường (#27: tải lên qua API ứng dụng, xem bằng link presigned ngắn hạn qua `/files/*`, mục 7.5), tệp đính kèm, file Parquet lịch sử. File tải lên sẽ được ClamAV quét trước khi công bố | `docker-compose.yml` (`seaweedfs`, `s3-buckets`), `core/openbao/agent-seaweedfs.hcl`, `core/seaweedfs/create-buckets.sh` | S3 chạy trong `core`, khóa từ OpenBao (#11); bucket + API ảnh (#27); ClamAV sau |
+| Dữ liệu phi cấu trúc | **SeaweedFS 4.48** (S3) + ClamAV | Ảnh hiện trường (#27: tải lên qua API ứng dụng, xem bằng link presigned ngắn hạn qua `/files/*`, mục 7.5), tệp đính kèm, file Parquet lịch sử. Tệp tải lên được ClamAV quét trước khi lưu (#111) | `docker-compose.yml` (`seaweedfs`, `s3-buckets`, `clamav`), `core/openbao/agent-seaweedfs.hcl`, `core/seaweedfs/create-buckets.sh` | S3 chạy trong `core`, khóa từ OpenBao (#11); bucket + API ảnh (#27); ClamAV profile `sec`, quét trước khi lưu (#111) |
 | Workflow engine | **Temporal 1.29** + Python SDK | Quy trình kêu cứu: tin mới tự khởi chạy → phân công đội gần nhất (ưu tiên urgency) → đội nhận trong hạn, quá hạn thì phân công lại → xác nhận → đóng (#29, #67, mục 6.1). Cảnh báo vượt ngưỡng → thông báo | `docker-compose.yml` (`temporal`, `temporal-ui`) | Chạy trong `core` (#11); worker ở #29 |
 
 Thành phần hỗ trợ: OpenBao (bí mật, chạy chế độ server trong profile `core` – mục 8), NATS JetStream + MQTT (sự kiện, IoT), Scorpio (NGSI-LD, bản sao số trạm đo), sổ cái minh bạch `core/ledger` (transparency log Tessera, D-007) cho tiền/hàng cứu trợ.
@@ -307,8 +307,11 @@ flowchart LR
   end
   subgraph later["profile sau"]
     sec["sec · ClamAV"]
-    ai["ai · Ollama + Qwen2.5 7B/14B, Qdrant, agent"]
   end
+  subgraph ai["profile ai (#102)"]
+    ol[ollama<br/>Qwen2.5 7B · chỉ mạng nội bộ] --> olp[ollama-pull<br/>một lần]
+  end
+  core --> ai
   subgraph bi["profile bi (#92)"]
     gf[grafana OSS<br/>qua apisix /grafana/]
   end
@@ -320,8 +323,8 @@ flowchart LR
 |---|---|---|---|
 | `core` | openbao, openbao-unseal (dev), 10 bao agent, postgres, postgres-roles (chạy một lần rồi thoát), keycloak, apisix, hasura, seaweedfs, temporal, temporal-ui, nats, ledger (#28), centrifugo (#68), scorpio (#85) | `make up` | **Đo 19/10/2026** (`docker stats --no-stream`, Mac Apple Silicon, PostGIS chạy giả lập amd64): ~1,5 GB ngay sau khi mọi dịch vụ healthy; ~2,1 GB sau `make smoke` (bảng dưới; APISIX đo lại sau #12) |
 | ~~`gis`~~ | Gộp vào `core` ở #85: Scorpio (CSDL riêng trên postgis của lõi). Bộ giả lập cảm biến ở profile `gia-lap` của ứng dụng (#30) | – | Scorpio ~150 MiB (đo ở bảng dưới) |
-| `sec` | ClamAV | tuần 2–4 | ClamAV ~1,5 GB. `ledger` (Tessera) đã vào `core` (#28) |
-| `ai` | Ollama, Qdrant, agent | tuần 5 | Qwen2.5 7B ~5 GB |
+| `sec` | ClamAV 1.5.4 (#111, `make up-sec`; `make smoke` tự bật rồi dừng) | có | Đo thật: ~960 MiB RAM sau khi nạp bộ chữ ký (`CLAMAV_MEM_LIMIT` 2g), healthy sau ~12 giây khi volume đã có chữ ký; image 569 MB, volume `clamavdata` ~176 MB. `ledger` (Tessera) đã vào `core` (#28) |
+| `ai` (#102) | ollama (Ollama `0.40.3`, MIT, image gốc), ollama-pull (tải `LLM_MODEL` vào volume `ollamadata`, chạy một lần) | `make up-ai`, rồi `LLM_PROVIDER=ollama` trong `.env` + `make up` | Qwen2.5 7B: đo ở mục 6.4. Không bật thì `LLM_PROVIDER=gia-lap` (bộ luật, mặc định) |
 | `bi` (#92) | bao-agent-grafana, grafana (Grafana OSS 13.0.2, AGPL-3.0, image gốc) | `make up-bi` (`make smoke` tự bật) | grafana ~150 MiB (đo ở mục 7.6) |
 
 RAM từng dịch vụ của `core` (MiB; "sau smoke" = sau khi chạy `make smoke` khoảng 10 phút):
@@ -444,6 +447,8 @@ sequenceDiagram
 
 Endpoint công khai (route APISIX `/workflow/minh-bach/*`: chỉ GET, không JWT, WAF + rate limit): `xac-minh/{mã}`, `phieu/{mã}`, `khoan-tien/{mã}`, `so-cai` (danh sách đã niêm phong, mới nhất trước, phân trang theo chỉ số lá), `quy` (tổng thu, tổng chi, số dư, số mục chờ niêm phong). Lập bút toán: `POST /workflow/quy/khoan` (JWT, chỉ `dieu-phoi`). Chi tiết và ví dụ: `apps/cuu-tro/README.md` mục "Sổ cái minh bạch".
 
+Trang web công khai `/minh-bach/<mã>` (#63) dùng `xac-minh`, `so-cai`, `quy` và khóa `/ledger/verifier`. Trình duyệt tự kiểm lại 5 bước bằng WebCrypto: băm bản ghi chuẩn tắc, lá đúng mã, leaf hash, inclusion proof, chữ ký Ed25519 của checkpoint. Cùng thuật toán với `so_cai.py` và `ledger-verify`, nên người dân không phải tin kết luận `hop_le` của máy chủ (`apps/cuu-tro/web/utils/tu-kiem.ts`, `scripts/smoke-minh-bach.sh`).
+
 Giới hạn hiện tại: khóa công khai lấy từ chính máy chủ thì chỉ chứng minh toàn vẹn so với khóa đang công bố; triển khai thật cần công bố khóa ở nơi độc lập (tài liệu phát hành) và đặt `LEDGER_VERIFIER_KEY`. Consistency proof (log không bị viết lại) và witness công khai của transparency.dev để tuần 6.
 
 ## 6. Luồng nghiệp vụ chính (đích tuần 3–5)
@@ -459,7 +464,7 @@ flowchart LR
   A["Người dân / tình nguyện viên<br/>gửi kêu cứu"] -->|"APISIX"| B{"Poka-yoke<br/>có tọa độ?<br/>trùng SĐT trong 200 m?"}
   B -->|"không hợp lệ"| R["Từ chối / gộp vào sự cố cũ"]
   B -->|"hợp lệ"| C["Temporal: tiếp nhận"]
-  A2["Tin nhắn tự do"] --> AI["AI bóc tách (Qwen2.5 7B)"] --> H["Người điều phối duyệt (HITL)"] --> C
+  A2["Tin nhắn tự do"] --> AI["AI bóc tách (Qwen2.5 7B)"] --> Q["Hàng chờ duyệt (#104)"] --> H["Người điều phối sửa / duyệt (HITL)"] --> B
   C --> D["Phân công đội gần nhất (PostGIS)"] --> E["Đội cứu hộ xác nhận"] --> F["Đóng sự cố"]
   S["Cảm biến mực nước"] -->|"MQTT → NATS"| N["Scorpio: bản sao số trạm đo"]
   S -->|"vượt ngưỡng (NATS)"| W["Temporal: một workflow mỗi đợt (#87)"] --> T["Hộp thư nội bộ / Telegram + Centrifugo"]
@@ -588,6 +593,135 @@ sequenceDiagram
 
 Gửi Telegram là "ít nhất một lần": worker chết sau khi Telegram nhận mà trước khi ghi `da_gui` thì lần thử lại gửi thêm một tin; hộp thư vẫn một dòng. Kiểm thử: `tests/test_cuu_tro_canh_bao.py` (workflow trên máy chủ test của Temporal, khử trùng lặp, Telegram giả), `db/tests/0010`, `scripts/smoke-canh-bao.sh`.
 
+### 6.4. AI bóc tách tin kêu cứu, Tầng [I] (#102)
+
+Tin kêu cứu thật thường là SMS hoặc tin Zalo viết vội, không dấu, thiếu tọa độ. `POST /workflow/ai/boc-tach` của `cuu-tro-api` nhận văn bản tự do và trả **đề xuất** theo đúng tên trường của `POST /workflow/keu-cuu` (địa chỉ, tọa độ nếu tin có, SĐT, tên, số người, mức khẩn cấp, nhu cầu, mô tả), kèm kết quả Poka-yoke và kiểm trước tin trùng. Endpoint **không tạo tin**: điều phối viên duyệt hoặc sửa rồi mới tạo (HITL; hàng chờ duyệt trên web: mục 6.5). Chi tiết trường: `apps/cuu-tro/README.md` mục "AI bóc tách tin kêu cứu".
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as dieu-phoi / tinh-nguyen
+  participant GW as APISIX /workflow/ai/*
+  participant API as cuu-tro-api (boc_tach.py)
+  participant M as Ollama (profile ai) / API ngoài
+  participant PG as PostgreSQL (cuu_tro)
+  U->>GW: POST {van_ban, nguon} + Bearer JWT
+  Note over GW: WAF (body) → JWT → limit-count riêng (30/60 s/IP)
+  GW->>API: /ai/boc-tach
+  API->>API: trích SĐT, tọa độ bằng regex (mọi nhà cung cấp)
+  alt LLM_PROVIDER = ollama / openai-compatible
+    API->>M: lời dặn + <tin>…</tin>, JSON schema, nhiệt độ 0
+    M-->>API: JSON
+    API->>API: chống bịa: SĐT/tọa độ phải có trong tin, địa chỉ khớp ≥ 60% từ
+    Note over API,M: lỗi / quá LLM_TIMEOUT_GIAY → bộ luật dự phòng + cảnh báo
+  else gia-lap
+    API->>API: bộ luật (từ khóa không dấu)
+  end
+  API->>API: Poka-yoke của /keu-cuu (tọa độ bắt buộc, SĐT, vùng phục vụ)
+  API->>PG: incident_find_duplicate(SĐT, điểm) (migration 0013, không khóa, không ghi)
+  API-->>U: 200 {de_xuat, tin_keu_cuu, poka_yoke{hop_le, loi, tin_trung}, ai, canh_bao}
+```
+
+| Quyết định | Chọn | Vì sao |
+|---|---|---|
+| AI có tạo tin không | **Không**. Chỉ đề xuất; người duyệt gửi `tin_keu_cuu` (đã sửa) qua `POST /workflow/keu-cuu` như mọi tin khác | Tin kêu cứu sai vị trí làm đội cứu hộ đi nhầm chỗ. Mô hình nhỏ chạy CPU có thể sai; người chịu trách nhiệm là điều phối viên (HITL, nguyên lý [I] của đề). Dùng lại toàn bộ Poka-yoke và chốt chặn trùng của #66 |
+| Chọn mô hình | Biến `LLM_PROVIDER`: `gia-lap` (mặc định), `ollama`, `openai-compatible`, `tat` (D-005) | Laptop 16 GB không phải lúc nào cũng chạy được 7B; CI không tải mô hình. Xã có máy chủ GPU hoặc API riêng thì đổi biến, không đổi mã |
+| Mô hình mặc định | Qwen2.5 7B (Apache-2.0) qua Ollama (MIT), dịch vụ riêng ở profile `ai`, không mở cổng ra host | Qwen2.5 3B/72B không phải Apache-2.0, Llama/Gemma có điều khoản riêng: API (`config.load`) và `ollama-pull` đều từ chối các tên này. Trọng số nằm trong volume, không trong repo |
+| SĐT, tọa độ | SĐT: số mô hình đưa phải có trong văn bản, không thì dùng số regex tìm được. Tọa độ: **chỉ** lấy bằng regex (tự đổi chỗ khi viết "kinh độ, vĩ độ"); mô hình đưa tọa độ khác thì bỏ, ghi cảnh báo | Hai trường quyết định đội cứu hộ đi đâu, gọi ai; mô hình ngôn ngữ hay "điền cho đủ". Tọa độ KHÔNG suy từ địa chỉ: tin thiếu tọa độ thì Poka-yoke báo `lat`/`lon`, người duyệt chọn điểm trên bản đồ |
+| Mô hình chậm hoặc chết | Quá `LLM_TIMEOUT_GIAY` (90 s) hay lỗi → bộ luật dự phòng, `ai.du_phong = true` | Lúc bão, máy chạy mô hình quá tải là chuyện bình thường; tin không được mất vì AI |
+| Dữ liệu cá nhân | Mô tả thay SĐT bằng `[SĐT]`; không ghi văn bản tin, SĐT ra log; kiểm trùng qua hàm `SECURITY DEFINER` chỉ trả mã tin + khoảng cách | Vai không được xem SĐT chỉ thấy bản che (#60): mô tả không được làm lộ lại. `cuu_tro_app` vẫn không đọc được cột `reporter_phone` |
+| Tiêm lệnh qua tin nhắn | Tin nằm trong khung `<tin>…</tin>`, lời dặn nói rõ là dữ liệu; đầu ra ép theo JSON schema rồi kiểm lại từng trường | Kẻ xấu có thể gửi "bỏ qua hướng dẫn…". Kết quả xấu nhất vẫn chỉ là một đề xuất sai mà người duyệt thấy cạnh văn bản gốc |
+| Nhu cầu | Hợp của nhu cầu mô hình đưa ra và từ khóa của bộ luật | Đo thật: Qwen2.5 7B bỏ sót nhu cầu ở 4/11 tin; từ khóa ít khi sai |
+| Thời hạn | `LLM_TIMEOUT_GIAY` 120 s < `GW_AI_TIMEOUT_GIAY` 150 s (upstream APISIX riêng `workflow-api-ai`; upstream chung chỉ 35 s) | Gateway cắt trước thì người dùng nhận 504 thay vì đề xuất của bộ luật dự phòng (gặp khi đo thật) |
+| Số luồng CPU | `LLM_SO_LUONG` 6, gửi Ollama dưới dạng `num_thread` mỗi request | Ollama mặc định dùng mọi lõi; trong VM Docker trên Mac các luồng tranh nhau: 0,43 token/s so với 13 token/s khi đặt 4-6 luồng |
+| Không dùng LangGraph, Qdrant | Gọi HTTP trực tiếp bằng `httpx` (đã có) | Bóc tách là một lượt hỏi-đáp, chưa cần đồ thị tác tử hay tìm kiếm vector; thêm sau khi có bài toán cần (vd tra cứu quy trình) |
+
+**Đo thật (26/10/2026, MacBook Apple Silicon, OrbStack 10 vCPU / 16 GB, Ollama 0.40.3 chạy CPU trong Docker, `qwen2.5:7b` Q4_K_M, `LLM_SO_LUONG=6`)**, bằng `make danh-gia-ai` trên 12 tin mẫu giả (`du_lieu/tin_keu_cuu_mau.json`, 59 trường có đáp án):
+
+| Nhà cung cấp | Đúng | Thời gian mỗi tin | Ghi chú |
+|---|---|---|---|
+| `gia-lap` (bộ luật) | 59/59 | < 10 ms | Tin mẫu viết theo khả năng của bộ luật; tin lạ hơn thì bộ luật kém hơn mô hình |
+| `ollama` Qwen2.5 7B | 58/59 (98%) | trung vị 11,5 s, chậm nhất 13,8 s (lần đầu nạp mô hình thêm ~15 s) | Sai 1: "ngập tới ngực, có em bé, không ra được" → `khan_cap` thay vì `cao` (lệch về phía an toàn). Trước khi sửa tọa độ/nhu cầu: 52/59 |
+| `ollama`, Ollama tự chọn số luồng | 0/12 trong hạn | > 120 s, mọi tin dùng bộ luật dự phòng | 0,43 token/s; request bị hủy vẫn chạy thêm ~1 phút trong Ollama |
+
+Tài nguyên: image `ollama/ollama:0.40.3` 7,0 GB trên ổ (nén ~2,6 GB arm64), mô hình 4,7 GB trong volume `ollamadata`, Ollama dùng ~4,7 GiB RAM khi đã nạp mô hình (`OLLAMA_MEM_LIMIT` 8g), CPU ~900% lúc sinh; `make up-ai` lần đầu 6,5–10 phút (tải ~7 GB). `cuu-tro-api` không đổi (~65 MiB). Máy có GPU, hoặc Ollama chạy thẳng trên macOS (Metal), nhanh hơn nhiều: `LLM_BASE_URL=http://host.docker.internal:11434`.
+
+### 6.5. Hàng chờ duyệt tin AI, Human-in-the-loop (#104)
+
+Đề xuất của AI (mục 6.4) chỉ thành tin kêu cứu khi một điều phối viên duyệt. Tin viết tự do vào hàng chờ (bảng `cuu_tro.ai_intake_reviews`, migration 0014); web điều phối hiện đề xuất cạnh văn bản gốc, người duyệt sửa (chọn vị trí trên bản đồ khi tin thiếu tọa độ) rồi duyệt hoặc hủy. Mỗi mục giữ vết: đề xuất của AI, trường người sửa (giá trị AI → giá trị người duyệt), người duyệt, thời điểm. API và bảng: `apps/cuu-tro/README.md` mục "Hàng chờ duyệt tin AI".
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant TN as tinh-nguyen / dieu-phoi
+  participant DP as dieu-phoi (web /hang-cho)
+  participant GW as APISIX
+  participant API as cuu-tro-api
+  participant HS as Hasura (/graphql)
+  participant PG as PostgreSQL (cuu_tro)
+  TN->>GW: POST /workflow/ai/boc-tach {van_ban, nguon, vao_hang_cho: true}
+  GW->>API: (route /workflow/ai/*)
+  API->>API: bóc tách + Poka-yoke + kiểm trước tin trùng (mục 6.4)
+  API->>PG: INSERT ai_intake_reviews (văn bản, đề xuất, người gửi) → cho_duyet
+  DP->>GW: query ai_intake_reviews (vai dieu-phoi)
+  GW->>HS: JWT → chỉ dieu-phoi thấy văn bản gốc + đề xuất
+  DP->>GW: POST /workflow/hang-cho/{id}/duyet {tin_keu_cuu đã sửa}
+  GW->>API: (route /workflow/*: JWT, WAF đọc body)
+  API->>HS: đọc đề xuất bằng JWT của người duyệt
+  API->>API: keu_cuu.kiem_tra (422 theo trường), so trường đã sửa
+  API->>PG: BEGIN · SELECT … FOR UPDATE · INSERT incidents · UPDATE da_duyet + vết · COMMIT
+  Note over PG: trigger chặn trùng (409, rollback, mục vẫn chờ) · outbox phân công tự động (#67)
+  API-->>DP: 201 {incident_id, truong_da_sua}
+```
+
+| Quyết định | Chọn | Vì sao |
+|---|---|---|
+| Hàng chờ ở đâu | **Bảng PostgreSQL** của ứng dụng, đọc qua Hasura; ghi chỉ qua API | Hàng chờ phải bền (máy điều phối tắt, nhiều người cùng trực) và là vết kiểm toán; Hasura cho web đọc theo quyền vai trò như mọi bảng khác. Không dùng Temporal: một mục chờ người là dữ liệu, không phải quy trình có hẹn giờ; luồng sau khi duyệt đã là `PhanCongCuuHo` (#67) |
+| Ai tạo đề xuất trong vết | **API** lưu nguyên phản hồi `/ai/boc-tach` của chính nó (`vao_hang_cho: true`); GraphQL không có quyền thêm/sửa | Nếu client gửi "AI đã đề xuất X" thì vết so sánh AI ↔ người không còn tin được. Cờ trên endpoint có sẵn (không thêm endpoint) để mọi đường bóc tách đều vào được hàng chờ: web, sau này app hiện trường và bot |
+| Tạo tin khi duyệt | Cùng `keu_cuu.kiem_tra` và câu `INSERT` của `POST /workflow/keu-cuu`, trong **một transaction** với cập nhật vết, dòng hàng chờ khóa `FOR UPDATE` | Không có đường thứ hai né Poka-yoke. Tin và vết cùng commit hoặc cùng rollback (tin trùng → 409, mục vẫn chờ). Hai người duyệt cùng lúc: người sau thấy `da_duyet` sau khi chờ khóa → 409, chỉ một tin |
+| Dữ liệu cá nhân | Văn bản gốc, đề xuất, tin cuối chỉ vai `dieu-phoi` đọc (Hasura). `cuu_tro_app` ghi được nhưng không đọc các cột này; khi duyệt API đọc đề xuất qua Hasura bằng JWT người duyệt | Giữ nguyên tắc của #66/#102: role dịch vụ không đọc SĐT người dân. `tinh-nguyen` chỉ thấy trạng thái tin mình chuyển; log chỉ có mã mục |
+| Vết không sửa được | Trigger `ai_intake_reviews_immutable` (đề xuất, văn bản, người gửi không đổi; dòng đã duyệt/hủy không đổi), CHECK theo trạng thái, không ai có `DELETE`, khóa ngoại tới tin | Vết duyệt dùng để giải trình khi đội cứu hộ đi nhầm chỗ hay bỏ sót tin: phải biết lỗi do AI hay do người sửa |
+| Trường đã sửa | API tính `{trường: {ai, nguoi}}` trên giá trị đã chuẩn hóa; web đánh dấu trường khác đề xuất ngay khi gõ | Đo được chất lượng AI trên dữ liệu thật (tỷ lệ duyệt nguyên đề xuất, trường hay phải sửa) để chọn mô hình/bộ luật; không coi gõ lại SĐT có dấu cách là sửa |
+| `created_by` của tin | Người đưa tin vào hàng chờ | Tình nguyện viên chuyển tin vẫn theo dõi được tin của mình (Hasura lọc theo `created_by`), tải ảnh hiện trường lúc tin còn `tiep_nhan` như tin tự gửi |
+
+### 6.6. App hiện trường React Native, hàng đợi offline và khóa idempotency (#106, D-011)
+
+App `apps/cuu-tro/mobile/` (React Native 0.80, TypeScript strict) cho tình nguyện viên và đội cứu hộ. App là client Tầng 2 như web điều phối: chỉ gọi lõi qua APISIX (`/workflow/*`, `/graphql`), đăng nhập Keycloak bằng OIDC + PKCE với client công khai `dxos-mobile` (redirect `org.disasterdxos.cuutro:/oauthredirect`, PKCE S256 bắt buộc, không có client secret, không đăng nhập mật khẩu trực tiếp). Màn hình, cách build: `apps/cuu-tro/mobile/README.md`.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant A as App (hàng đợi trong Keychain/Keystore)
+  participant GW as APISIX (JWT, WAF)
+  participant API as cuu-tro-api
+  participant PG as PostgreSQL (cuu_tro)
+  Note over A: Bản ghi mới: khóa = UUID v4, sinh một lần
+  A->>GW: POST /workflow/keu-cuu, Idempotency-Key: K
+  GW->>API: (JWT hợp lệ)
+  API->>PG: tìm (sub, K) đã xong? → chưa
+  API->>PG: BEGIN · INSERT idempotency_keys (sub, K, đường dẫn, SHA-256 yêu cầu) · INSERT incidents · UPDATE khóa ← phản hồi · COMMIT
+  API--xA: 201 (mất giữa đường)
+  A->>GW: gửi lại, CÙNG K
+  API->>PG: tìm (sub, K) → đã xong
+  API-->>A: 201 phản hồi cũ + Idempotent-Replayed: true
+```
+
+| Quyết định | Chọn | Vì sao |
+|---|---|---|
+| Ghi dữ liệu từ app | Mọi thao tác ghi (kêu cứu, chuyển tin cho điều phối, ảnh, vị trí đội) vào **hàng đợi trên máy** trước rồi mới gửi; đọc dữ liệu bằng TanStack Query (giữ dữ liệu cũ khi mất mạng) | Lúc bão lũ mạng chập chờn: người dùng bấm gửi là xong, không phải chờ mạng hay nhập lại. Hàng đợi gửi lại khi có mạng (NetInfo), khi app trở lại, theo lịch lùi 5 s → 10 phút |
+| Không tạo trùng khi gửi lại | Header **`Idempotency-Key`** trên `POST /workflow/keu-cuu`, `POST /workflow/tai-len/su-co/{id}/anh`, `POST /workflow/ai/boc-tach` (khi `vao_hang_cho`). Bảng `idempotency_keys` (migration `0015`, khóa chính `(owner_sub, key)`), giữ khóa **trong cùng transaction** với bản ghi nghiệp vụ | Mất phản hồi sau khi máy chủ đã tạo tin là chuyện thường trên mạng yếu. Không có khóa: gửi lại tin kêu cứu bị chốt chặn trùng trả 409 (app không biết tin của chính mình đã vào), gửi lại ảnh tạo ảnh thứ hai. Khóa giữ trước khi làm việc nên hai yêu cầu đồng thời cùng khóa: yêu cầu sau chờ ở khóa chính rồi phát lại kết quả của yêu cầu trước |
+| Phạm vi khóa | Theo người dùng (sub Keycloak), băm đường dẫn + nội dung; cùng khóa khác nội dung → 422; chỉ lưu phản hồi 2xx; hết hạn 72 giờ | Không ai phát lại được kết quả của người khác; client dùng lại khóa sai bị báo ngay. Lỗi (422, 409) không lưu nên gửi lại cho cùng kết quả, không giả thành công |
+| Dữ liệu cá nhân trong khóa | Phản hồi lưu không có SĐT, tên, văn bản tin (chuyển tin: chỉ mã hàng chờ + kết luận Poka-yoke); ảnh: không lưu link (ký link mới khi phát lại) | Bảng khóa không thành bản sao thứ hai của dữ liệu cá nhân; link presigned cũ đã hết hạn |
+| Phát lại ảnh trước khi kiểm quyền | Gửi lại cùng khóa trả kết quả cũ ngay, trước khi hỏi Hasura quyền theo trạng thái tin | Tình nguyện viên chỉ được tải ảnh khi tin còn `tiep_nhan`; tin đã sang `phan_cong` sau lần gửi đầu thì lần gửi lại vẫn phải nhận kết quả cũ, không phải 403. Khóa chỉ thuộc chính người gửi nên không lộ gì |
+| Lưu trên máy | Hàng đợi và token trong Keychain (iOS) / Keystore (Android) qua react-native-keychain; ảnh chép vào thư mục riêng của app; cài đặt (không có dữ liệu cá nhân) trong AsyncStorage | Bản ghi có SĐT, tên, vị trí người cần cứu: không để dạng rõ trên máy. Tệp tạm của camera có thể bị hệ điều hành dọn khi chờ mạng lâu |
+| Poka-yoke trên máy | Cùng luật với API (`utils/kiemTra.ts` ↔ `keu_cuu.py`): tọa độ bắt buộc, SĐT di động Việt Nam, độ dài, số người | Báo lỗi theo trường ngay khi chưa có mạng, thay vì để bản ghi lỗi 422 khi có mạng. API vẫn là chốt chặn (vùng phục vụ, tin trùng) |
+| Ảnh kèm tin chưa gửi | Bản ghi ảnh trỏ tới bản ghi tin trong hàng đợi; gửi sau khi tin có mã thật trên máy chủ | Tình nguyện viên chụp ảnh ngay lúc báo tin, kể cả khi mất mạng |
+| Vị trí đội | GraphQL `update_rescue_teams` với điều kiện `location_updated_at < lúc đo`; đội chưa có vị trí thì ghi lần đầu | Bản ghi cũ gửi muộn không đè vị trí mới. Không dùng `_is_null` trong điều kiện: WAF (OWASP CRS) ở gateway coi là SQL injection và chặn 403 |
+| AI bóc tách trong app | "Bóc tách bằng AI" (cần mạng) chỉ điền sẵn form, người dùng soát rồi gửi; "Chuyển cho điều phối duyệt" (không cần mạng) vào hàng chờ HITL của web (#104) | Giữ nguyên tắc AI không tự tạo tin (mục 6.4, 6.5) |
+| Bản đồ | MapLibre React Native (MIT) + kiểu nền OpenFreeMap như web; không react-native-maps (bản đồ Google/Apple) | D-011: không phụ thuộc dịch vụ độc quyền; cùng nguồn bản đồ với web |
+
+Kiểm thử: Jest trong `apps/cuu-tro/mobile/__tests__/` (job CI `mobile` chạy typecheck, lint, Jest, giấy phép; không build native); `tests/test_cuu_tro_idempotency.py`; `db/tests/0015_khoa_idempotency.sql`; `scripts/smoke-mobile.sh` (trong `make smoke`): đăng nhập PKCE thật với `dxos-mobile` rồi gửi đúng các request của app qua gateway.
+
 ## 7. Vì sao lõi độc lập với nghiệp vụ (`core/` và `apps/`)
 
 Đề yêu cầu dịch vụ Tầng 1 **độc lập hoàn toàn với nghiệp vụ cụ thể**, chỉ cung cấp dịch vụ cơ bản (xác thực, lưu trữ, workflow…) cho người phát triển ứng dụng Tầng 2. Vì vậy repo chia hai phần:
@@ -595,7 +729,7 @@ Gửi Telegram là "ít nhất một lần": worker chết sau khi Telegram nh�
 | Thư mục | Chứa | Không chứa |
 |---|---|---|
 | `core/` (Tầng 1) | Cấu hình dịch vụ dùng chung: bí mật (`core/openbao/`), gateway (`core/apisix/`), khởi tạo CSDL dùng chung + PostGIS (`core/postgres/init/`), sự kiện/MQTT (`core/nats/`); sau này: cơ chế tự sinh API, lưu trữ, workflow engine, sổ cái `core/ledger` | Bảng, vai trò, quy trình, dữ liệu mẫu hay giao diện của đề tài thiên tai |
-| `apps/cuu-tro/` (Tầng 2) | Realm Keycloak với vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen` (`keycloak/realm.json`); từ tuần 2: migration bảng `incidents`, `rescue_teams`, `shelters`, `supplies`, `sensors`, workflow Temporal, seed, web Nuxt, app Flutter | Cấu hình dịch vụ lõi |
+| `apps/cuu-tro/` (Tầng 2) | Realm Keycloak với vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen` (`keycloak/realm.json`); từ tuần 2: migration bảng `incidents`, `rescue_teams`, `shelters`, `supplies`, `sensors`, workflow Temporal, seed, web Nuxt (`web/`), app hiện trường React Native (`mobile/`, D-011) | Cấu hình dịch vụ lõi |
 
 ```mermaid
 flowchart LR
@@ -605,11 +739,11 @@ flowchart LR
   subgraph a1["apps/cuu-tro/ · Ứng dụng cứu trợ thiên tai"]
     r1["realm + vai trò"] --- s1["schema PostGIS"] --- w1["workflow kêu cứu"] --- u1["web + app"]
   end
-  subgraph a2["apps/&lt;ứng-dụng-khác&gt;/ · ví dụ quản lý kho"]
-    r2["realm + vai trò"] --- s2["schema"] --- w2["workflow"]
+  subgraph a2["apps/muon-thiet-bi/ · module mẫu mượn trả thiết bị (#110)"]
+    r2["realm thiet-bi + 2 vai"] --- s2["schema + Poka-yoke"] --- h2["Hasura metadata"]
   end
   a1 -->|"DXOS_APP=cuu-tro"| core
-  a2 -.->|"DXOS_APP=&lt;khác&gt;"| core
+  a2 -->|"DXOS_APP=muon-thiet-bi"| core
 ```
 
 Cách cắm ứng dụng vào lõi: đặt biến `DXOS_APP` trong `.env` là tên thư mục trong `apps/`. Lõi nạp cấu hình do ứng dụng cung cấp qua các điểm cắm cố định:
@@ -622,14 +756,19 @@ Cách cắm ứng dụng vào lõi: đặt biến `DXOS_APP` trong `.env` là t�
 | Backend (worker + API) | `compose.yaml`, `workflow/` (Python) | `docker-compose.yml` nạp `apps/${DXOS_APP}/compose.yaml` bằng `include` (profile `app`); route `/workflow/*` trỏ vào `<DXOS_APP>-api:8000` (mục 7.3) | Có (#29) |
 | Role DB dịch vụ | `db/migrations/` (GRANT) | `postgres-roles` tạo role `<schema>_app` không quyền gì; migration của ứng dụng cấp đúng bảng/cột (mục 7.3) | Có (#29) |
 | Bí mật của ứng dụng | `openbao/policies/*.hcl` | `openbao-init` nạp thành policy + AppRole `app-<DXOS_APP>-<dịch vụ>` | Có (#29) |
-| Route gateway riêng | `gateway/routes.yaml` | Gộp với route lõi khi khởi động APISIX | Chưa cần (tuần 3+) |
+| Route gateway riêng | `gateway/routes.yaml` | Gộp với route lõi khi khởi động APISIX | Chưa làm: module dùng `/graphql`, `/files/*`, `/workflow/*`, `/ngsi-ld/v1/*`, `/realtime/websocket`, `/` |
 | Dữ liệu mẫu | `db/seed/` | `make seed` (`migrate seed`) | Có (#25) |
+| Bucket S3, bí mật riêng, dashboard | `s3/buckets.conf`, `openbao/secrets.conf`, `grafana/dashboards/` | `s3-buckets`, `openbao-init`, Grafana (đều tùy chọn) | Có (#27, #87, #92) |
+| Smoke riêng | `tests/smoke.sh` | `make smoke-app` chạy sau smoke lõi dùng chung + test DB | Có (#110) |
 
-Lợi ích: cùng một lõi, cắm thêm ứng dụng khác chỉ bằng cấu hình, không sửa `core/`. Đây là bằng chứng lõi dùng lại được, sẽ trình bày trong phần demo.
+Lợi ích: cùng một lõi, cắm thêm ứng dụng khác chỉ bằng cấu hình, không sửa `core/`.
+
+**Bằng chứng (#110):** module mẫu `apps/muon-thiet-bi/` (mượn trả thiết bị dùng chung, khác đề tài) chỉ có realm, migration, metadata Hasura, `compose.yaml` rỗng. Lõi chạy với `DXOS_APP=muon-thiet-bi` trên volume trống mà không sửa `core/`: migration tạo schema `muon_thiet_bi` và role `muon_thiet_bi_{owner,app,bi}`, OpenBao sinh bí mật `secret/app/muon-thiet-bi/*`, NATS có user `muon-thiet-bi-{app,thiet-bi}`, Hasura nhận JWT realm `thiet-bi`. `make smoke-app` chạy smoke lõi dùng chung (OpenBao, Hasura, SeaweedFS, Temporal, NATS), test DB và smoke của module. `make check` kiểm compose hợp lệ với mọi module. Hướng dẫn cho lập trình viên: [`viet-module.md`](viet-module.md).
 
 Còn ràng buộc (tuần 2 xử lý):
 - Tên realm (`KEYCLOAK_REALM`, mặc định `disaster`) là cấu hình triển khai, không phải nghiệp vụ. Từ #12, `core/apisix/apisix.yaml` đọc tên realm qua `${{KEYCLOAK_REALM:=disaster}}`, không còn ghi cứng. Từ #29, upstream của `/workflow/*` cũng là biến (`GW_WORKFLOW_UPSTREAM_HOST/PORT`, mặc định `<DXOS_APP>-api:8000`). Còn lại: gộp route riêng của ứng dụng (`apps/<DXOS_APP>/gateway/routes.yaml`) với route lõi lúc khởi động, khi ứng dụng cần route ngoài `/graphql`, `/files`, `/workflow`.
-- `scripts/smoke-jwt.sh` dùng người dùng mẫu của `apps/cuu-tro` để kiểm thử lõi.
+- `scripts/smoke-jwt.sh`, `smoke-gateway.sh` dùng người dùng mẫu của `apps/cuu-tro`. `smoke-openbao.sh` và `smoke-core.sh` dùng được cho mọi module (`smoke-core.sh` đọc user mẫu từ `SMOKE_CORE_USERS`, #110).
+- Grafana (profile `bi`) mặc định đọc bằng `cuu_tro_bi` và dashboard chính `dieu-hanh.json`: module khác đặt `APP_BI_DB_USER` (`viet-module.md` mục 6).
 
 ### 7.1. Tầng dữ liệu của ứng dụng (#25)
 
@@ -778,9 +917,10 @@ flowchart LR
 | Idempotent, không lùi | Mỗi lần ghi thay cả thực thể (upsert); trước đó GET thực thể, bản tin có `observedAt` cũ hơn thì bỏ qua (ack) | Giao lại, gửi bù, chạy lại từ đầu stream đều cho cùng kết quả; giá trị mới nhất luôn thắng |
 | Thử lại có hẹn giờ | Scorpio không trả lời / 5xx / 429 → `nak` sau 2, 4, 8 … 60 giây, tối đa `max_deliver` 20 lần; 4xx khác → bỏ (term) và ghi log | Scorpio khởi động lại không làm mất bản tin (smoke dừng Scorpio rồi chạy lại); bản tin sai không bị giao lại mãi |
 | Chỉ đọc qua gateway | Route `/ngsi-ld/v1/{entities,types,attributes}` GET + JWT; mọi đường khác dưới `/ngsi-ld/` → 403; bỏ `NGSILD-Tenant` | Scorpio không có xác thực riêng; người dùng không sửa được bản sao số, không tạo subscription gửi dữ liệu ra ngoài |
+| Image theo kiến trúc máy (#99) | amd64: bản native `linux-amd64-6.0.2` (384m); arm64: Makefile đặt `SCORPIO_IMAGE` = bản JVM `java-6.0.2` cùng phiên bản (1g); `core/scorpio/chay.sh` chọn lệnh theo image; ghi đè bằng `.env` | Bản native cần AVX2, Rosetta trong VM của Mac Apple Silicon không có. Cùng phiên bản, cùng CSDL và API nên hành vi như nhau; CI amd64 vẫn chạy bản native |
 | Không lưu lịch sử trong Scorpio | Chỉ trạng thái mới nhất; chuỗi đo nằm ở `sensor_readings` (Hasura) | Tránh hai nơi giữ lịch sử; bản sao số dựng lại được từ stream (lưu 7 ngày) hoặc từ `sensors.last_*` |
 
-Đọc dữ liệu (cho lớp trạm đo trên bản đồ, #62): `GET /ngsi-ld/v1/entities?type=WaterLevelStation&options=keyValues` kèm Bearer JWT; thêm `Accept: application/geo+json` để nhận GeoJSON FeatureCollection cho MapLibre; lọc `q=alertLevel=="nguy_hiem"`, `georel=near;maxDistance==5000&geometry=Point&coordinates=[108.11,15.86]`. Chi tiết thuộc tính: `apps/cuu-tro/ngsi-ld/README.md`.
+Đọc dữ liệu (lớp trạm đo trên bản đồ của web điều phối, #62, `apps/cuu-tro/web/README.md` mục "Lớp trạm đo mực nước"; web tải lại mỗi 60 giây và ngay khi có cảnh báo realtime): `GET /ngsi-ld/v1/entities?type=WaterLevelStation&options=keyValues` kèm Bearer JWT; thêm `Accept: application/geo+json` để nhận GeoJSON FeatureCollection cho MapLibre; lọc `q=alertLevel=="nguy_hiem"`, `georel=near;maxDistance==5000&geometry=Point&coordinates=[108.11,15.86]`. Chi tiết thuộc tính: `apps/cuu-tro/ngsi-ld/README.md`.
 
 ### 7.5. Dữ liệu phi cấu trúc: ảnh hiện trường (#27)
 
@@ -821,7 +961,8 @@ flowchart LR
 | Phạm vi khóa ứng dụng | Định danh `<DXOS_APP>-app` trên SeaweedFS: `Read/Write/List:<DXOS_APP>-*`, không `Admin` | Lộ khóa ứng dụng không đọc được bucket khác, không tạo/xóa bucket, không đổi chính sách |
 | Bucket do ứng dụng khai báo | `apps/<DXOS_APP>/s3/buckets.conf`; container một lần `s3-buckets` (image SeaweedFS, `weed shell`) tạo bucket còn thiếu mỗi lần `make up`, từ chối tên không có tiền tố `<DXOS_APP>-` | Lõi không biết tên bucket nghiệp vụ (giống migration SQL, metadata Hasura, stream NATS) |
 | Bucket riêng tư | SeaweedFS không có định danh nặc danh: request không ký → 403 | Không cần chính sách bucket riêng: mặc định là đóng |
-| Siêu dữ liệu tách nội dung | Bảng `incident_media` (khóa object, loại, kích thước, SHA-256, người tải, vai trò, thời điểm, `scan_status`); GraphQL chỉ cho đọc | Không ai tự tạo được dòng trỏ tới object tùy ý; truy vấn/thống kê ảnh bằng GraphQL như dữ liệu khác |
+| Quét mã độc trước khi lưu (#111) | `cuu-tro-api` gửi nội dung tới clamd (`clamav:3310`, giao thức `INSTREAM`, profile `sec`) **trước** khi kiểm magic bytes, ghi S3, `INSERT`. Nhiễm → `422 anh_nhiem_ma_doc` (tên chữ ký), không lưu gì; sạch → `scan_status = sach`, `scanned_at`, `scan_engine` (phiên bản động cơ / bộ chữ ký). Máy quét không chạy hay lỗi → mặc định nhận với `chua_quet` và log cảnh báo; `ANH_QUET_BAT_BUOC=1` thì `503` | Tệp nhiễm không bao giờ nằm trong kho để ai đó mở link presigned. Mặc định không chặn vì lúc bão ảnh hiện trường quan trọng hơn, và ảnh chỉ người có quyền xem; nơi yêu cầu chặt đặt biến bắt buộc. ClamAV GPL-2.0 chỉ nói chuyện qua mạng (không liên kết thư viện); image bản đầy đủ có sẵn chữ ký nên quét được khi không có mạng, freshclam cập nhật khi có |
+| Siêu dữ liệu tách nội dung | Bảng `incident_media` (khóa object, loại, kích thước, SHA-256, người tải, vai trò, thời điểm, `scan_status`, `scanned_at`, `scan_engine`); GraphQL chỉ cho đọc | Không ai tự tạo được dòng trỏ tới object tùy ý; truy vấn/thống kê ảnh bằng GraphQL như dữ liệu khác |
 
 API ghi S3 thẳng `seaweedfs:8333` trong mạng nội bộ, giống worker gọi Temporal/PostgreSQL thẳng (mục 7.3): đó là dịch vụ nền của ứng dụng, có định danh riêng, không dùng quyền người dùng. Mọi thứ người dùng gọi vẫn qua APISIX. Chi tiết API, bảng quyền: `apps/cuu-tro/README.md` mục "Ảnh hiện trường".
 

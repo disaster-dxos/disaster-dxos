@@ -13,7 +13,10 @@
 #   app    backend và web của ứng dụng Tầng 2 đang chọn (apps/${DXOS_APP}/compose.yaml, nạp bằng include
 #          bên dưới), vd cuu-tro-worker, cuu-tro-api (#29), cuu-tro-web (#64). make up bật cả core và app.
 #   bi     Grafana OSS (AGPL-3.0, dịch vụ riêng) dashboard điều hành (#92): make up-bi
-#   ai, sec   xem TODO cuối file
+#   ai     Ollama (MIT, dịch vụ riêng) chạy mô hình mở cho AI bóc tách tin kêu cứu (#102): make up-ai.
+#          Không bật thì ứng dụng dùng LLM_PROVIDER=gia-lap (bộ luật) hoặc API ngoài openai-compatible
+#   sec    ClamAV (GPL-2.0, dịch vụ riêng) quét mã độc tệp tải lên (#111): make up-sec. Không bật thì ứng dụng
+#          vẫn nhận tệp với trạng thái "chưa quét" (hoặc từ chối nếu ứng dụng bắt buộc quét)
 #
 # Chạy: cp .env.example .env && make up   (make up tự khởi tạo/mở khóa OpenBao lần đầu)
 # Bí mật của dịch vụ lõi nằm trong OpenBao, không nằm trong .env (#14). bao agent render
@@ -213,7 +216,9 @@ services:
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-15432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      # Kiểm qua TCP: lúc initdb trên volume trống, server tạm của docker-entrypoint chỉ nghe Unix socket rồi
+      # tắt để khởi động lại; kiểm qua socket sẽ báo healthy quá sớm và postgres-roles bị từ chối kết nối
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -359,6 +364,10 @@ services:
       GW_REALTIME_RATE_LIMIT_COUNT: ${GW_REALTIME_RATE_LIMIT_COUNT:-60}
       # Route /workflow/keu-cuu (#66): tạo tin kêu cứu / GW_RATE_LIMIT_WINDOW giây / IP, chống spam
       GW_KEU_CUU_RATE_LIMIT_COUNT: ${GW_KEU_CUU_RATE_LIMIT_COUNT:-20}
+      # Route /workflow/ai/* (#102): gọi mô hình AI tốn CPU/RAM / GW_RATE_LIMIT_WINDOW giây / IP
+      GW_AI_RATE_LIMIT_COUNT: ${GW_AI_RATE_LIMIT_COUNT:-30}
+      # Thời hạn chờ API của route /workflow/ai/* (giây), phải lớn hơn LLM_TIMEOUT_GIAY của ứng dụng
+      GW_AI_TIMEOUT_GIAY: ${GW_AI_TIMEOUT_GIAY:-150}
       # Route /ngsi-ld/v1/* (#85): URL @context NGSI-LD của ứng dụng mà gateway đặt vào header Link (Scorpio tải
       # trong mạng nội bộ). Quy ước <DXOS_APP>-api:8000/ngsi-ld/context.jsonld (cuu-tro-api)
       GW_NGSI_LD_CONTEXT_URL: ${GW_NGSI_LD_CONTEXT_URL:-http://${DXOS_APP:-cuu-tro}-api:8000/ngsi-ld/context.jsonld}
@@ -718,11 +727,13 @@ services:
     # Scorpio tự tạo bảng bằng Flyway). KHÔNG MongoDB. Mật khẩu (DBPASS) từ OpenBao qua bao-agent-scorpio.
     # Scorpio không có xác thực: không mở cổng ra host; backend ứng dụng ghi trong mạng nội bộ
     # (scorpio:9090), người dùng chỉ đọc qua APISIX /ngsi-ld/v1/* (JWT, WAF, chỉ GET). Image chỉ có amd64:
-    # Mac Apple Silicon chạy giả lập như postgis (SCORPIO_PLATFORM).
-    image: scorpiobroker/all-in-one-runner:linux-amd64-6.0.2
+    # Mac Apple Silicon chạy giả lập như postgis (SCORPIO_PLATFORM). Bản native cần AVX/AVX2 mà Rosetta trong
+    # VM không có (#99): trên arm64 Makefile đặt SCORPIO_IMAGE = bản JVM cùng phiên bản, SCORPIO_MEM_LIMIT = 1g;
+    # core/scorpio/chay.sh chạy đúng lệnh của từng bản. Ghi đè được bằng .env.
+    image: ${SCORPIO_IMAGE:-scorpiobroker/all-in-one-runner:linux-amd64-6.0.2}
     platform: ${SCORPIO_PLATFORM:-linux/amd64}
     profiles: [core]
-    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos", "./application", "-Dquarkus.http.host=0.0.0.0"]
+    entrypoint: ["bash", "/opt/dxos/env-from-files.sh", "/run/secrets/dxos", "bash", "/opt/dxos/scorpio-chay.sh"]
     depends_on:
       postgres-roles:
         condition: service_completed_successfully
@@ -738,12 +749,16 @@ services:
       # scorpio khi ghi dồn (Scorpio báo "too many connections" bằng HTTP 400). Hết kết nối thì request xếp hàng.
       QUARKUS_DATASOURCE_REACTIVE_MAX_SIZE: ${SCORPIO_DB_POOL:-8}
       QUARKUS_DATASOURCE_JDBC_MAX_SIZE: "2"
+      # Chỉ bản JVM đọc (bản native bỏ qua): heap theo mem_limit, GC một luồng cho container nhỏ
+      JAVA_TOOL_OPTIONS: ${SCORPIO_JAVA_OPTS:--XX:MaxRAMPercentage=60 -XX:+UseSerialGC}
     volumes:
       - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
+      - ./core/scorpio/chay.sh:/opt/dxos/scorpio-chay.sh:ro
       - secrets-scorpio:/run/secrets/dxos:ro
     read_only: true
     tmpfs:
-      - /tmp:size=16m
+      # Bản JVM giải nén thư viện native (netty…) vào /tmp
+      - /tmp:size=64m
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     healthcheck:
@@ -759,7 +774,8 @@ services:
       timeout: 5s
       retries: 18
       start_period: 20s
-    mem_limit: 384m
+    # Bản native ~200 MB; bản JVM (arm64) cần ~1 GB, bị OOM ở 384m (#99)
+    mem_limit: ${SCORPIO_MEM_LIMIT:-384m}
 
   # ======================= profile: bi (#92) =======================
   bao-agent-grafana:
@@ -832,9 +848,77 @@ services:
       start_period: 20s
     mem_limit: 384m
 
-  # ===================== TODO các profile sau =====================
-  # sec (tuần 2-4): ClamAV (GPL-2.0, dịch vụ riêng). Sổ cái Tessera đã vào core (#28, dịch vụ ledger)
-  # ai  (tuần 5):   Ollama + Qwen2.5 7B/14B, Qdrant, agent FastAPI + LangGraph
+  # ======================= profile: ai (#102) =======================
+  ollama:
+    # Máy chạy mô hình ngôn ngữ mở (Ollama, MIT), dịch vụ riêng của lõi: lõi không biết nghiệp vụ, ứng dụng
+    # gọi http://ollama:11434/api/chat trong mạng nội bộ (LLM_PROVIDER=ollama). Không mở cổng ra máy host,
+    # không đi qua gateway: người dùng chỉ gọi API của ứng dụng (/workflow/ai/*) có JWT + giới hạn tần suất.
+    # Trọng số mô hình nằm trong volume ollamadata (tải bằng ollama-pull), KHÔNG nằm trong repo.
+    # Docker trên macOS không dùng được GPU Apple: mô hình chạy CPU (đo được: docs/architecture.md mục 4).
+    <<: *restart
+    image: ollama/ollama:${OLLAMA_VERSION:-0.40.3}
+    profiles: [ai]
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      # Một mô hình, một yêu cầu một lúc: giữ RAM trong giới hạn laptop; giữ mô hình trong RAM 30 phút
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_KEEP_ALIVE: 30m
+      OLLAMA_CONTEXT_LENGTH: "2048"
+    volumes:
+      - ollamadata:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    # Qwen2.5 7B Q4_K_M ~4,7 GB trọng số + ngữ cảnh 4096; 14B cần đặt OLLAMA_MEM_LIMIT=14g
+    mem_limit: ${OLLAMA_MEM_LIMIT:-8g}
+
+  ollama-pull:
+    # Chạy một lần mỗi lần up: tải mô hình LLM_MODEL về volume (đã có thì chỉ kiểm lại). Chặn mô hình không
+    # được phép (Llama, Gemma; Qwen2.5 3B/72B không phải Apache-2.0), cùng luật với cuu_tro_workflow.config.
+    image: ollama/ollama:${OLLAMA_VERSION:-0.40.3}
+    profiles: [ai]
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        if printf '%s' "$$LLM_MODEL" | grep -Eiq 'llama|gemma|qwen2\.5[-:_]?(coder[-:_]?)?(3b|72b)'; then
+        echo "LLM_MODEL=$$LLM_MODEL không được phép (giấy phép không phải Apache-2.0/OSI)" >&2; exit 1; fi;
+        ollama pull "$$LLM_MODEL"
+
+  # ===================== profile sec =====================
+  clamav:
+    <<: *restart
+    # Quét mã độc tệp tải lên (#111). ClamAV là GPL-2.0: DỊCH VỤ RIÊNG bằng image gốc, không sửa, không liên
+    # kết vào mã dự án; ứng dụng nói chuyện qua giao thức mạng clamd (TCP 3310, INSTREAM). Lõi không biết tệp gì
+    # được quét: backend của ứng dụng gọi tới clamav:3310 trong mạng nội bộ. Không mở cổng ra host, không qua APISIX.
+    # Image bản đầy đủ có sẵn bộ chữ ký (main/daily/bytecode) nên quét được ngay cả khi không có mạng; volume
+    # clamavdata nhận bản đó lần đầu, freshclam (trong cùng container) cập nhật mỗi ngày CLAMAV_FRESHCLAM_LAN lần
+    # khi có mạng. CLAMAV_NO_FRESHCLAMD=true để tắt cập nhật (máy không ra Internet). Nạp bộ chữ ký mất ~20–60 giây.
+    image: clamav/clamav:1.5.4-debian13-slim
+    profiles: [sec]
+    environment:
+      CLAMAV_NO_FRESHCLAMD: ${CLAMAV_NO_FRESHCLAMD:-false}
+      CLAMAV_NO_MILTERD: "true"
+      FRESHCLAM_CHECKS: ${CLAMAV_FRESHCLAM_LAN:-2}
+      # Tệp lớn nhất nhận qua INSTREAM: lớn hơn giới hạn ảnh của ứng dụng (ANH_MAX_BYTES 10 MiB)
+      CLAMD_CONF_StreamMaxLength: 25M
+      CLAMD_CONF_MaxFileSize: 25M
+      CLAMD_CONF_MaxScanSize: 100M
+    volumes:
+      - clamavdata:/var/lib/clamav
+    # Healthcheck của image (clamdcheck.sh, chờ tối đa 6 phút lúc khởi động)
+    mem_limit: ${CLAMAV_MEM_LIMIT:-2g}
+    security_opt: ["no-new-privileges:true"]
 
 volumes:
   pgdata:
@@ -843,6 +927,8 @@ volumes:
   natsdata:
   ledgerdata:
   grafanadata:
+  ollamadata:
+  clamavdata:
   secrets-keycloak: *secrets-tmpfs
   secrets-postgres: *secrets-tmpfs
   secrets-apisix: *secrets-tmpfs

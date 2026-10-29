@@ -3,6 +3,7 @@
 # Tên job ổn định để bật bắt buộc trong bảo vệ nhánh: license, build-from-source, shellcheck, yamllint, pytest.
 # Sổ cái core/ledger (Go, #28): go-test (gofmt, go vet, go test) và go-licenses (chỉ giấy phép OSI).
 # Web điều phối (Nuxt, #59): job web (giấy phép npm, Vitest, typecheck, build, image Docker #64), chưa bắt buộc.
+# App hiện trường (React Native, #106, D-011): job mobile (giấy phép npm, typecheck, lint, Jest), không build native.
 name: ci
 on:
   push:
@@ -25,6 +26,14 @@ jobs:
       - uses: actions/checkout@v4.2.2
       - run: cp .env.example .env
       - run: docker compose --profile '*' config --quiet
+      # Compose hợp lệ với mọi ứng dụng cắm vào lõi (apps/<tên>/compose.yaml, #110)
+      - name: Compose hợp lệ với từng module trong apps/
+        run: |
+          for a in apps/*/compose.yaml; do
+            app=$(basename "$(dirname "$a")")
+            DXOS_APP=$app docker compose --profile '*' config --quiet
+            echo "OK: DXOS_APP=$app"
+          done
       # --profile '*': dựng mọi image build từ nguồn trong repo (vd core/apisix: APISIX + Coraza WAF)
       - run: docker compose --profile '*' build
 
@@ -148,3 +157,21 @@ jobs:
           grep -q 'id="__nuxt"' index.html
           test "$(docker exec web id -u)" != 0
           docker rm -f web
+  mobile:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/cuu-tro/mobile
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-node@v4.4.0
+        with:
+          node-version: "22.22.3"
+      # Yarn 4 qua Corepack theo trường packageManager (không đưa bản Yarn vào repo)
+      - run: corepack enable
+      - run: yarn install --immutable
+      # Mọi gói npm (kể cả gián tiếp) phải có giấy phép OSI tương thích Apache-2.0 (DEPENDENCIES.md)
+      - run: yarn licenses
+      - run: yarn typecheck
+      - run: yarn lint
+      - run: yarn test --ci

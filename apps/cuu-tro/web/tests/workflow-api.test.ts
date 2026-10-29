@@ -54,9 +54,9 @@ describe('gọi API qua gateway (fetch giả)', () => {
   })
   it('lỗi: đọc detail chuỗi hoặc đối tượng của FastAPI', async () => {
     const k1 = await goiWorkflow(fetchGia(409, { detail: 'Nhiệm vụ đã được giao cho đội khác' }) as unknown as typeof fetch, GW, AUTH, 'POST', `/${WF}/nhan`)
-    expect(k1).toEqual({ ok: false, status: 409, chiTiet: 'Nhiệm vụ đã được giao cho đội khác' })
+    expect(k1).toEqual({ ok: false, status: 409, chiTiet: 'Nhiệm vụ đã được giao cho đội khác', detail: 'Nhiệm vụ đã được giao cho đội khác' })
     const k2 = await goiWorkflow(fetchGia(422, { detail: { ma: 'x', thong_bao: 'Sai' } }) as unknown as typeof fetch, GW, AUTH, 'POST', '/x')
-    expect(k2).toEqual({ ok: false, status: 422, chiTiet: 'Sai' })
+    expect(k2).toEqual({ ok: false, status: 422, chiTiet: 'Sai', detail: { ma: 'x', thong_bao: 'Sai' } })
   })
   it('gateway trả HTML (502, 429): giữ mã HTTP, chi tiết rỗng', async () => {
     const kq = await goiWorkflow(fetchGia(502, '<html>Bad Gateway</html>') as unknown as typeof fetch, GW, AUTH, 'GET', `/${WF}`)

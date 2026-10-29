@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: Apache-2.0
+# Lượt mượn. quan-ly: đọc mọi lượt, ghi nhận trả (returned_at, return_note). nguoi-muon: mượn cho chính
+# mình (borrower_sub gán từ JWT, không tự đặt được), chỉ thấy lượt của mình, không sửa. Không ai xóa.
+# Poka-yoke (một lượt mở mỗi thiết bị, thiết bị hỏng, hạn trả) nằm trong CSDL: Hasura trả lỗi ràng buộc.
+table:
+  name: loans
+  schema: muon_thiet_bi
+configuration:
+  custom_name: loans
+  column_config: {}
+  custom_column_names: {}
+  custom_root_fields: {}
+object_relationships:
+  - name: device
+    using:
+      foreign_key_constraint_on: device_id
+insert_permissions:
+  - role: nguoi-muon
+    permission:
+      check: {}
+      set:
+        borrower_sub: x-hasura-user-id
+      columns: [device_id, borrower_name, purpose, due_at]
+select_permissions:
+  - role: quan-ly
+    permission:
+      columns: "*"
+      filter: {}
+      allow_aggregations: true
+  - role: nguoi-muon
+    permission:
+      columns: [id, device_id, borrower_name, purpose, borrowed_at, due_at, returned_at, return_note]
+      filter:
+        borrower_sub:
+          _eq: x-hasura-user-id
+update_permissions:
+  - role: quan-ly
+    permission:
+      columns: [returned_at, return_note]
+      filter: {}
+      check: {}

@@ -59,15 +59,34 @@ Miền Trung mỗi năm hứng nhiều cơn bão và lũ. Trong vài giờ nư�
 | **Sổ cái minh bạch** tiền và hàng cứu trợ | ✅ Đã có ở v0.1 cho hàng (Tessera, trang công khai, CLI tự kiểm) · từ v0.3 (#89): tiền cứu trợ thu/chi lên sổ cái, worker tự niêm phong bù khi sổ cái tạm dừng, API xác minh chung theo mã phiếu hoặc mã bút toán kèm bằng chứng, danh sách và tổng hợp quỹ công khai |
 | **Bản đồ thời gian thực** cho người điều phối | ✅ Đã có ở v0.2 (web Nuxt 4 + Nuxt UI + MapLibre, GraphQL subscription qua gateway, màn phân công cho điều phối và đội cứu hộ, thông báo Centrifugo) |
 | **Dashboard điều hành, dữ liệu lịch sử** | ✅ Đã có ở v0.3 (#91, #92): Grafana OSS (`make up-bi`, mở http://localhost:9080/grafana/) với tin kêu cứu theo trạng thái, thời gian phản hồi, mực nước, tồn kho, quỹ cứu trợ, đọc bằng role chỉ đọc không thấy SĐT/họ tên; dữ liệu cũ xuất ra Parquet theo tháng trên SeaweedFS (`make luu-tru`), truy vấn bằng DuckDB (`make luu-tru-truy-van`) |
-| **AI bóc tách tin kêu cứu** tự do, người duyệt lại | 🔜 Tuần 5 (Ollama + Qwen2.5 7B/14B) |
+| **AI bóc tách tin kêu cứu** tự do, người duyệt lại | ✅ Từ tuần 5 (#102): SMS, tin Zalo dán vào, viết không dấu → đề xuất có địa chỉ, tọa độ (nếu tin có), SĐT, số người, mức khẩn cấp, nhu cầu; qua cùng Poka-yoke và chặn trùng của API kêu cứu; AI không tự tạo tin. Chọn mô hình bằng `LLM_PROVIDER`: Qwen2.5 7B qua Ollama (`make up-ai`), API ngoài, hoặc bộ luật không cần mô hình (mặc định) · từ tuần 5 (#104): **hàng chờ duyệt** trên web điều phối (trang "Duyệt tin AI"): đề xuất hiện cạnh văn bản gốc, người duyệt sửa, chọn vị trí trên bản đồ rồi duyệt mới tạo tin; lưu vết AI đề xuất gì, người sửa trường nào, ai duyệt, lúc nào · *AI review queue: a human approves or edits every AI suggestion before it becomes a rescue request; full audit trail* |
+| **App hiện trường** cho tình nguyện viên, đội cứu hộ | ✅ Từ tuần 5 (#106): app React Native (Android, iOS) gửi kêu cứu bằng form + GPS hoặc chọn trên bản đồ, dán tin để AI điền sẵn, chuyển tin cho điều phối duyệt, gửi ảnh hiện trường và vị trí đội. **Mất mạng vẫn dùng được**: mọi thứ vào hàng đợi mã hóa trên máy, có mạng thì tự gửi; mỗi bản ghi một khóa idempotency nên gửi lại không tạo trùng. Đăng nhập Keycloak (PKCE) · *field app: works offline, resends safely with idempotency keys* ([`apps/cuu-tro/mobile/`](apps/cuu-tro/mobile/README.md)) |
 
 Ngoài ra đã có: tải và xem ảnh hiện trường qua link ngắn hạn. Ánh xạ từng yêu cầu của đề vào mã nguồn: [`docs/de-thi-mapping.md`](docs/de-thi-mapping.md).
+
+## 📸 Sản phẩm · Product demo
+
+Web điều phối chạy trên stack thật, dữ liệu trên màn hình là dữ liệu giả. Quy trình demo: đăng nhập (Keycloak, vai điều phối có MFA), xem bản đồ tin kêu cứu và trạm đo mực nước, phân công cứu hộ, rồi tra trang Minh bạch công khai để trình duyệt tự kiểm sổ cái.
+*The coordination web app running on the real stack with fake data: sign in (Keycloak, MFA for coordinators) → live map of SOS reports and water-level stations → rescue assignment → public transparency page where the browser verifies the ledger by itself.*
+
+![GIF demo: đăng nhập, bản đồ tin kêu cứu và trạm đo, phân công, trang Minh bạch tự kiểm sổ cái](docs/images/web-demo-dieu-phoi.gif)
+
+| Sáng · Light | Tối · Dark |
+|---|---|
+| ![Bản đồ điều phối: tin kêu cứu, trạm đo mực nước, popup mực nước và biểu đồ 24 giờ](docs/images/web-ban-do-tram-do.webp) | ![Bản đồ điều phối ở chế độ tối](docs/images/web-ban-do-tram-do-toi.webp) |
+| Bản đồ: tin kêu cứu theo mức khẩn, trạm đo theo cấp báo động, popup mực nước 24 giờ · *Map: SOS reports by urgency, stations by alert level, 24-hour water-level popup* | |
+| ![Màn phân công cứu hộ: Cần xử lý, Chờ phân công, Đang phân công, Đang cứu](docs/images/web-phan-cong.webp) | ![Màn phân công ở chế độ tối](docs/images/web-phan-cong-toi.webp) |
+| Phân công: đội gần nhất, đồng hồ hạn nhận · *Assignment board: nearest team, acceptance countdown* | |
+| ![Trang Minh bạch cứu trợ: máy chủ xác minh, trình duyệt tự kiểm 5 bước](docs/images/web-minh-bach.webp) | ![Trang Minh bạch ở chế độ tối](docs/images/web-minh-bach-toi.webp) |
+| Minh bạch: không cần đăng nhập, trình duyệt tự kiểm sổ cái · *Public transparency page: no login, in-browser ledger verification* | |
+
+Chụp lại khi giao diện đổi: [`scripts/chup-anh/`](scripts/chup-anh/) (Playwright, xem [`docs/images/README.md`](docs/images/README.md)).
 
 ## 🗺️ Kiến trúc
 
 ![Kiến trúc tổng quan: người dùng đi qua APISIX và Keycloak vào Hasura, SeaweedFS, Temporal, sổ cái; dữ liệu trên PostgreSQL + PostGIS; OpenBao giữ bí mật; trạm đo gửi MQTT vào NATS](docs/images/kien-truc-tong-quan.webp)
 
-Hệ thống có hai tầng theo mô hình Open-Core của đề. **Tầng 1** (`core/`) là lõi headless: chỉ có API, không có giao diện người dùng cuối và không chứa nghiệp vụ thiên tai. Lõi có đủ 4 dịch vụ bắt buộc: **SSO** (Keycloak, có OTP), **API Gateway** (APISIX + Coraza WAF), **dữ liệu** có cấu trúc (PostgreSQL + PostGIS, GraphQL tự sinh bằng Hasura CE) và phi cấu trúc (SeaweedFS S3), **workflow engine** (Temporal); thêm NATS cho sự kiện và IoT, sổ cái Tessera, OpenBao giữ mọi bí mật. **Tầng 2** (`apps/cuu-tro/`) là ứng dụng cứu trợ, chỉ gọi lõi qua APISIX; muốn dùng lõi cho bài toán khác thì thêm một thư mục trong `apps/`, không sửa `core/`.
+Hệ thống có hai tầng theo mô hình Open-Core của đề. **Tầng 1** (`core/`) là lõi headless: chỉ có API, không có giao diện người dùng cuối và không chứa nghiệp vụ thiên tai. Lõi có đủ 4 dịch vụ bắt buộc: **SSO** (Keycloak, có OTP), **API Gateway** (APISIX + Coraza WAF), **dữ liệu** có cấu trúc (PostgreSQL + PostGIS, GraphQL tự sinh bằng Hasura CE) và phi cấu trúc (SeaweedFS S3), **workflow engine** (Temporal); thêm NATS cho sự kiện và IoT, sổ cái Tessera, OpenBao giữ mọi bí mật. **Tầng 2** (`apps/cuu-tro/`) là ứng dụng cứu trợ, chỉ gọi lõi qua APISIX; muốn dùng lõi cho bài toán khác thì thêm một thư mục trong `apps/`, không sửa `core/`. Repo có sẵn module mẫu thứ hai [`apps/muon-thiet-bi/`](apps/muon-thiet-bi/README.md) (mượn trả thiết bị dùng chung) chạy trên cùng lõi, và hướng dẫn viết module: [`docs/viet-module.md`](docs/viet-module.md) · *plug-in modules: a second sample app runs on the same core without touching `core/`; see docs/viet-module.md*.
 
 Sơ đồ chi tiết, luồng JWT, route gateway, quản lý bí mật: [`docs/architecture.md`](docs/architecture.md).
 
@@ -86,7 +105,10 @@ Sơ đồ chi tiết, luồng JWT, route gateway, quản lý bí mật: [`docs/a
 | Bí mật | OpenBao | MPL-2.0 |
 | Backend ứng dụng | Python 3.12, FastAPI | PSF-2.0, MIT |
 | Dữ liệu lịch sử, dashboard | Parquet trên SeaweedFS + DuckDB (#91); Grafana OSS 13 dịch vụ riêng, profile `bi` (#92) | MIT; AGPL-3.0 (dịch vụ riêng, image gốc) |
-| Sắp có | Nuxt 4 + Nuxt UI + MapLibre, Flutter, Centrifugo, Ollama + Qwen2.5, Qdrant, ClamAV | MIT, BSD-3, Apache-2.0, AGPL-3.0/GPL-2.0 (dịch vụ riêng) |
+| AI (Tầng [I]) | Ollama 0.40 dịch vụ riêng, profile `ai` + Qwen2.5 7B Instruct; hoặc API ngoài chuẩn OpenAI; mặc định bộ luật không cần mô hình (#102) | MIT; Apache-2.0 |
+| App hiện trường (#106) | React Native 0.80 + TypeScript, React Navigation, TanStack Query, Zustand, i18next, MapLibre React Native, react-native-app-auth (PKCE) | MIT |
+| Quét mã độc tệp tải lên (#111) | ClamAV 1.5 dịch vụ riêng, profile `sec` (`make up-sec`) | GPL-2.0 (dịch vụ riêng, image gốc) |
+| Sắp có | Qdrant | Apache-2.0 |
 
 Phiên bản và giấy phép từng image, thư viện: [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
@@ -119,8 +141,8 @@ Theo [`docs/PLAN.md`](docs/PLAN.md):
 
 - **Tuần 3:** web điều phối Nuxt 4 + Nuxt UI với bản đồ MapLibre thời gian thực, màn hình phân công; tự khởi chạy phân công khi có tin mới; thông báo realtime qua Centrifugo.
 - **Tuần 4:** trạm đo thành bản sao số NGSI-LD trên Scorpio (đã có, #85); cảnh báo vượt ngưỡng qua Temporal, gửi Telegram (đã có, #87, cần token bot thật); dữ liệu cũ ra Parquet + DuckDB (đã có, #91); dashboard Grafana điều hành (đã có, #92); lên VPS có HTTPS.
-- **Tuần 5:** AI bóc tách tin kêu cứu tự do thành dữ liệu có cấu trúc, người điều phối duyệt lại; app hiện trường Flutter chạy được khi mất mạng; demo công khai.
-- **Tuần 6–7:** sửa theo phản hồi người dùng thật, module mẫu cho `apps/`, phát hành v1.0.0.
+- **Tuần 5:** AI bóc tách tin kêu cứu tự do thành dữ liệu có cấu trúc (đã có, #102), hàng chờ duyệt trên web điều phối (đã có, #104); app hiện trường React Native chạy được khi mất mạng (đã có, #106); demo công khai.
+- **Tuần 6–7:** sửa theo phản hồi người dùng thật, module mẫu cho `apps/` (đã có, #110), phát hành v1.0.0.
 
 ## 🛠️ Cài đặt từ máy sạch
 
@@ -128,10 +150,11 @@ Theo [`docs/PLAN.md`](docs/PLAN.md):
 
 | Mục | Tối thiểu |
 |---|---|
-| Hệ điều hành | Linux, macOS (Intel hoặc Apple Silicon). Windows qua WSL 2 về lý thuyết chạy được, đội chưa kiểm thử |
+| Hệ điều hành | Linux, macOS (Intel hoặc Apple Silicon). Windows qua WSL 2 về lý thuyết chạy được, đội chưa kiểm thử. Apple Silicon (Docker Desktop hoặc Colima): `make` tự dùng Scorpio bản JVM, vì bản native cần AVX2 mà Rosetta không có (#99); chạy `docker compose up` trực tiếp thì đặt `SCORPIO_IMAGE` trong `.env` · *Apple Silicon: `make` picks the JVM build of Scorpio automatically (the native build needs AVX2, which Rosetta lacks)* |
 | Docker | Docker Engine 24+ hoặc Docker Desktop, **Docker Compose 2.20+** (cần `include`) |
 | RAM cấp cho Docker | 6 GB trở lên. Đo thật (v0.3.0, 24/10/2026): cả hệ thống khoảng 2,3 GB sau khi khởi động, khoảng 3,0 GB sau `make smoke` (gồm Grafana, profile `bi`) |
 | Ổ trống | 15 GB trở lên. Đo thật (v0.3.0): image khoảng 8,5 GB (Grafana 1,4 GB, chỉ khi bật profile `bi`), build cache khoảng 0,8 GB; lúc chạy `make smoke` trên volume trống ổ giảm thêm tới khoảng 10 GB. Chạy xong: `make down` rồi `docker image prune -a` |
+| AI bằng mô hình thật (tùy chọn, `make up-ai`) | Thêm ~12 GB ổ (image Ollama 7 GB + Qwen2.5 7B 4,7 GB) và ~5 GB RAM cho Docker. Đo trên MacBook Apple Silicon (CPU): ~11,5 giây mỗi tin. Không bật thì dùng bộ luật mặc định · *optional real model: +12 GB disk, +5 GB RAM, ~11.5 s per message on CPU* |
 | Công cụ | `git`, `make`, `bash`, `curl`, `python3`, `openssl` |
 | Cổng trống | `8080` (Keycloak), `9080` (APISIX); chỉ trên `127.0.0.1`: `8200`, `15432`, `8081`, `8333`, `7233`, `8088`, `4222`, `1883` |
 
@@ -153,9 +176,9 @@ Sau `make up`, mở web điều phối qua gateway: **http://localhost:9080/** (
 |---|---|
 | `cp .env.example .env` | Cấu hình cho máy dev. Không có bí mật nào trong file này; `KC_DEMO_USER_PASSWORD` chỉ là mật khẩu của tài khoản mẫu |
 | `make up` | Chạy OpenBao, khởi tạo (Shamir 3 mảnh, ngưỡng 2), mở khóa, sinh ngẫu nhiên mọi bí mật lõi, rồi chạy profile `core` + `app`: kéo image, build 4 image từ mã nguồn (APISIX + Coraza, sổ cái Go, backend Python, web Nuxt), áp migration, áp metadata Hasura, tạo bucket |
-| `make smoke` | Nạp dữ liệu giả rồi kiểm 782 ca (v0.3.0): OpenBao, JWT, route gateway + WAF, ràng buộc CSDL, phân quyền GraphQL, workflow phân công, cảm biến MQTT + trận lũ mẫu, bản sao số NGSI-LD, cảnh báo vượt ngưỡng, ảnh hiện trường, sổ cái (hàng + tiền), web điều phối, thông báo realtime, bản đồ, API kêu cứu, Parquet + DuckDB, Grafana (tự bật profile `bi`) |
+| `make smoke` | Nạp dữ liệu giả rồi kiểm 1012 ca (v0.4.0): OpenBao, JWT, route gateway + WAF, ràng buộc CSDL, phân quyền GraphQL, workflow phân công, cảm biến MQTT + trận lũ mẫu, bản sao số NGSI-LD, cảnh báo vượt ngưỡng, ảnh hiện trường, sổ cái (hàng + tiền), web điều phối, thông báo realtime, bản đồ, API kêu cứu, Parquet + DuckDB, Grafana (tự bật profile `bi`) |
 
-Đo thật ngày 22/10/2026 trên bản clone sạch từ GitHub, chạy ở thư mục khác thư mục mã gốc (Mac Apple Silicon, Docker Desktop, Docker Engine 28.5, chưa có image nào trên máy): `make up` lần đầu 2 phút 36 giây (gồm kéo khoảng 6,9 GB image và build), lần sau 48 giây; `make smoke` 72 giây, đạt 339/339 (số đo v0.1.0). Ở v0.3.0, `make smoke` trên volume trống (project tạm) mất khoảng 4,5 phút (264 giây), đạt 782/782. Mạng chậm hơn thì lần đầu lâu hơn.
+Đo thật ngày 22/10/2026 trên bản clone sạch từ GitHub, chạy ở thư mục khác thư mục mã gốc (Mac Apple Silicon, Docker Desktop, Docker Engine 28.5, chưa có image nào trên máy): `make up` lần đầu 2 phút 36 giây (gồm kéo khoảng 6,9 GB image và build), lần sau 48 giây; `make smoke` 72 giây, đạt 339/339 (số đo v0.1.0). Ở v0.4.0, `make up` + `make smoke` trên volume trống (project tạm, MacBook Apple Silicon, OrbStack, image đã có sẵn) mất khoảng 8 phút (475 giây), đạt 1012/1012. Mạng chậm hơn thì lần đầu lâu hơn.
 
 **Giữ kín `.data/openbao/`.** Lần đầu `make up` ghi unseal key và root token vào đây (đã nằm trong `.gitignore`); mất thư mục này thì không mở khóa được dữ liệu OpenBao. Sau khi khởi động lại máy, nếu OpenBao còn khóa: `make bao-unseal`.
 
@@ -192,7 +215,16 @@ curl -s -o /dev/null -w '%{http_code}\n' http://localhost:9080/graphql
 
 # Khóa công khai của sổ cái, đọc không cần đăng nhập
 curl -s http://localhost:9080/ledger/verifier
+
+# AI bóc tách tin kêu cứu viết tự do → đề xuất + Poka-yoke (không tạo tin; mặc định bộ luật, không cần mô hình)
+curl -s -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"van_ban": "Cuu voi, nha o thon 3 ngap toi mai, 5 nguoi, 15.8502, 108.1035, sdt 0905 123 456", "nguon": "sms"}' \
+  http://localhost:9080/workflow/ai/boc-tach
 ```
+
+Chạy AI bằng mô hình thật Qwen2.5 7B (*run the extraction with a real open model*): `make up-ai` (tải image Ollama ~2,6 GB và mô hình ~4,7 GB lần đầu), đặt `LLM_PROVIDER=ollama` trong `.env`, rồi `make up`. Mô hình chạy CPU trong Docker; không đủ RAM thì giữ `LLM_PROVIDER=gia-lap`.
+
+Duyệt tin AI trên web (*review AI suggestions in the web app*): đăng nhập `dieuphoi01`, mở http://localhost:9080/hang-cho, dán tin nhắn, bấm "Bóc tách bằng AI", sửa nếu cần rồi "Duyệt và tạo tin". Gọi API: thêm `"vao_hang_cho": true` vào lệnh trên rồi `POST /workflow/hang-cho/<mã>/duyet`.
 
 Phân công đội, xác nhận, tải ảnh, lập phiếu kho, trang minh bạch, tự kiểm sổ cái bằng `ledger-verify`: xem [`apps/cuu-tro/README.md`](apps/cuu-tro/README.md).
 
@@ -215,6 +247,8 @@ Quy trình: issue → nhánh `feature/<số-issue>-<tên-ngắn>` tách từ `de
 
 Chi tiết: [`CONTRIBUTING.md`](CONTRIBUTING.md). Quy tắc ứng xử: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 
+Dùng lại mà không cần cả hệ thống: [`cong-dong/tram-do-lu/`](cong-dong/tram-do-lu/README.md) là bộ mô phỏng trạm đo lũ (chỉ cần Python, gửi MQTT hoặc NGSI-LD) kèm mô hình dữ liệu NGSI-LD trạm đo, JSON Schema và ví dụ · *standalone flood gauge simulator + NGSI-LD station model for your own projects*.
+
 ## 🐛 Báo lỗi
 
 Mở issue tại [GitHub Issues](https://github.com/disaster-dxos/disaster-dxos/issues) theo mẫu "Báo lỗi": mô tả, cách tái hiện, môi trường (hệ điều hành, RAM, `docker compose version`).
@@ -224,9 +258,9 @@ Mở issue tại [GitHub Issues](https://github.com/disaster-dxos/disaster-dxos/
 Mã nguồn phát hành theo [Apache-2.0](LICENSE). Bản quyền và ghi nhận thành phần bên thứ ba: [`NOTICE`](NOTICE). Phiên bản và giấy phép từng image, thư viện: [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
 - Chỉ dùng thành phần có giấy phép được OSI công nhận.
-- Thành phần copyleft (PostGIS GPL-2.0, Grafana AGPL-3.0; sắp có ClamAV GPL-2.0) chạy như dịch vụ riêng bằng image gốc, không sửa, không nhúng vào mã của dự án.
+- Thành phần copyleft (PostGIS GPL-2.0, Grafana AGPL-3.0, ClamAV GPL-2.0) chạy như dịch vụ riêng bằng image gốc, không sửa, không nhúng vào mã của dự án.
 - Ảnh minh họa trong `docs/images/` do đội tạo bằng công cụ AI, sơ đồ SVG do đội vẽ; cấp phép cùng repo. Biểu tượng trong ảnh kiến trúc là hình minh họa, không phải logo chính thức ([`docs/images/README.md`](docs/images/README.md)).
 
 ## 📝 CHANGELOG
 
-Theo [SemVer](https://semver.org/lang/vi/). Bản mới nhất: [v0.3.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.3.0) (24/10/2026, Tầng [D]: bản sao số trạm đo NGSI-LD, trận lũ mẫu, cảnh báo vượt ngưỡng qua Temporal, tiền cứu trợ trên sổ cái minh bạch, Parquet + DuckDB, Grafana); bản trước: [v0.2.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.2.0) (23/10/2026, web điều phối Nuxt UI: bản đồ realtime, phân công tự động, API kêu cứu, thông báo Centrifugo), [v0.1.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.1.0) (22/10/2026, lõi Tầng 1 đầy đủ + ứng dụng cứu trợ, sổ cái minh bạch), [v0.0.1](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.0.1) (19/10/2026, khung dự án + profile `core`). Thay đổi chưa phát hành và lịch sử: [`CHANGELOG.md`](CHANGELOG.md).
+Theo [SemVer](https://semver.org/lang/vi/). Bản mới nhất: [v0.4.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.4.0) (29/10/2026, Tầng [I] và tuần UX: AI bóc tách tin kêu cứu có người duyệt, app hiện trường React Native offline, ClamAV, module cắm–rút mẫu, bộ mô phỏng trạm đo cho cộng đồng); bản trước: [v0.3.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.3.0) (24/10/2026, Tầng [D]: bản sao số trạm đo NGSI-LD, trận lũ mẫu, cảnh báo vượt ngưỡng qua Temporal, tiền cứu trợ trên sổ cái minh bạch, Parquet + DuckDB, Grafana); bản trước: [v0.2.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.2.0) (23/10/2026, web điều phối Nuxt UI: bản đồ realtime, phân công tự động, API kêu cứu, thông báo Centrifugo), [v0.1.0](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.1.0) (22/10/2026, lõi Tầng 1 đầy đủ + ứng dụng cứu trợ, sổ cái minh bạch), [v0.0.1](https://github.com/disaster-dxos/disaster-dxos/releases/tag/v0.0.1) (19/10/2026, khung dự án + profile `core`). Thay đổi chưa phát hành và lịch sử: [`CHANGELOG.md`](CHANGELOG.md). Mỗi bản có gói mã nguồn `disaster-dxos-X.Y.Z.tar.gz` + `SHA256SUMS`; cách kiểm, build từ gói và quy trình phát hành: [`CONTRIBUTING.md`](CONTRIBUTING.md) mục 7 · *each release ships a source tarball with SHA-256 checksums; see CONTRIBUTING.md §7*.

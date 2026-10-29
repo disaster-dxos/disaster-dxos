@@ -1,7 +1,8 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script setup lang="ts">
 // Khung web điều phối (theo template nuxt-ui-templates/dashboard): thanh bên thu gọn được, trên điện
-// thoại thành ngăn kéo. Mục điều hướng theo vai (#61): bản đồ ↔ phân công (điều phối) / nhiệm vụ (cứu hộ).
+// thoại thành ngăn kéo. Mục điều hướng theo vai (#61): bản đồ ↔ phân công (điều phối) / nhiệm vụ (cứu hộ);
+// điều phối có thêm hàng chờ duyệt tin AI (#104).
 import type { NavigationMenuItem } from '@nuxt/ui'
 import { vaiPhanCong } from '~/utils/phan-cong'
 
@@ -19,6 +20,10 @@ const menu = computed<NavigationMenuItem[]>(() => {
       to: '/phan-cong',
       onSelect: dong,
     })
+  }
+  // Hàng chờ duyệt tin do AI bóc tách (#104): chỉ điều phối (Hasura chỉ cho vai này đọc văn bản gốc)
+  if (vai === 'dieu-phoi') {
+    ds.push({ label: 'Duyệt tin AI', icon: 'i-lucide-sparkles', to: '/hang-cho', onSelect: dong })
   }
   return ds
 })

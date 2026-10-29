@@ -5,18 +5,18 @@
 
 | Thư mục | Nội dung | Trạng thái |
 |---|---|---|
-| `keycloak/realm.json` | Realm `disaster`: vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen`; client `dxos-gateway`, `dxos-web`, `dxos-dev-cli` (chỉ dev); 3 người dùng mẫu, mật khẩu lấy từ `.env` | Có |
-| `db/migrations/` | Schema `cuu_tro`: `incidents`, `rescue_teams`, `shelters`, `supplies`, `supply_movements`, `sensors` (PostGIS); `team_members` (#26); `sensor_readings` chuỗi đo cảm biến (#30); `incident_media` ảnh hiện trường (#27); quyền lập phiếu + ghi sổ cái cho `cuu_tro_app` (#28); quyền tạo tin kêu cứu cho `cuu_tro_app` (#66) | Có (#25, #26, #30, #27, #28, #66) |
+| `keycloak/realm.json` | Realm `disaster`: vai trò `dieu-phoi`, `cuu-ho`, `tinh-nguyen`; client `dxos-gateway`, `dxos-web`, `dxos-mobile` (app hiện trường, PKCE, #106), `dxos-dev-cli` (chỉ dev); 3 người dùng mẫu, mật khẩu lấy từ `.env` | Có |
+| `db/migrations/` | Schema `cuu_tro`: `incidents`, `rescue_teams`, `shelters`, `supplies`, `supply_movements`, `sensors` (PostGIS); `team_members` (#26); `sensor_readings` chuỗi đo cảm biến (#30); `incident_media` ảnh hiện trường (#27); quyền lập phiếu + ghi sổ cái cho `cuu_tro_app` (#28); quyền tạo tin kêu cứu cho `cuu_tro_app` (#66); hàm kiểm trước tin trùng (#102); hàng chờ duyệt tin AI + vết duyệt `ai_intake_reviews` (#104); khóa `Idempotency-Key` `idempotency_keys` (#106) | Có (#25, #26, #30, #27, #28, #66, #102, #104, #106) |
 | `db/seed/` | Dữ liệu giả xã An Lạc (giả định) | Có (#25) |
-| `db/tests/` | Kiểm thử ràng buộc (Poka-yoke, CHECK, quyền theo search_path, quyền role `cuu_tro_app`, chuỗi đo cảm biến, ảnh hiện trường, phiếu kho + sổ cái, tạo tin bằng role của API kêu cứu) | Có (#25, #26, #29, #30, #27, #28, #66) |
+| `db/tests/` | Kiểm thử ràng buộc (Poka-yoke, CHECK, quyền theo search_path, quyền role `cuu_tro_app`, chuỗi đo cảm biến, ảnh hiện trường, phiếu kho + sổ cái, tạo tin bằng role của API kêu cứu, hàng chờ duyệt tin AI) | Có (#25, #26, #29, #30, #27, #28, #66, #104) |
 | `hasura/metadata/` | Metadata Hasura: bảng track, quan hệ, quyền theo vai trò JWT | Có (#26) |
-| `workflow/` | Backend Python: Temporal worker (`PhanCongCuuHo`, `Hello`) + API FastAPI khởi chạy workflow qua gateway `/workflow/*` (#29); consumer cảm biến NATS JetStream + bộ giả lập trạm đo MQTT (#30); API ảnh hiện trường (#27); phiếu nhập/xuất → sổ cái minh bạch + trang công khai (#28); API tiếp nhận tin kêu cứu có Poka-yoke (#66); pytest | Có (#29, #30, #27, #28, #66) |
+| `workflow/` | Backend Python: Temporal worker (`PhanCongCuuHo`, `Hello`) + API FastAPI khởi chạy workflow qua gateway `/workflow/*` (#29); consumer cảm biến NATS JetStream + bộ giả lập trạm đo MQTT (#30); API ảnh hiện trường (#27); phiếu nhập/xuất → sổ cái minh bạch + trang công khai (#28); API tiếp nhận tin kêu cứu có Poka-yoke (#66); AI bóc tách tin kêu cứu (#102); hàng chờ duyệt HITL (#104); pytest | Có (#29, #30, #27, #28, #66, #102, #104) |
 | `compose.yaml` | Dịch vụ `cuu-tro-worker`, `cuu-tro-api`, `cuu-tro-cam-bien`, `cuu-tro-thong-bao` (#68), `bao-agent-cuu-tro` (profile `app`), `cuu-tro-gia-lap` (profile `gia-lap`), lõi nạp bằng `include` | Có (#29, #30, #27) |
 | `openbao/` | Policy + template bao agent cho backend (mật khẩu role `cuu_tro_app`, NATS/MQTT, khóa S3 của ứng dụng, token ghi sổ cái) | Có (#29, #30, #27, #28) |
 | `s3/buckets.conf` | Bucket S3 của ứng dụng (`cuu-tro-media`), lõi tạo khi `make up` | Có (#27) |
 | `nats/streams.json` | Khai báo stream/consumer JetStream của ứng dụng (`cuu-tro-cam-bien` tạo consumer `ghi-csdl`, `cuu-tro-thong-bao` tạo consumer `realtime-*`) | Có (#30, #68) |
-| `web/` | Web điều phối Nuxt 4 + Nuxt UI + MapLibre: đăng nhập Keycloak OIDC + PKCE (client `dxos-web`), bản đồ + danh sách tin kêu cứu thời gian thực qua GraphQL subscription (gom cụm, lọc, chi tiết theo quyền); dịch vụ `cuu-tro-web`, mở qua gateway http://localhost:9080/; xem `web/README.md` | Khung (#59), trong stack (#64), bản đồ realtime (#60), nền Nuxt UI (#77) |
-| `mobile/` | App hiện trường Flutter | Tuần 5 |
+| `web/` | Web điều phối Nuxt 4 + Nuxt UI + MapLibre: đăng nhập Keycloak OIDC + PKCE (client `dxos-web`), bản đồ + danh sách tin kêu cứu thời gian thực qua GraphQL subscription (gom cụm, lọc, chi tiết theo quyền); dịch vụ `cuu-tro-web`, mở qua gateway http://localhost:9080/; xem `web/README.md` | Khung (#59), trong stack (#64), bản đồ realtime (#60), nền Nuxt UI (#77), hàng chờ duyệt tin AI (#104) |
+| `mobile/` | App hiện trường React Native 0.80 (D-011): gửi kêu cứu (form, GPS, bản đồ MapLibre, dán tin để AI điền sẵn), chuyển tin cho điều phối duyệt, ảnh hiện trường, vị trí đội; hàng đợi offline mã hóa, mỗi bản ghi một khóa idempotency; đăng nhập Keycloak PKCE (client `dxos-mobile`); xem `mobile/README.md` | Có (#106) |
 
 ## Dữ liệu (`db/`, #25)
 
@@ -146,6 +146,7 @@ R = đọc, C = tạo, U = sửa, D = xóa, – = không có (bảng không xu�
 | `sensor_readings` | R (quan hệ `sensor`, `sensors.readings`) | R | R (tối đa 500 dòng/truy vấn) |
 | `incident_media` (#27) | R mọi ảnh (quan hệ `incident`, `incidents.media`) | R ảnh của tin **đội mình** | R chỉ ảnh **mình tải lên**, không có `uploaded_by`, `uploader_role` |
 | `incident_assignments` (#67) | R mọi lần giao (quan hệ `incident`, `team`, `incidents.assignments`) | R lần giao cho **đội mình** | – |
+| `ai_intake_reviews` (#104) | R mọi dòng, mọi cột: văn bản gốc, đề xuất AI, tin cuối, trường sửa, người duyệt (duyệt/hủy qua API `/workflow/hang-cho/*`) | – | R chỉ dòng **mình gửi**, chỉ `id`, `text_source`, `status`, `created_at`, `reviewed_at`, `incident_id` (không văn bản, đề xuất, người duyệt) |
 | `incident_dedup_config`, `assignment_queue` (#67) | không track: không vai trò nào thấy | | |
 
 Cột hệ thống gán từ token, client không tự đặt được: `incidents.created_by` = `X-Hasura-User-Id` (sub Keycloak); `supply_movements.created_by` = tên đăng nhập trong JWT, API gán (#28). Tồn kho chỉ đổi qua phiếu nhập/xuất (trigger, sổ cái #28); cột `ledger_*` và giá trị đo cảm biến do dịch vụ nội bộ ghi (#28, #30), không qua vai trò người dùng.
@@ -329,6 +330,147 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/
 
 Kiểm thử: `tests/test_cuu_tro_keu_cuu.py` (kiểm dữ liệu, chuẩn hóa SĐT, ánh xạ 409/422, quyền theo vai, gửi đồng thời trên CSDL giả, không có SĐT trong log); `db/tests/0008_api_keu_cuu.sql` (INSERT thật bằng `cuu_tro_app`: thiếu tọa độ, SĐT sai, trùng trong 200 m, khác SĐT cùng chỗ, cùng SĐT ngoài 200 m, DETAIL đúng dạng API đọc, quyền theo cột); `scripts/smoke-keu-cuu.sh` (trong `make smoke`, chạy cuối vì ca 429 khóa route trong `GW_RATE_LIMIT_WINDOW` giây).
 
+## AI bóc tách tin kêu cứu (`workflow/cuu_tro_workflow/boc_tach.py`, #102)
+
+Tin kêu cứu thật hay là SMS, tin Zalo viết vội, không dấu. `POST /workflow/ai/boc-tach` nhận văn bản tự do và trả **đề xuất** theo đúng tên trường của `POST /workflow/keu-cuu`, cộng kết quả Poka-yoke và kiểm trước tin trùng. **AI không tạo tin**: người gọi tự gửi `tin_keu_cuu` (đã sửa) qua `POST /workflow/keu-cuu`, hoặc đặt `"vao_hang_cho": true` để tin vào **hàng chờ duyệt** của điều phối (#104, mục kế tiếp). Thiết kế: `docs/architecture.md` mục 6.4, 6.5.
+
+**Nhà cung cấp** (`LLM_PROVIDER` trong `.env`, đọc khi `cuu-tro-api` khởi động):
+
+| Giá trị | Chạy gì | Khi nào dùng |
+|---|---|---|
+| `gia-lap` (mặc định) | Bộ luật: regex SĐT/tọa độ, từ khóa không dấu cho mức khẩn cấp, nhu cầu, địa chỉ, số người | Máy yếu, CI, smoke. Không cần mô hình |
+| `ollama` | Ollama của profile `ai` (`http://ollama:11434`, đổi bằng `LLM_BASE_URL`), mô hình `LLM_MODEL` (mặc định `qwen2.5:7b`, Apache-2.0) | `make up-ai` một lần (tải image ~2,6 GB + mô hình ~4,7 GB), đặt `LLM_PROVIDER=ollama`, `make up` |
+| `openai-compatible` | `POST {LLM_BASE_URL}/chat/completions`, `response_format: json_object`; khóa API trong OpenBao | Máy chủ GPU của xã/tỉnh (vLLM, llama.cpp server, Ollama khác) hoặc dịch vụ ngoài: `bao kv put secret/app/cuu-tro/llm api_key=<khóa>` rồi `make up` |
+| `tat` | Endpoint trả `503` | Tắt tính năng |
+
+Ollama chạy CPU: đặt `LLM_SO_LUONG` (mặc định 6) khoảng một nửa số CPU cấp cho Docker; để Ollama tự chọn (0) thì trong VM Docker trên Mac các luồng tranh nhau, chậm ~30 lần. Đo thật trên MacBook (Qwen2.5 7B, CPU): ~11,5 s mỗi tin, đúng 58/59 trường trên tin mẫu (`make danh-gia-ai`, `docs/architecture.md` mục 6.4).
+
+`LLM_MODEL` chứa `llama`, `gemma`, `qwen2.5:3b`, `qwen2.5:72b` → `cuu-tro-api` và `ollama-pull` từ chối khởi động (giấy phép không phải Apache-2.0/OSI). Mô hình lỗi, trả rác hoặc quá `LLM_TIMEOUT_GIAY` (90 s) → đề xuất do bộ luật dự phòng tạo, `ai.du_phong = true`, kèm cảnh báo.
+
+**Vai trò:** `dieu-phoi`, `tinh-nguyen` (như quyền tạo tin); `cuu-ho` → `403`; không token → `401` ở APISIX. Route gateway riêng `/workflow/ai/*`: WAF đọc body, `GW_AI_RATE_LIMIT_COUNT` (30)/60 s/IP.
+
+**Body JSON** (≤ 8 KiB): `van_ban` (bắt buộc, ≤ 2000 ký tự, không ký tự điều khiển trừ xuống dòng/tab), `nguon` (`sms`, `zalo`, `dien_thoai`, `mang_xa_hoi`, `van_ban`; mặc định `van_ban`), `vao_hang_cho` (`true`/`false`, mặc định `false`; #104). Nguồn đổi sang `source` của tin: `sms`/`dien_thoai` → `dien_thoai`, `zalo`/`mang_xa_hoi` → `mang_xa_hoi`, `van_ban` → `khac`. Trường lạ, thiếu `van_ban`, nguồn sai → `422` theo trường.
+
+**Kết quả `200`** (`Cache-Control: no-store`):
+
+| Trường | Nội dung |
+|---|---|
+| `de_xuat` | `lat`, `lon`, `reporter_phone`, `reporter_name`, `address_text`, `people_count` (`null` = tin không nói), `urgency`, `description`, `nhu_cau` (`cuu_nguoi`, `y_te`, `luong_thuc`, `nuoc_uong`, `cho_o`, `di_doi`, `khac`) |
+| `tin_keu_cuu` | Body sẵn để gửi `POST /workflow/keu-cuu` (bỏ trường trống) |
+| `poka_yoke` | `hop_le`; `loi` theo trường đúng như `422` của `/keu-cuu` (vd thiếu `lat`/`lon` khi tin không có tọa độ: người duyệt chọn điểm trên bản đồ); `tin_trung` (`incident_id`, `khoang_cach_m`, `ban_kinh_m`, `trong_vong_phut`, `thong_bao`) khi SĐT này đã báo một tin còn mở gần đó |
+| `ai` | `nha_cung_cap`, `mo_hinh`, `thoi_gian_ms`, `du_phong` |
+| `canh_bao` | Vd mô hình đưa SĐT/tọa độ không có trong tin (đã bỏ), không rõ số người |
+| `hang_cho` | Chỉ khi `vao_hang_cho: true`: `{id, trang_thai: "cho_duyet", tao_luc}` (#104) |
+
+**Chống bịa:** SĐT và tọa độ chỉ lấy từ văn bản gốc (regex; số có nhãn "SĐT", "gọi", "liên hệ" được ưu tiên; tọa độ cần ≥ 4 chữ số thập phân để không nhầm giá tiền, tự đổi chỗ khi viết "kinh độ, vĩ độ"); SĐT mô hình đưa ra mà không có trong tin thì bỏ, tọa độ luôn lấy từ regex (mô hình hay đảo vĩ độ/kinh độ). Nhu cầu là hợp của mô hình và từ khóa. Địa chỉ của mô hình phải khớp ≥ 60% từ của tin, tên người báo khớp 100%. Tọa độ không suy từ địa chỉ.
+
+**Kiểm trước tin trùng:** hàm `cuu_tro.incident_find_duplicate(sđt, kinh độ, vĩ độ)` (migration `0013`) dùng đúng điều kiện của trigger `incidents_no_duplicate`, chạy `SECURITY DEFINER`, chỉ trả mã tin + khoảng cách; chỉ `cuu_tro_app` được gọi. Không khóa, không ghi: trigger vẫn là chốt chặn cuối khi tạo tin.
+
+**Dữ liệu cá nhân:** mô tả thay mọi SĐT bằng `[SĐT]` (số đã nằm ở `reporter_phone`, vai không được xem SĐT chỉ thấy bản che); không ghi văn bản tin hay SĐT ra log; tin nằm trong khung `<tin>…</tin>` khi gửi mô hình, lời dặn coi nội dung là dữ liệu.
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"van_ban": "Toi la Nguyen Van An o to 5 phuong Hoa Khanh, 3 nguoi gia bi ket, can thuoc. Goi 0935 111 222. Vi tri 16.0712, 108.1503", "nguon": "zalo"}' \
+  http://localhost:9080/workflow/ai/boc-tach
+```
+
+Kiểm thử: `tests/test_cuu_tro_boc_tach.py` (bộ luật trên tin mẫu `cuu_tro_workflow/du_lieu/tin_keu_cuu_mau.json`, chống bịa, Ollama và OpenAI-compatible qua máy chủ giả, dự phòng khi quá hạn/HTTP lỗi/JSON hỏng, chặn mô hình không được phép, endpoint); `db/tests/0013_kiem_trung_truoc.sql` (hàm và trigger cùng kết luận); `scripts/smoke-ai.sh` (trong `make smoke`, chế độ `gia-lap`, gọi thật qua gateway).
+
+## Hàng chờ duyệt tin AI, Human-in-the-loop (`workflow/cuu_tro_workflow/hang_cho.py`, `web/pages/hang-cho.vue`, #104)
+
+Đề xuất của AI (#102) không tự thành tin kêu cứu. Tin viết tự do vào **hàng chờ**; điều phối viên đọc đề xuất **cạnh văn bản gốc**, sửa hoặc duyệt thì mới có tin thật, hủy thì không. Mỗi mục là một dòng vết: AI đã đề xuất gì, người duyệt sửa trường nào (giá trị AI → giá trị người duyệt), ai duyệt, lúc nào. Thiết kế: `docs/architecture.md` mục 6.5.
+
+```mermaid
+stateDiagram-v2
+  [*] --> cho_duyet: POST /workflow/ai/boc-tach {vao_hang_cho: true}<br/>(dieu-phoi, tinh-nguyen; API lưu văn bản + đề xuất)
+  cho_duyet --> da_duyet: POST /workflow/hang-cho/{id}/duyet (dieu-phoi)<br/>Poka-yoke của /keu-cuu → tạo tin + vết, 1 transaction
+  cho_duyet --> cho_duyet: 422 lỗi theo trường · 409 tin trùng (không đổi gì)
+  cho_duyet --> da_huy: POST /workflow/hang-cho/{id}/huy (dieu-phoi) {ly_do}
+  da_duyet --> [*]: tin kêu cứu tiep_nhan → phân công tự động (#67)
+  da_huy --> [*]: không tạo tin
+```
+
+**Bảng `ai_intake_reviews`** (migration `0014`):
+
+| Cột | Nội dung |
+|---|---|
+| `raw_text`, `text_source` | Văn bản gốc (≤ 2000 ký tự) và nguồn (`sms`, `zalo`…) |
+| `ai_result` | Nguyên phản hồi của `/ai/boc-tach` lúc vào hàng chờ: `de_xuat`, `tin_keu_cuu`, `poka_yoke`, `ai`, `canh_bao`. Do API tạo, client không tự khai được |
+| `ai_provider`, `ai_model`, `ai_fallback`, `ai_duration_ms`, `ai_urgency`, `ai_valid` | Tách ra cột để lọc/xếp hàng chờ |
+| `submitted_by`, `submitted_by_name`, `submitted_role` | Người đưa vào hàng chờ (sub, tên đăng nhập Keycloak, vai) |
+| `status` | `cho_duyet` → `da_duyet` \| `da_huy`, một lần |
+| `final_body` | Tin đã tạo (body `/keu-cuu` đã chuẩn hóa: SĐT dạng `0…`) |
+| `edited_fields` | `{"trường": {"ai": <giá trị AI>, "nguoi": <giá trị duyệt>}}`; `{}` = duyệt nguyên đề xuất. So sau chuẩn hóa: gõ lại SĐT có dấu cách hay `+84` không tính là sửa |
+| `reviewed_by`, `reviewed_by_name`, `reviewed_at` | Người duyệt/hủy và thời điểm |
+| `incident_id` | Tin kêu cứu đã tạo (`UNIQUE`, khóa ngoại: tin có vết duyệt không xóa được) |
+| `cancel_reason` | Lý do hủy (≤ 500 ký tự) |
+
+Ràng buộc: CHECK `ai_intake_reviews_decision` giữ cột khớp trạng thái (đã duyệt phải có tin, nội dung cuối, trường sửa; đã hủy không có tin); trigger `ai_intake_reviews_immutable` chặn sửa đề xuất của AI, văn bản gốc, người gửi, và mọi thay đổi sau khi đã duyệt/hủy (`23001`, kể cả role chủ bảng). Không vai trò nào có `DELETE`.
+
+**Quyền:** đọc qua `/graphql` (Hasura, bảng quyền ở trên): chỉ `dieu-phoi` thấy văn bản gốc và đề xuất; `tinh-nguyen` chỉ thấy trạng thái tin mình gửi; `cuu-ho` không thấy bảng; không ai thêm/sửa qua GraphQL. Role dịch vụ `cuu_tro_app` ghi được nhưng **không đọc** `raw_text`, `ai_result`, `final_body`, `edited_fields` (có SĐT, tên người dân): khi duyệt, API đọc đề xuất qua Hasura bằng JWT của chính người duyệt.
+
+**Tin tạo từ hàng chờ** đi đúng đường của `POST /workflow/keu-cuu`: cùng `keu_cuu.kiem_tra` (422 theo trường), cùng câu `INSERT` bằng `cuu_tro_app`, trigger chặn trùng (409 kèm mã tin đang mở), outbox phân công tự động. `created_by` = người đưa tin vào hàng chờ: tình nguyện viên chuyển tin thấy tin đó trong app như tin tự gửi; người chịu trách nhiệm duyệt nằm trong vết. Thiếu `source` thì giữ nguồn của đề xuất (Zalo → `mang_xa_hoi`, SMS → `dien_thoai`).
+
+### API (qua gateway, `Authorization: Bearer <access token Keycloak>`, route `/workflow/*`)
+
+| Phương thức, đường dẫn | Vai trò | Kết quả |
+|---|---|---|
+| `POST /workflow/ai/boc-tach` body `{van_ban, nguon, vao_hang_cho: true}` | `dieu-phoi`, `tinh-nguyen` | `200` như mục trên, thêm `hang_cho: {id, trang_thai, tao_luc}` |
+| `POST /workflow/hang-cho/{id}/duyet` body `{}` hoặc `{"tin_keu_cuu": {…}}` (body **đầy đủ** của `/keu-cuu` sau khi sửa) | `dieu-phoi` | `201 {id, trang_thai: "da_duyet", reviewed_at, truong_da_sua: [...], incident_id, tin: {id, status, urgency, people_count, lat, lon, created_at}, phan_cong: "tu_dong"}` · `404 {ma: "khong_co"}` · `409 {ma: "da_xu_ly", thong_bao, trang_thai, reviewed_by_name, reviewed_at, incident_id}` (người khác vừa xử lý) · `409 {ma: "tin_trung", incident_id, khoang_cach_m, …}` (mục vẫn chờ duyệt) · `422 {ma: "du_lieu_khong_hop_le", loi: [{truong, thong_bao}]}` |
+| `POST /workflow/hang-cho/{id}/huy` body `{}` hoặc `{"ly_do": "…"}` (≤ 500) | `dieu-phoi` | `200 {id, trang_thai: "da_huy", reviewed_at, ly_do}` · `404` · `409 da_xu_ly` · `422` |
+
+Hai người bấm duyệt cùng lúc: dòng hàng chờ bị khóa (`SELECT … FOR UPDATE`) trong transaction tạo tin, người sau nhận `409 da_xu_ly`, chỉ một tin được tạo.
+
+```bash
+ID=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"van_ban": "Cuu voi, nha o thon 3 ngap toi mai, 4 nguoi, goi 0935 111 222", "nguon": "zalo", "vao_hang_cho": true}' \
+  http://localhost:9080/workflow/ai/boc-tach | python3 -c 'import sys,json; print(json.load(sys.stdin)["hang_cho"]["id"])')
+# Tin không có tọa độ: duyệt nguyên đề xuất → 422 lat, lon. Người duyệt bổ sung vị trí rồi duyệt:
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"tin_keu_cuu": {"lat": 15.95, "lon": 108.25, "reporter_phone": "0935111222", "description": "Ngập tới mái, 4 người", "people_count": 4, "urgency": "khan_cap"}}' \
+  "http://localhost:9080/workflow/hang-cho/$ID/duyet"
+```
+
+```graphql
+query HangCho { ai_intake_reviews(where: {status: {_eq: "cho_duyet"}}, order_by: {created_at: asc}) {
+  id raw_text text_source ai_urgency ai_valid ai_result submitted_by_name created_at } }
+```
+
+### Web: trang "Duyệt tin AI" (`/hang-cho`, chỉ vai Điều phối)
+
+- Ô **dán tin nhắn** (SMS, Zalo, ghi lại cuộc gọi) + chọn nguồn → "Bóc tách bằng AI" → tin vào hàng chờ, được chọn ngay.
+- **Danh sách** chờ duyệt: tin khẩn trước, cùng mức thì cũ trước; nhãn "Đủ thông tin" / "Cần bổ sung" / "Có thể trùng" / "Bộ luật dự phòng". Tải lại mỗi 15 giây (tình nguyện viên có thể chuyển tin vào từ điện thoại).
+- **Chi tiết**: văn bản gốc, nhu cầu, cảnh báo của AI, tin trùng (liên kết tới tin đang mở trên bản đồ), **bản đồ chọn vị trí** (bấm hoặc kéo ghim; AI không đoán tọa độ từ địa chỉ) bên trái; form đề xuất bên phải, trường đã sửa có nhãn "đã sửa" kèm giá trị AI, lỗi Poka-yoke dưới từng trường, nút "Khôi phục".
+- "Duyệt và tạo tin" → thông báo mã tin + số trường đã sửa, liên kết "Xem trên bản đồ"; "Hủy tin…" với lý do chọn nhanh (trùng, tin rác, không đủ thông tin…).
+- Tab **Đã duyệt / Đã hủy**: vết duyệt (người duyệt, thời điểm, tin đã tạo, bảng trường đã sửa AI → người duyệt, lý do hủy).
+
+Kiểm thử: `tests/test_cuu_tro_hang_cho.py` (so trường sửa, kiểm body, endpoint với CSDL + Hasura giả, quyền, tin trùng, hai người duyệt cùng lúc); `db/tests/0014_hang_cho_duyet.sql` (quyền theo cột, ràng buộc trạng thái, vết bất biến, khóa ngoại, outbox); `web/tests/hang-cho.test.ts`; `scripts/smoke-hang-cho.sh` (trong `make smoke`, gọi thật qua gateway).
+
+## Idempotency-Key: gửi lại không tạo trùng (`workflow/cuu_tro_workflow/idempotency.py`, #106)
+
+App hiện trường (`mobile/`) gửi mọi thao tác ghi từ hàng đợi offline và gửi lại khi mạng chập chờn. API nhận header **`Idempotency-Key`** (8–128 ký tự `A-Z a-z 0-9 _ -`, nên dùng UUID) trên:
+
+| Đường | Khi gửi lại cùng khóa |
+|---|---|
+| `POST /workflow/keu-cuu` | Trả lại đúng `201` + body cũ (cùng mã tin), không tạo tin thứ hai, không bị chốt chặn trùng trả `409` |
+| `POST /workflow/tai-len/su-co/{id}/anh` | Trả lại ảnh đã tải (cùng `id`) kèm link xem **mới**; không ghi S3/CSDL lần nữa. Phát lại trước bước kiểm quyền theo trạng thái tin (tình nguyện viên gửi lại sau khi tin đã được phân công vẫn nhận kết quả cũ) |
+| `POST /workflow/ai/boc-tach` có `vao_hang_cho: true` | Trả lại mục hàng chờ cũ (`hang_cho`, `ai`, `poka_yoke.hop_le`, `phat_lai_rut_gon: true`), không gọi lại mô hình, không thêm mục. Phản hồi phát lại **không có** đề xuất (có SĐT, tên). Không có `vao_hang_cho` thì header bị bỏ qua (chỉ đọc) |
+
+Phản hồi phát lại có header `Idempotent-Replayed: true`. Khóa theo người dùng (`sub`): người khác dùng trùng khóa được xử lý như yêu cầu mới. Cùng khóa mà khác đường dẫn hoặc nội dung → `422 {"ma": "khoa_idempotency_dung_lai"}`; khóa sai dạng → `422 {"ma": "khoa_idempotency_sai"}`. Chỉ phản hồi `2xx` được lưu: lỗi (`409` tin trùng, `422`) không giữ khóa, gửi lại cho cùng lỗi. Khóa hết hạn sau 72 giờ (API dọn khi khởi động và khi gặp lại khóa cũ).
+
+**Cách giữ khóa** (bảng `cuu_tro.idempotency_keys`, migration `0015`; chỉ `cuu_tro_app`, Hasura không track):
+1. Tìm khóa đã xong (còn hạn) → phát lại.
+2. Chưa có: trong MỘT transaction, `INSERT` khóa (chưa có phản hồi) **trước**, làm việc nghiệp vụ bằng cùng kết nối, ghi phản hồi, `COMMIT`. Yêu cầu đồng thời cùng khóa chờ ở khóa chính tới khi yêu cầu đầu `COMMIT` rồi phát lại kết quả của nó. Yêu cầu đầu lỗi thì rollback, khóa cũng mất.
+
+```bash
+K=$(python3 -c 'import uuid; print(uuid.uuid4())')
+for i in 1 2; do curl -s -i -X POST -H "Authorization: Bearer $TOKEN" -H "Idempotency-Key: $K" -H 'Content-Type: application/json' \
+  -d '{"lat": 15.85, "lon": 108.10, "reporter_phone": "0900 000 098", "description": "Ngập tới mái"}' \
+  http://localhost:9080/workflow/keu-cuu | grep -iE '^HTTP|idempotent-replayed|"id"'; done
+```
+
+Kiểm thử: `tests/test_cuu_tro_idempotency.py` (dạng khóa, ba đường, khóa dùng lại, lỗi không giữ khóa, đồng thời, khóa theo người dùng); `db/tests/0015_khoa_idempotency.sql`; `scripts/smoke-mobile.sh`.
+
 ## Ảnh hiện trường (`workflow/cuu_tro_workflow/anh.py`, `s3.py`, #27)
 
 Ảnh chụp tại hiện trường gắn với tin kêu cứu. Nội dung ảnh nằm trên SeaweedFS (bucket riêng tư `cuu-tro-media`), siêu dữ liệu ở bảng `incident_media` (migration `0005`). **Client Tầng 2 không bao giờ cầm khóa S3.**
@@ -343,7 +485,7 @@ Kiểm thử: `tests/test_cuu_tro_keu_cuu.py` (kiểm dữ liệu, chuẩn hóa 
 | Khóa S3 | Định danh `cuu-tro-app` (`secret/app/cuu-tro/s3`) chỉ `Read`/`Write`/`List` bucket `cuu-tro-*`, không `Admin`; chỉ `cuu-tro-api` có (volume tmpfs riêng) | Lộ khóa ứng dụng không đụng được bucket khác, không tạo/xóa bucket. Khóa quản trị `secret/core/s3` không cấp cho ứng dụng |
 | Thứ tự ghi | Kiểm quyền → đọc body (dừng ngay khi vượt giới hạn) → magic bytes → PUT S3 (ký kèm SHA-256 nội dung) → `INSERT incident_media`. CSDL lỗi → xóa object vừa ghi | Không có dòng trỏ tới object không có, không để object mồ côi |
 | Tên object | `su-co/<incident_id>/<media_id>.<jpg\|png\|webp>`, đuôi theo loại thật | Không dùng tên tệp của người dùng (chặn path traversal, lộ thông tin) |
-| Quét mã độc | Cột `scan_status` (mặc định `chua_quet`) chừa chỗ; ClamAV ở biên (profile `sec`) là việc sau | |
+| Quét mã độc (#111) | `cuu-tro-api` gửi nội dung tới clamd của lõi (`clamav:3310`, profile `sec`, `make up-sec`) **trước** khi kiểm magic bytes và lưu. Nhiễm → `422 {ma: "anh_nhiem_ma_doc", chu_ky}`, không ghi S3/CSDL; sạch → `scan_status = sach` kèm `scanned_at`, `scan_engine` (vd `ClamAV 1.5.4/28166`). Máy quét chưa bật hoặc lỗi → nhận với `chua_quet` (mặc định) hoặc `503 {ma: "chua_quet_duoc"}` khi `ANH_QUET_BAT_BUOC=1`. Biến: `CLAMAV_HOST` (trống = tắt), `CLAMAV_PORT`, `CLAMAV_TIMEOUT_GIAY` | Quét ở một chỗ duy nhất đã đọc nội dung (cách a). Theo chuẩn EICAR, tệp thử chỉ bị nhận diện khi chuỗi nằm ở đầu tệp; smoke dùng EICAR thuần (422, không phải 415: quét chạy trước kiểm loại tệp) |
 
 ### Quyền theo vai trò
 
@@ -359,7 +501,7 @@ Quyền theo hàng không viết lại trong API: API hỏi Hasura qua gateway `
 
 | Phương thức, đường dẫn | Kết quả |
 |---|---|
-| `POST /workflow/tai-len/su-co/{incident_id}/anh`, body = nội dung ảnh | `201 {id, incident_id, object_key, content_type, size_bytes, sha256, uploaded_by, uploader_role, uploaded_at, scan_status, link}` · `400` body rỗng · `413` quá `ANH_MAX_BYTES` (mặc định 10 MiB; gateway chặn trước ở `GW_UPLOAD_MAX_BODY_BYTES`, 20 MiB) · `415` không phải JPEG/PNG/WebP theo magic bytes |
+| `POST /workflow/tai-len/su-co/{incident_id}/anh`, body = nội dung ảnh | `201 {id, incident_id, object_key, content_type, size_bytes, sha256, uploaded_by, uploader_role, uploaded_at, scan_status, scanned_at, scan_engine, link}` · `400` body rỗng · `422 anh_nhiem_ma_doc` tệp có mã độc (#111) · `503 chua_quet_duoc` máy quét không chạy khi `ANH_QUET_BAT_BUOC=1` · `413` quá `ANH_MAX_BYTES` (mặc định 10 MiB; gateway chặn trước ở `GW_UPLOAD_MAX_BODY_BYTES`, 20 MiB) · `415` không phải JPEG/PNG/WebP theo magic bytes |
 | `GET /workflow/su-co/{incident_id}/anh` | `200 {incident_id, anh: [{id, content_type, size_bytes, sha256, uploaded_by, uploaded_at, scan_status, link}]}` |
 | `GET /workflow/anh/{media_id}/link?han_giay=N` | `200 {…, link: {url, han_giay, het_han_luc}}` · `422` `han_giay` ngoài 1..`ANH_LINK_HAN_GIAY` |
 

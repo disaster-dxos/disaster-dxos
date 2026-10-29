@@ -1,8 +1,25 @@
 # SPDX-License-Identifier: Apache-2.0
-.PHONY: up up-bi luu-tru luu-tru-truy-van gia-lap gia-lap-vuot-nguong gia-lap-tran-lu down logs ps migrate seed test-db test-py license check lint smoke bao-init bao-unseal bao-status
+# SMOKE_CORE_USERS (tên user mẫu cho smoke lõi), APP_BI_DB_USER đặt trong .env hoặc apps/<app>/module.env (#110)
+.PHONY: smoke-app up up-bi up-ai up-sec danh-gia-ai luu-tru luu-tru-truy-van gia-lap gia-lap-vuot-nguong gia-lap-tran-lu down logs ps migrate seed test-db test-py license check lint smoke bao-init bao-unseal bao-status
 
 # Dùng .env nếu có, nếu không thì .env.example (để CI/máy sạch vẫn kiểm được compose)
 ENV_FILE := $(if $(wildcard .env),.env,.env.example)
+# Ứng dụng Tầng 2 đang chọn (#110): biến môi trường, không có thì đọc DXOS_APP trong .env, mặc định cuu-tro
+DXOS_APP ?= $(or $(shell sed -n 's/^DXOS_APP=//p' $(ENV_FILE) | tail -n 1),cuu-tro)
+
+# Scorpio theo kiến trúc máy (#99): bản native (mặc định trong compose) cần AVX/AVX2, Rosetta trong VM của
+# Mac Apple Silicon không có → trên arm64 dùng bản JVM cùng phiên bản, nhiều bộ nhớ hơn. Biến đặt trong
+# .env hoặc môi trường thì giữ nguyên (ghi đè được); make export xuống mọi lệnh docker compose và smoke.
+ifneq ($(filter arm64 aarch64,$(shell uname -m)),)
+ifeq ($(shell grep -Es '^SCORPIO_IMAGE=' $(ENV_FILE)),)
+SCORPIO_IMAGE ?= scorpiobroker/all-in-one-runner:java-6.0.2
+export SCORPIO_IMAGE
+endif
+ifeq ($(shell grep -Es '^SCORPIO_MEM_LIMIT=' $(ENV_FILE)),)
+SCORPIO_MEM_LIMIT ?= 1g
+export SCORPIO_MEM_LIMIT
+endif
+endif
 
 up:            ## Chạy lõi headless (profile core) + backend ứng dụng apps/$$DXOS_APP (profile app, #29): OpenBao trước, init/unseal, rồi các dịch vụ còn lại
 	docker compose --profile core up -d openbao
@@ -22,7 +39,18 @@ up-bi:         ## Grafana OSS dashboard điều hành (#92, profile bi; cần ma
 	bash scripts/openbao-init.sh
 	docker compose --profile core --profile app --profile bi up -d grafana
 
-smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS, ràng buộc DB, phân quyền GraphQL, workflow phân công, luồng cảm biến MQTT, ảnh hiện trường, sổ cái minh bạch, web điều phối qua gateway, thông báo realtime Centrifugo, bản đồ tin kêu cứu realtime (GraphQL subscription), màn phân công 2 vai, API kêu cứu Poka-yoke, bản sao số trạm đo NGSI-LD trên Scorpio + trận lũ mẫu, thông báo cảnh báo vượt ngưỡng qua Temporal, tiền cứu trợ + xác minh sổ cái, lưu trữ Parquet + DuckDB, Grafana dashboard điều hành (tự bật profile bi) (cần make up trước)
+up-ai:         ## Ollama + tải mô hình LLM_MODEL (#102, profile ai, lần đầu ~4,7 GB cho qwen2.5:7b); rồi đặt LLM_PROVIDER=ollama trong .env và make up
+	docker compose --profile core --profile app --profile ai up -d ollama
+	docker compose --profile core --profile app --profile ai run --rm ollama-pull
+	@grep -Eq '^LLM_PROVIDER=ollama' $(ENV_FILE) || echo "Đã có mô hình. Đặt LLM_PROVIDER=ollama trong .env rồi chạy make up để cuu-tro-api dùng Ollama."
+
+up-sec:        ## ClamAV quét mã độc ảnh tải lên (#111, profile sec, cần make up trước): lần đầu tải image ~190 MB, nạp chữ ký ~1 phút
+	docker compose --profile core --profile app --profile sec up -d clamav
+
+danh-gia-ai:   ## Đo độ đúng AI bóc tách (#102) trên tin mẫu giả, với LLM_PROVIDER đang chạy (cần make up)
+	python3 scripts/danh-gia-ai.py
+
+smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/SeaweedFS/Temporal/NATS, ràng buộc DB, phân quyền GraphQL, workflow phân công, luồng cảm biến MQTT, ảnh hiện trường, quét mã độc ClamAV (tự bật profile sec), sổ cái minh bạch, web điều phối qua gateway, thông báo realtime Centrifugo, bản đồ tin kêu cứu realtime (GraphQL subscription), màn phân công 2 vai, API kêu cứu Poka-yoke, bản sao số trạm đo NGSI-LD trên Scorpio + trận lũ mẫu, thông báo cảnh báo vượt ngưỡng qua Temporal, tiền cứu trợ + xác minh sổ cái, lưu trữ Parquet + DuckDB, Grafana dashboard điều hành (tự bật profile bi), lớp trạm đo mực nước của web, trang Minh bạch công khai tự kiểm sổ cái trong trình duyệt, hàng chờ duyệt tin AI (HITL), đường gọi của app hiện trường (PKCE dxos-mobile, Idempotency-Key), AI bóc tách tin kêu cứu (cần make up trước)
 	bash scripts/smoke-openbao.sh
 	bash scripts/smoke-jwt.sh
 	bash scripts/smoke-gateway.sh
@@ -34,6 +62,8 @@ smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/Seaweed
 	bash scripts/smoke-cam-bien.sh
 	bash scripts/smoke-canh-bao.sh
 	bash scripts/smoke-anh.sh
+	# Tự bật profile sec (ClamAV) rồi dừng lại khi xong, các smoke sau chạy như không có máy quét (#111)
+	bash scripts/smoke-clamav.sh
 	bash scripts/smoke-ledger.sh
 	bash scripts/smoke-so-cai.sh
 	bash scripts/smoke-web.sh
@@ -44,6 +74,18 @@ smoke:         ## Kiểm thử OpenBao, JWT, route gateway + WAF, Hasura/Seaweed
 	bash scripts/smoke-ngsi-ld.sh
 	bash scripts/smoke-luu-tru.sh
 	bash scripts/smoke-grafana.sh
+	bash scripts/smoke-tram-do.sh
+	bash scripts/smoke-minh-bach.sh
+	# Trước smoke-ai: smoke-ai chạy cuối ca 429 của route /workflow/ai/*; hàng chờ và app hiện trường cũng gửi qua route đó
+	bash scripts/smoke-hang-cho.sh
+	bash scripts/smoke-mobile.sh
+	bash scripts/smoke-ai.sh
+
+smoke-app:     ## Ứng dụng bất kỳ (DXOS_APP, #110): smoke lõi dùng chung (OpenBao, Hasura/SeaweedFS/Temporal/NATS) + test DB + smoke riêng apps/<DXOS_APP>/tests/smoke.sh (cần make up, make seed trước)
+	bash scripts/smoke-openbao.sh
+	bash scripts/smoke-core.sh
+	docker compose --profile core run --rm --no-deps migrate test
+	@f=apps/$(DXOS_APP)/tests/smoke.sh; if [ -f $$f ]; then bash $$f; else echo "Không có $$f (apps/cuu-tro dùng make smoke đầy đủ)"; fi
 
 luu-tru:       ## Xuất dữ liệu cũ (trước đầu tháng này) ra Parquet trên SeaweedFS (#91); DEN=YYYY-MM-DD để đổi mốc
 	docker compose --profile core --profile app --profile luu-tru run --rm --no-deps cuu-tro-luu-tru \
@@ -89,6 +131,9 @@ license:       ## Thêm header SPDX cho file mới
 lint:          ## shellcheck + yamllint (cần cài sẵn 2 công cụ; CI chạy như nhau)
 	bash scripts/lint.sh all
 
-check:         ## Kiểm tra trước khi nộp: license + compose hợp lệ
+check:         ## Kiểm tra trước khi nộp: license + compose hợp lệ (với mọi ứng dụng trong apps/, #110)
 	bash scripts/check-license.sh
 	docker compose --env-file $(ENV_FILE) --profile '*' config --quiet && echo "OK: docker-compose.yml hợp lệ (mọi profile, $(ENV_FILE))"
+	@for a in apps/*/compose.yaml; do app=$$(basename $$(dirname $$a)); \
+	  DXOS_APP=$$app docker compose --env-file $(ENV_FILE) --profile '*' config --quiet || { echo "LỖI: compose không hợp lệ với DXOS_APP=$$app"; exit 1; }; \
+	  echo "OK: compose hợp lệ với DXOS_APP=$$app"; done
