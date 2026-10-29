@@ -12,6 +12,8 @@
 #     không gian (georel near) trả GeoJSON;
 # (5) bản tin mới → thực thể cập nhật trong vài giây; bản tin cũ hơn (gửi bù) không ghi đè; gửi lại cùng
 #     bản tin không đổi gì; bản tin sai bị bỏ;
+# (4b) bộ mô phỏng cho cộng đồng cong-dong/tram-do-lu/mo_phong.py (#112) gửi MQTT thật vào NATS; thực thể trên
+#     Scorpio trùng thực thể theo mô hình công bố;
 # (6) Scorpio dừng → bản tin chờ, consumer giao lại có hẹn giờ; Scorpio chạy lại → thực thể được cập nhật,
 #     consumer không tồn đọng.
 # Dùng: make up && bash scripts/smoke-ngsi-ld.sh
@@ -191,6 +193,46 @@ check "georel near 5 km quanh Đại Lộc trả GeoJSON chỉ các trạm gần
 check "Link/NGSILD-Tenant của client bị gateway thay/bỏ (vẫn tên ngắn, tenant mặc định)" "200 $TRAM" \
   "$(ngsi "$TOK" "/ngsi-ld/v1/entities/$ID?options=keyValues" -H 'Link: <http://example.invalid/ctx.jsonld>; rel="http://www.w3.org/ns/json-ld#context"' -H 'NGSILD-Tenant: khac' \
      | python3 -c 'import sys,json; s=sys.stdin.read(); print(s[:3], json.loads(s[4:]).get("stationCode"))')"
+
+# ---------- (4b) Bộ mô phỏng công bố cho cộng đồng (#112) ----------
+# cong-dong/tram-do-lu/mo_phong.py (chỉ thư viện chuẩn, MQTT tự viết) gửi giờ 30 của trận lũ vào NATS bằng user
+# thiết bị, chạy trong container giả lập (có mật khẩu thiết bị) với thư mục cong-dong gắn chỉ đọc. Thực thể lõi
+# dựng ra trên Scorpio phải trùng thực thể mo_phong.thuc_the dựng từ chính các bản tin đó.
+CD="$PWD/cong-dong/tram-do-lu"
+gui_cd=$(docker compose --profile core --profile app run --rm --no-deps -T -v "$CD:/opt/cong-dong:ro" cuu-tro-gia-lap \
+  python /opt/cong-dong/mo_phong.py --mqtt nats:1883 --kich-ban tran-lu --buoc-dau 30 --mot-lan 2>&1 | grep '^{' || true)
+check "mo_phong.py (thư viện chuẩn) gửi MQTT QoS 1 vào NATS: 9 bản tin" 9 "$(grep -c . <<<"$gui_cd" || true)"
+so_cd() { # so thực thể Scorpio (đọc qua gateway, tên ngắn) với mo_phong.thuc_the; in "khop" hoặc chỗ lệch đầu tiên
+  lay_day_du | python3 -c '
+import json, sys
+from datetime import datetime
+sys.path.insert(0, sys.argv[1])
+import mo_phong as m
+tram = {t["ma"]: t for t in m.doc_tran_lu()[1]}
+ctx = m.doc_context()
+gio = lambda s: datetime.fromisoformat(s.replace("Z", "+00:00"))
+def chuan(e):  # observedAt so theo thời điểm (Scorpio có thể viết khác định dạng), bỏ @context
+    e = {k: v for k, v in e.items() if k != "@context"}
+    for v in e.values():
+        if isinstance(v, dict) and "observedAt" in v:
+            v["observedAt"] = gio(v["observedAt"])
+    return e
+mong = {}
+for l in sys.argv[2].splitlines():
+    b = json.loads(l)
+    mong[b["ma_tram"]] = chuan(m.thuc_the(tram[b["ma_tram"]], b["gia_tri"], gio(b["thoi_diem"]), ctx))
+thuc = {}
+for dong in sys.stdin:
+    for e in json.loads(dong.split(" ", 1)[1]):
+        thuc[e["stationCode"]["value"]] = chuan(e)
+lech = [ma for ma in mong if thuc.get(ma) != mong[ma]]
+print("khop" if mong and not lech else "lech %s: %s ≠ %s" % (lech[0], thuc.get(lech[0]), mong[lech[0]]) if lech else "khong-co-ban-tin")' "$CD" "$gui_cd"
+}
+lay_day_du() { # dạng chuẩn hóa (có unitCode, observedAt)
+  for ty in WaterLevelStation RainGauge; do ngsi "$TOK" "/ngsi-ld/v1/entities?type=$ty&limit=100"; done
+}
+for _ in $(seq 1 40); do r=$(so_cd); [ "$r" = khop ] && break; sleep 1; done
+check "9 thực thể trên Scorpio của lõi = thực thể mo_phong.thuc_the (cùng mô hình NGSI-LD công bố)" khop "$r"
 
 # ---------- (5) Cập nhật, gửi bù, gửi lại, bản tin sai ----------
 t5=$(iso 0)

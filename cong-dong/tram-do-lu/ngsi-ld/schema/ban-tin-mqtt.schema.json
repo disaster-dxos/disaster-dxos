@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/disaster-dxos/disaster-dxos/blob/main/cong-dong/tram-do-lu/ngsi-ld/schema/ban-tin-mqtt.schema.json",
+  "title": "Bản tin cảm biến trạm đo (MQTT)",
+  "description": "Payload JSON gửi lên topic <tiền tố>/cam-bien/<ma_tram>/<dai_luong> (QoS 1, tối đa 4096 byte). ma_tram phải trùng đoạn <ma_tram> của topic; don_vi phải khớp đại lượng: muc-nuoc → cm, luong-mua → mm, gio → m/s. Bản tin ở tương lai quá 5 phút hoặc cũ hơn 7 ngày bị bỏ.",
+  "type": "object",
+  "required": ["ma_tram", "gia_tri", "don_vi", "thoi_diem"],
+  "properties": {
+    "ma_tram": {
+      "description": "Mã trạm, chữ in hoa, số, '_' hoặc '-'",
+      "type": "string",
+      "pattern": "^[A-Z0-9][A-Z0-9_-]{1,31}$"
+    },
+    "gia_tri": {
+      "description": "Giá trị đo (làm tròn 2 chữ số khi lưu)",
+      "type": "number",
+      "minimum": -1000,
+      "maximum": 100000
+    },
+    "don_vi": {
+      "type": "string",
+      "enum": ["cm", "mm", "m/s"]
+    },
+    "thoi_diem": {
+      "description": "Thời điểm thiết bị đo, ISO 8601 BẮT BUỘC có múi giờ (Z hoặc +07:00)",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+    }
+  },
+  "examples": [
+    {"ma_tram": "QN-CL-01", "gia_tri": 412.5, "don_vi": "cm", "thoi_diem": "2026-10-24T08:52:02.069+07:00"}
+  ]
+}

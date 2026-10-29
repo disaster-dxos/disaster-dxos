@@ -1,0 +1,59 @@
+{
+  "id": "urn:ngsi-ld:WaterLevelStation:QN-CL-01",
+  "type": "WaterLevelStation",
+  "name": {
+    "type": "Property",
+    "value": "Mực nước sông Thu Bồn tại Câu Lâu, Duy Xuyên (giả lập)"
+  },
+  "stationCode": {
+    "type": "Property",
+    "value": "QN-CL-01"
+  },
+  "location": {
+    "type": "GeoProperty",
+    "value": {
+      "type": "Point",
+      "coordinates": [
+        108.278,
+        15.866
+      ]
+    }
+  },
+  "waterLevel": {
+    "type": "Property",
+    "value": 450.0,
+    "unitCode": "CMT",
+    "observedAt": "2026-10-24T01:00:00.000Z"
+  },
+  "alertLevel": {
+    "type": "Property",
+    "value": "nguy_hiem",
+    "observedAt": "2026-10-24T01:00:00.000Z"
+  },
+  "warningThreshold": {
+    "type": "Property",
+    "value": 300.0,
+    "unitCode": "CMT"
+  },
+  "dangerThreshold": {
+    "type": "Property",
+    "value": 400.0,
+    "unitCode": "CMT"
+  },
+  "@context": [
+    {
+      "dxos": "https://github.com/disaster-dxos/disaster-dxos/blob/main/apps/cuu-tro/ngsi-ld/README.md#",
+      "WaterLevelStation": "dxos:WaterLevelStation",
+      "RainGauge": "dxos:RainGauge",
+      "WindStation": "dxos:WindStation",
+      "name": "https://schema.org/name",
+      "stationCode": "dxos:stationCode",
+      "waterLevel": "dxos:waterLevel",
+      "precipitation": "dxos:precipitation",
+      "windSpeed": "dxos:windSpeed",
+      "alertLevel": "dxos:alertLevel",
+      "warningThreshold": "dxos:warningThreshold",
+      "dangerThreshold": "dxos:dangerThreshold"
+    }
+  ]
+}
