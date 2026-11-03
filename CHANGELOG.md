@@ -7,6 +7,9 @@
 ### Changed
 - README: mục Giấy phép nêu lý do chọn Apache-2.0 (permissive, cấp quyền bằng sáng chế, cùng giấy phép với các thành phần chính của stack), song ngữ (#142).
 
+### Added
+- Dùng thử với người dùng thật (#145): Issue Form "Phản hồi dùng thử" (`.github/ISSUE_TEMPLATE/phan-hoi-dung-thu.yml`, tự gắn nhãn `user-feedback`: vai, nhiệm vụ, tự làm xong không, mức dễ dùng 1–5, mức ảnh hưởng, nhắc không ghi mật khẩu/OTP/SĐT thật) và `docs/thu-nghiem.md` (chuẩn bị buổi thử, người dùng mẫu theo vai, 6 nhiệm vụ: duyệt tin AI, bản đồ + chặn trùng, phân công + nhận, app hiện trường offline, kiểm chứng sổ cái, Grafana; câu hỏi cuối buổi; cách báo lại). README trỏ tới tài liệu.
+
 ## [0.5.0] - 2026-10-29
 Tuần 6 và tuần 7: hoàn thiện cho trình bày và người ngoài dùng thử. Grafana đăng nhập SSO Keycloak (generic OAuth + PKCE, vai realm → vai Grafana, tắt form, tài khoản admin khẩn cấp lấy từ OpenBao), client tạo idempotent nên máy đã có realm cũ cũng nhận. README song ngữ đầy đủ với Quick start tiếng Anh chạy từ máy sạch và mục nâng cấp. Tài liệu trình bày chung kết 15 phút: kịch bản theo phút qua H-P-D-I, script dựng dữ liệu demo và chạy lại 7 luồng, script quay video dự phòng.
 
