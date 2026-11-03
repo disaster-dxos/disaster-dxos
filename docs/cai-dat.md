@@ -48,6 +48,14 @@ Thêm biến mới thì thêm vào `.env.example` kèm chú thích.
 | `make bao-unseal` | Sau khi khởi động lại máy, nếu đặt `OPENBAO_DEV_AUTO_UNSEAL=false` (mặc định `true` trên máy dev: container `openbao-unseal` tự mở) |
 | `make bao-init` | Nạp lại bí mật, policy, AppRole còn thiếu; chạy lại bao nhiêu lần cũng được, không ghi đè |
 
+**Mất volume OpenBao mà `.data/openbao/` còn** (vd xóa `disaster-dxos_baodata`, `docker compose down -v`, đổi máy ảo Docker). Key, root token và `secret_id` cũ không dùng được với OpenBao mới. Bí mật cũ trong OpenBao cũng mất, nên các volume dữ liệu khác (PostgreSQL, SeaweedFS…) tạo bằng mật khẩu cũ sẽ không khớp: xóa luôn các volume đó (`docker compose --profile '*' down -v`) rồi:
+
+1. Đổi tên `init.json` cũ, **không xóa** (để còn tra cứu): `mv .data/openbao/init.json .data/openbao/init.json.cu-$(date +%Y%m%d-%H%M)`. Còn `init.json` thì script dừng với thông báo lỗi, không init đè.
+2. `make up`. Script init OpenBao mới, đổi tên `unseal.keys`, `root.token` cũ thành `*.cu-<thời điểm>`, tra từng `approle/<dịch vụ>/secret_id` trong OpenBao: cái nào OpenBao không còn biết thì đổi tên thành `secret_id.cu-<thời điểm>` và cấp mới (#144). Trước #144 script giữ `secret_id` cũ, các container `bao-agent-*` báo unhealthy với lỗi `invalid role or secret ID`.
+3. `make seed`, `make smoke`.
+
+Các file `*.cu-*` không còn tác dụng; giữ hay xóa tùy máy, đều nằm ngoài git.
+
 Mật khẩu quản trị Keycloak không nằm trong `.env`, lấy từ OpenBao khi cần: `BAO_TOKEN=$(cat .data/openbao/root.token) docker compose exec -e BAO_TOKEN openbao bao kv get secret/core/keycloak-admin`.
 
 ## Thêm ứng dụng mới vào `apps/`

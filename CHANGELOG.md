@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-03
+Chuẩn bị dùng thử với người dùng thật và ổn định máy dev. Mẫu phản hồi dùng thử (Issue Form, nhãn `user-feedback`) và hướng dẫn tổ chức buổi thử với 6 nhiệm vụ theo luồng chính. `openbao-init.sh` tự cấp lại `secret_id` khi OpenBao được init lại mà `.data/openbao/` còn (trước đây các `bao-agent-*` unhealthy). README nêu lý do chọn Apache-2.0.
+
+Kiểm chứng: `make up` + `make seed` + `make smoke` 1033/1033 trên volume trống ngày 03/11/2026 (project tạm, OpenBao riêng, MacBook Apple Silicon, OrbStack, 567 giây) ở commit chốt phiên bản này. Không thêm ca smoke so với v0.5.0.
+
+### Changed
+- README: mục Giấy phép nêu lý do chọn Apache-2.0 (permissive, cấp quyền bằng sáng chế, cùng giấy phép với các thành phần chính của stack), song ngữ (#142).
+- `docs/cai-dat.md`: mục xử lý khi mất volume OpenBao mà `.data/openbao/` còn (#144).
+
+### Fixed
+- `scripts/openbao-init.sh`: khi OpenBao được init lại (volume `baodata` mất) mà `.data/openbao/` còn, script tra từng `secret_id` có sẵn trong OpenBao; cái nào không còn hợp lệ thì đổi tên thành `secret_id.cu-<thời điểm>` và cấp mới. Trước đây script giữ `secret_id` cũ, các container `bao-agent-*` unhealthy với lỗi `invalid role or secret ID`. `unseal.keys`, `root.token` cũ cũng được đổi tên thay vì ghi đè (#144).
+
+### Added
+- Dùng thử với người dùng thật (#145): Issue Form "Phản hồi dùng thử" (`.github/ISSUE_TEMPLATE/phan-hoi-dung-thu.yml`, tự gắn nhãn `user-feedback`: vai, nhiệm vụ, tự làm xong không, mức dễ dùng 1–5, mức ảnh hưởng, nhắc không ghi mật khẩu/OTP/SĐT thật) và `docs/thu-nghiem.md` (chuẩn bị buổi thử, người dùng mẫu theo vai, 6 nhiệm vụ: duyệt tin AI, bản đồ + chặn trùng, phân công + nhận, app hiện trường offline, kiểm chứng sổ cái, Grafana; câu hỏi cuối buổi; cách báo lại). README trỏ tới tài liệu.
+
 ## [0.5.0] - 2026-10-29
 Tuần 6 và tuần 7: hoàn thiện cho trình bày và người ngoài dùng thử. Grafana đăng nhập SSO Keycloak (generic OAuth + PKCE, vai realm → vai Grafana, tắt form, tài khoản admin khẩn cấp lấy từ OpenBao), client tạo idempotent nên máy đã có realm cũ cũng nhận. README song ngữ đầy đủ với Quick start tiếng Anh chạy từ máy sạch và mục nâng cấp. Tài liệu trình bày chung kết 15 phút: kịch bản theo phút qua H-P-D-I, script dựng dữ liệu demo và chạy lại 7 luồng, script quay video dự phòng.
 
@@ -290,7 +305,8 @@ Kiểm chứng: `make smoke` 339/339 trên máy sạch ngày 22/10/2026 (clone t
 - Tách `core/` (Tầng 1, không chứa nghiệp vụ) và `apps/cuu-tro/` (Tầng 2): `deploy/apisix`, `deploy/nats`, `deploy/postgres` → `core/`; realm Keycloak → `apps/cuu-tro/keycloak/realm.json`; chọn ứng dụng bằng biến `DXOS_APP`; `docs/architecture.md` thêm mục 7 giải thích vì sao lõi độc lập với nghiệp vụ (#3).
 - `docs/PLAN.md` theo lộ trình mới: VPS + tên miền tuần 4, tuần UX tuần 6, 2 lần tập trình bày, công bố bộ mô phỏng cảm biến và mô hình NGSI-LD; gán vai V1/V2/V3 cho từng việc (#5).
 
-[Unreleased]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/disaster-dxos/disaster-dxos/compare/v0.2.0...v0.3.0

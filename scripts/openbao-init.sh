@@ -29,6 +29,7 @@ APP_POLICY_DIR="apps/$APP/openbao/policies"
 # Bí mật riêng của ứng dụng (#87): mỗi dòng "<đường dẫn> <khóa>=<nguồn> ..." → secret/app/<APP>/<đường dẫn>
 APP_SECRETS_FILE="apps/$APP/openbao/secrets.conf"
 umask 077
+STAMP=$(date +%Y%m%d-%H%M%S)
 
 log() { echo "openbao-init: $*"; }
 die() { echo "openbao-init: LỖI: $*" >&2; exit 1; }
@@ -74,8 +75,13 @@ do_init() {
     log "đã init từ trước"
     return 0
   fi
-  [ -e "$DIR/init.json" ] && die "$DIR/init.json đã tồn tại nhưng OpenBao chưa init (volume baodata bị xóa?). Chuyển file cũ đi rồi chạy lại."
+  [ -e "$DIR/init.json" ] && die "$DIR/init.json đã tồn tại nhưng OpenBao chưa init (volume baodata bị xóa?). Đổi tên file cũ (vd mv $DIR/init.json $DIR/init.json.cu-$(date +%Y%m%d-%H%M)) rồi chạy lại; xem docs/cai-dat.md mục \"Mất volume OpenBao\"."
   mkdir -p "$DIR/unseal"
+  # Volume mất mà .data còn (#144): key và token cũ không dùng được với OpenBao mới, đổi tên giữ lại chứ không ghi đè
+  local f
+  for f in "$DIR/unseal/unseal.keys" "$DIR/root.token"; do
+    [ -e "$f" ] && mv "$f" "$f.cu-$STAMP" && log "đổi tên $f cũ thành $f.cu-$STAMP"
+  done
   log "init với $SHARES key share, ngưỡng $THRESHOLD"
   api_ok PUT sys/init - <<<"$(python3 -c 'import json,sys; print(json.dumps({"secret_shares":int(sys.argv[1]),"secret_threshold":int(sys.argv[2])}))' "$SHARES" "$THRESHOLD")"
   printf '%s\n' "$BODY" > "$DIR/init.json"
@@ -245,6 +251,15 @@ do_setup() {
     mkdir -p "$DIR/approle/$svc"
     api_ok GET "auth/approle/role/$svc/role-id"
     jget 'd["data"]["role_id"]' <<<"$BODY" | tr -d '\n' > "$DIR/approle/$svc/role_id"
+    # secret_id có sẵn nhưng OpenBao không còn biết (volume baodata mất, init lại, #144): đổi tên file cũ, cấp mới
+    if [ -s "$DIR/approle/$svc/secret_id" ]; then
+      api POST "auth/approle/role/$svc/secret-id/lookup" - \
+        < <(python3 -c 'import sys,json; print(json.dumps({"secret_id":open(sys.argv[1]).read().strip()}))' "$DIR/approle/$svc/secret_id")
+      if [ "$HTTP_CODE" != 200 ] || [ "$(jget 'bool(d.get("data"))' <<<"$BODY" 2>/dev/null)" != True ]; then
+        mv "$DIR/approle/$svc/secret_id" "$DIR/approle/$svc/secret_id.cu-$STAMP"
+        log "AppRole $svc: secret_id cũ không còn hợp lệ (HTTP $HTTP_CODE), đổi tên thành secret_id.cu-$STAMP"
+      fi
+    fi
     if [ ! -s "$DIR/approle/$svc/secret_id" ]; then
       api_ok POST "auth/approle/role/$svc/secret-id"
       jget 'd["data"]["secret_id"]' <<<"$BODY" | tr -d '\n' > "$DIR/approle/$svc/secret_id"
