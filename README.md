@@ -471,13 +471,21 @@ Open an issue on [GitHub Issues](https://github.com/disaster-dxos/disaster-dxos/
 
 ## 📜 Giấy phép · License
 
-Mã nguồn phát hành theo [Apache-2.0](LICENSE). Bản quyền và ghi nhận thành phần bên thứ ba: [`NOTICE`](NOTICE). Phiên bản và giấy phép từng image, thư viện: [`DEPENDENCIES.md`](DEPENDENCIES.md).
+Mã nguồn phát hành theo [Apache-2.0](LICENSE).
+
+**Vì sao chọn Apache-2.0:** đây là giấy phép mở dễ dùng (permissive), nên UBND xã, đội cứu hộ, tổ chức cứu trợ hay doanh nghiệp đều được tự do dùng, sửa và triển khai cho địa phương mình, kể cả ghép vào hệ thống sẵn có, mà không buộc phải mở mã phần đã sửa. Giấy phép có điều khoản cấp quyền bằng sáng chế (patent grant) và yêu cầu giữ thông báo bản quyền trong `NOTICE`, nên bên triển khai được bảo vệ về pháp lý và nguồn gốc mã luôn rõ ràng. Apache-2.0 cũng là giấy phép của các thành phần chính trong stack (Keycloak, APISIX, Hasura CE, SeaweedFS, Tessera nhúng trong sổ cái), nên mã của dự án và thư viện đi kèm dùng cùng một bộ điều khoản.
+
+Bản quyền và ghi nhận thành phần bên thứ ba: [`NOTICE`](NOTICE). Phiên bản và giấy phép từng image, thư viện: [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
 - Chỉ dùng thành phần có giấy phép được OSI công nhận.
 - Thành phần copyleft (PostGIS GPL-2.0, Grafana AGPL-3.0, ClamAV GPL-2.0) chạy như dịch vụ riêng bằng image gốc, không sửa, không nhúng vào mã của dự án.
 - Ảnh minh họa trong `docs/images/` do đội tạo bằng công cụ AI, sơ đồ SVG do đội vẽ; cấp phép cùng repo. Biểu tượng trong ảnh kiến trúc là hình minh họa, không phải logo chính thức ([`docs/images/README.md`](docs/images/README.md)).
 
-The source code is released under [Apache-2.0](LICENSE). Copyright and third-party notices: [`NOTICE`](NOTICE). Versions and licenses of every image and library: [`DEPENDENCIES.md`](DEPENDENCIES.md).
+The source code is released under [Apache-2.0](LICENSE).
+
+**Why Apache-2.0:** a permissive license lets communes, rescue teams and relief organisations use, modify and deploy the system freely without copyleft obligations, while its explicit patent grant and `NOTICE` requirement protect deployers and keep attribution clear; it is also the license of the main stack components (Keycloak, APISIX, Hasura CE, SeaweedFS, Tessera).
+
+Copyright and third-party notices: [`NOTICE`](NOTICE). Versions and licenses of every image and library: [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
 - Only OSI-approved licenses are used.
 - Copyleft components (PostGIS GPL-2.0, Grafana AGPL-3.0, ClamAV GPL-2.0) run as separate services from their unmodified upstream images; they are not modified or embedded in the project's code.

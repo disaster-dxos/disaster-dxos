@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+### Changed
+- README: mục Giấy phép nêu lý do chọn Apache-2.0 (permissive, cấp quyền bằng sáng chế, cùng giấy phép với các thành phần chính của stack), song ngữ (#142).
+
 ## [0.5.0] - 2026-10-29
 Tuần 6 và tuần 7: hoàn thiện cho trình bày và người ngoài dùng thử. Grafana đăng nhập SSO Keycloak (generic OAuth + PKCE, vai realm → vai Grafana, tắt form, tài khoản admin khẩn cấp lấy từ OpenBao), client tạo idempotent nên máy đã có realm cũ cũng nhận. README song ngữ đầy đủ với Quick start tiếng Anh chạy từ máy sạch và mục nâng cấp. Tài liệu trình bày chung kết 15 phút: kịch bản theo phút qua H-P-D-I, script dựng dữ liệu demo và chạy lại 7 luồng, script quay video dự phòng.
 
