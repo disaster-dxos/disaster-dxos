@@ -1,0 +1,93 @@
+# SPDX-License-Identifier: Apache-2.0
+# Mẫu phản hồi của người dùng thử (#145). Cách tổ chức buổi thử: docs/thu-nghiem.md
+name: Phản hồi dùng thử
+description: Dành cho người dùng thử Disaster DX-OS (cán bộ xã, đội cứu hộ, tình nguyện viên, nhà tài trợ). Mỗi phản hồi một issue.
+title: "[Dùng thử] "
+labels: ["user-feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Cảm ơn bạn đã dùng thử. Hướng dẫn và danh sách nhiệm vụ: [`docs/thu-nghiem.md`](https://github.com/disaster-dxos/disaster-dxos/blob/main/docs/thu-nghiem.md).
+
+        **Không ghi** mật khẩu, mã OTP, số điện thoại hay họ tên thật (của bạn hoặc người khác) vào issue. Ảnh chụp màn hình thì che những thông tin đó trước khi đính kèm.
+  - type: dropdown
+    id: vai
+    attributes:
+      label: Bạn dùng thử với vai nào?
+      options:
+        - Cán bộ xã, người điều phối (web điều phối)
+        - Đội cứu hộ (màn Phân công / app hiện trường)
+        - Tình nguyện viên (app hiện trường)
+        - Nhà tài trợ, báo chí (trang Minh bạch, không đăng nhập)
+        - Khác
+    validations:
+      required: true
+  - type: dropdown
+    id: nhiem-vu
+    attributes:
+      label: Nhiệm vụ (theo docs/thu-nghiem.md)
+      options:
+        - "NV1: Duyệt tin kêu cứu viết vội bằng AI"
+        - "NV2: Theo dõi tin trên bản đồ, thử báo trùng"
+        - "NV3: Phân công và nhận nhiệm vụ cứu hộ"
+        - "NV4: Gửi tin kêu cứu từ app hiện trường khi mất sóng"
+        - "NV5: Kiểm chứng phiếu cứu trợ trên trang Minh bạch"
+        - "NV6: Xem tổng hợp trên dashboard Grafana"
+        - Không theo nhiệm vụ nào / nhận xét chung
+    validations:
+      required: true
+  - type: dropdown
+    id: hoan-thanh
+    attributes:
+      label: Bạn có tự làm xong nhiệm vụ không?
+      options:
+        - Xong, không cần hỏi ai
+        - Xong, nhưng phải hỏi hoặc thử nhiều lần
+        - Không xong
+    validations:
+      required: true
+  - type: dropdown
+    id: muc-de
+    attributes:
+      label: Mức dễ dùng (1 = rất khó, 5 = rất dễ)
+      options: ["1", "2", "3", "4", "5"]
+    validations:
+      required: true
+  - type: textarea
+    id: dieu-xay-ra
+    attributes:
+      label: Điều gì đã xảy ra?
+      description: Bạn bấm gì, màn hình hiện gì, chỗ nào làm bạn lúng túng hoặc chờ lâu.
+    validations:
+      required: true
+  - type: textarea
+    id: mong-doi
+    attributes:
+      label: Bạn mong hệ thống làm gì?
+      description: Nếu dùng thật trong một đợt lũ, bạn cần nó khác đi thế nào.
+  - type: dropdown
+    id: muc-do
+    attributes:
+      label: Mức ảnh hưởng nếu dùng thật
+      options:
+        - Chặn việc (không làm tiếp được)
+        - Khó chịu nhưng vẫn làm được
+        - Góp ý nhỏ, đề xuất thêm
+  - type: input
+    id: thiet-bi
+    attributes:
+      label: Thiết bị, trình duyệt
+      placeholder: "vd: Android 13 Samsung A54, Chrome 140; laptop Windows 11, Edge"
+  - type: input
+    id: dia-chi
+    attributes:
+      label: Địa chỉ đã dùng thử
+      description: Máy của đội (localhost) hay địa chỉ demo công khai đội gửi cho bạn.
+  - type: checkboxes
+    id: rieng-tu
+    attributes:
+      label: Xác nhận
+      options:
+        - label: Tôi không ghi mật khẩu, mã OTP, số điện thoại hay họ tên thật trong issue này.
+          required: true

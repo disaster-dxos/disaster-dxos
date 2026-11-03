@@ -469,6 +469,10 @@ Mở issue tại [GitHub Issues](https://github.com/disaster-dxos/disaster-dxos/
 
 Open an issue on [GitHub Issues](https://github.com/disaster-dxos/disaster-dxos/issues) with the "Báo lỗi" (bug report) template: description, steps to reproduce, environment (OS, RAM, `docker compose version`). English is fine.
 
+**Dùng thử và góp ý.** Đội đang mời cán bộ xã, đội cứu hộ, tình nguyện viên, nhà tài trợ dùng thử. Cách tổ chức buổi thử, 6 nhiệm vụ theo luồng chính và cách báo lại: [`docs/thu-nghiem.md`](docs/thu-nghiem.md). Mỗi góp ý một issue theo mẫu [Phản hồi dùng thử](https://github.com/disaster-dxos/disaster-dxos/issues/new?template=phan-hoi-dung-thu.yml) (nhãn `user-feedback`).
+
+*Trying it out: we are inviting commune officials, rescue teams, volunteers and donors to test the system. How a test session is run, the six tasks and how to report back are in [`docs/thu-nghiem.md`](docs/thu-nghiem.md) (Vietnamese). Use the "Phản hồi dùng thử" (user feedback) issue form, one issue per piece of feedback.*
+
 ## 📜 Giấy phép · License
 
 Mã nguồn phát hành theo [Apache-2.0](LICENSE).
