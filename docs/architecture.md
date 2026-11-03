@@ -1,6 +1,6 @@
 # Kiến trúc Disaster DX-OS
 
-> Phiên bản tài liệu: v0.5.0 (cập nhật 29/10/2026; từ v0.4.0 thêm Grafana đăng nhập SSO Keycloak #126). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
+> Phiên bản tài liệu: v0.6.0 (cập nhật 03/11/2026; từ v0.5.0 không đổi kiến trúc, `openbao-init.sh` tự cấp lại `secret_id` khi OpenBao init lại #144). Giấy phép từng thành phần: `NOTICE`, `DEPENDENCIES.md`.
 
 Disaster DX-OS gồm hai tầng, đúng mô hình Open-Core của đề:
 
