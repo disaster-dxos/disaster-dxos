@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- `docs/architecture.md`: lý do tuân thủ giấy phép của Grafana trỏ tới `CONTRIBUTING.md` mục 6 và `DEPENDENCIES.md` thay cho tệp không có trong repo (#151).
+
 ## [0.6.0] - 2026-11-03
 Chuẩn bị dùng thử với người dùng thật và ổn định máy dev. Mẫu phản hồi dùng thử (Issue Form, nhãn `user-feedback`) và hướng dẫn tổ chức buổi thử với 6 nhiệm vụ theo luồng chính. `openbao-init.sh` tự cấp lại `secret_id` khi OpenBao được init lại mà `.data/openbao/` còn (trước đây các `bao-agent-*` unhealthy). README nêu lý do chọn Apache-2.0.
 
