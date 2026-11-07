@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-// Mọi trang cần đăng nhập, trừ trang gọi lại OIDC và các trang công khai (vd /minh-bach, #63).
-const CONG_KHAI = ['/auth/', '/minh-bach']
+// Mọi trang cần đăng nhập, trừ trang gọi lại OIDC và các trang công khai (vd /minh-bach, /login, #63).
+const CONG_KHAI = ['/auth/', '/minh-bach', '/login']
 
 export default defineNuxtRouteMiddleware(async (to) => {
   if (CONG_KHAI.some((p) => to.path.startsWith(p))) return

@@ -1,0 +1,214 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Theme Đăng nhập Keycloak Disaster DX-OS — Định hướng Sáng sủa & Hiện đại (Light Admin) */
+
+:root {
+  --kc-bg: #F8FAFC;
+  --kc-card-bg: #FFFFFF;
+  --kc-card-border: #E2E8F0;
+  --kc-input-bg: #F8FAFC;
+  --kc-input-border: #CBD5E1;
+  --kc-text: #0F172A;
+  --kc-text-muted: #475569;
+  --kc-primary: #F07B1D;
+  --kc-primary-hover: #E06A0E;
+  --kc-primary-active: #B4500D;
+  --kc-primary-text: #FFFFFF;
+  --kc-error: #B91C1C;
+}
+
+body.login-pf,
+body {
+  background-color: var(--kc-bg) !important;
+  background-image: linear-gradient(180deg, #EDF2F7 0%, #F8FAFC 100%) !important;
+  color: var(--kc-text) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+  min-height: 100vh;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Card chính của Keycloak */
+.login-pf-page,
+.pf-v5-c-login,
+.login-pf body {
+  background: transparent !important;
+}
+
+.card-pf,
+.pf-v5-c-login__main,
+.pf-c-login__main {
+  background-color: var(--kc-card-bg) !important;
+  border: 1px solid var(--kc-card-border) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.08), 0 4px 6px -2px rgba(15, 23, 42, 0.04) !important;
+  color: var(--kc-text) !important;
+  max-width: 460px !important;
+  width: 100% !important;
+  padding: 36px 36px !important;
+  margin: 20px auto !important;
+}
+
+/* Header & Logo */
+#kc-header,
+.pf-v5-c-login__header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+#kc-header-wrapper,
+.pf-v5-c-brand {
+  display: block;
+  margin: 0 auto 14px;
+  background-image: url('../img/logo.png') !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  background-size: contain !important;
+  width: 250px !important;
+  height: 52px !important;
+  background-color: #FFFFFF !important;
+  border: 1px solid #E2E8F0 !important;
+  border-radius: 8px !important;
+  padding: 6px 12px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+  /* Logo đã có tên sản phẩm: ẩn chữ tiêu đề realm để không đè lên ảnh */
+  font-size: 0 !important;
+  color: transparent !important;
+}
+
+/* Vạch đầu khung đăng nhập theo màu chính thay cho xanh mặc định của PatternFly */
+.pf-v5-c-login__main-header {
+  border-top-color: var(--kc-primary) !important;
+}
+
+#kc-page-title,
+.pf-v5-c-title {
+  color: #0F172A !important;
+  font-size: 1.25rem !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em;
+  text-align: center;
+  margin-bottom: 20px !important;
+}
+
+/* Form labels */
+.control-label,
+label,
+.pf-v5-c-form__label-text {
+  color: #334155 !important;
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+  margin-bottom: 6px !important;
+}
+
+/* Input text & password */
+input[type="text"],
+input[type="password"],
+input[type="email"],
+.form-control,
+.pf-v5-c-form-control {
+  background-color: var(--kc-input-bg) !important;
+  color: #0F172A !important;
+  border: 1px solid var(--kc-input-border) !important;
+  border-radius: 6px !important;
+  padding: 10px 14px !important;
+  font-size: 0.9375rem !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="email"]:focus,
+.form-control:focus,
+.pf-v5-c-form-control:focus {
+  background-color: #FFFFFF !important;
+  border-color: var(--kc-primary) !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(240, 123, 29, 0.25) !important;
+}
+
+/* keycloak.v2 bọc input trong span.pf-v5-c-form-control: chỉ vẽ viền ở span, bỏ viền của input bên trong
+   và vạch dưới (::before, ::after) của PatternFly để không thành hai lớp viền */
+.pf-v5-c-form-control > input {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+.pf-v5-c-form-control::before,
+.pf-v5-c-form-control::after {
+  display: none !important;
+}
+
+.pf-v5-c-form-control:focus-within {
+  background-color: #FFFFFF !important;
+  border-color: var(--kc-primary) !important;
+  box-shadow: 0 0 0 2px rgba(240, 123, 29, 0.25) !important;
+}
+
+/* Nút Đăng nhập Cam Cứu hộ */
+.btn-primary,
+#kc-login,
+.pf-v5-c-button.pf-m-primary {
+  background-color: var(--kc-primary) !important;
+  background-image: none !important;
+  color: var(--kc-primary-text) !important;
+  font-weight: 700 !important;
+  font-size: 0.9375rem !important;
+  border: none !important;
+  border-radius: 6px !important;
+  padding: 11px 20px !important;
+  cursor: pointer;
+  width: 100% !important;
+  box-shadow: 0 2px 6px rgba(240, 123, 29, 0.25) !important;
+  transition: background-color 0.15s ease, transform 0.05s ease;
+}
+
+.btn-primary:hover,
+#kc-login:hover,
+.pf-v5-c-button.pf-m-primary:hover {
+  background-color: var(--kc-primary-hover) !important;
+  color: var(--kc-primary-text) !important;
+}
+
+.btn-primary:active,
+#kc-login:active,
+.pf-v5-c-button.pf-m-primary:active {
+  background-color: var(--kc-primary-active) !important;
+  transform: translateY(1px);
+}
+
+/* Ghi nhớ đăng nhập / Checkbox */
+.checkbox,
+.pf-v5-c-check {
+  color: var(--kc-text-muted) !important;
+  font-size: 0.875rem !important;
+}
+
+/* Thông báo lỗi / alert */
+.alert-error,
+.pf-v5-c-alert.pf-m-danger {
+  background-color: #FEF2F2 !important;
+  border: 1px solid #FECACA !important;
+  color: #B91C1C !important;
+  border-radius: 6px !important;
+  padding: 12px 14px !important;
+  margin-bottom: 16px !important;
+  font-size: 0.875rem !important;
+}
+
+/* Chân trang / Ghi chú */
+#kc-info,
+.pf-v5-c-login__main-footer {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--kc-card-border);
+  text-align: center;
+  color: var(--kc-text-muted);
+  font-size: 0.8125rem;
+}

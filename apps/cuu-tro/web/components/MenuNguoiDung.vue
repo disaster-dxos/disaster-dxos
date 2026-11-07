@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <script setup lang="ts">
-// Người đang đăng nhập (tên, vai) + chọn giao diện sáng/tối + đăng xuất, ở chân thanh bên.
+// Người đang đăng nhập (tên, vai) + chọn giao diện sáng/tối + đăng xuất, ở chân thanh bên nền Navy.
 import type { DropdownMenuItem } from '@nuxt/ui'
 import { VAI_TRO } from '~/utils/session'
 
@@ -33,15 +33,30 @@ const items = computed<DropdownMenuItem[][]>(() => [
 </script>
 
 <template>
-  <UDropdownMenu :items="items" :content="{ align: 'center', collisionPadding: 12 }" :ui="{ content: collapsed ? 'w-56' : 'w-(--reka-dropdown-menu-trigger-width)' }">
+  <div v-if="!user" class="w-full">
+    <UButton
+      to="/login"
+      color="secondary"
+      size="md"
+      block
+      :square="collapsed"
+      icon="i-lucide-log-in"
+      class="min-h-10 font-bold text-navy-950 shadow-xs"
+      :title="collapsed ? 'Đăng nhập hệ thống' : undefined"
+    >
+      <span v-if="!collapsed">Đăng nhập</span>
+    </UButton>
+  </div>
+
+  <UDropdownMenu v-else :items="items" :content="{ align: 'center', collisionPadding: 12 }" :ui="{ content: collapsed ? 'w-56' : 'w-(--reka-dropdown-menu-trigger-width)' }">
     <UButton
       color="neutral" variant="ghost" block :square="collapsed"
-      class="min-h-11 data-[state=open]:bg-elevated"
+      class="min-h-11 rounded-md text-default hover:bg-muted hover:text-highlighted data-[state=open]:bg-muted"
       :aria-label="collapsed ? `Tài khoản ${user?.displayName ?? ''}` : undefined"
-      :ui="{ trailingIcon: 'text-dimmed' }"
+      :ui="{ trailingIcon: 'text-muted' }"
       :trailing-icon="collapsed ? undefined : 'i-lucide-chevrons-up-down'"
     >
-      <UAvatar icon="i-lucide-user-round" size="sm" :ui="{ root: 'bg-primary', icon: 'text-inverted' }" />
+      <UAvatar icon="i-lucide-user-round" size="sm" :ui="{ root: 'bg-cam-500 ring-1 ring-default', icon: 'text-white' }" />
       <span v-if="!collapsed" class="min-w-0 flex-1 text-left leading-tight">
         <span class="block truncate text-sm font-semibold text-highlighted">{{ user?.displayName }}</span>
         <span class="block truncate text-xs text-muted">{{ vaiTro || 'Chưa có vai trò' }}</span>

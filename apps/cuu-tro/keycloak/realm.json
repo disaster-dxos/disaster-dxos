@@ -1,6 +1,10 @@
 {
   "realm": "disaster",
   "displayName": "Disaster DX-OS",
+  "loginTheme": "disaster-dxos",
+  "internationalizationEnabled": true,
+  "supportedLocales": ["vi", "en"],
+  "defaultLocale": "vi",
   "enabled": true,
   "sslRequired": "${KC_REALM_SSL_REQUIRED}",
   "registrationAllowed": false,

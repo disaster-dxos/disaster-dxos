@@ -42,39 +42,44 @@ const laDep = computed(() => {
 
 <template>
   <UCard :ui="{ body: 'p-0 sm:p-0' }" data-testid="tu-kiem">
-    <div class="space-y-3 p-5">
+    <div class="space-y-3.5 p-5">
       <div class="flex flex-wrap items-center justify-between gap-2">
-        <h2 class="text-base font-semibold text-highlighted">Trình duyệt của bạn tự kiểm</h2>
-        <UBadge v-if="kl" :color="kl.mau" variant="subtle" size="lg" :icon="kl.icon" data-testid="ket-luan-tu-kiem">{{ kl.nhan }}</UBadge>
+        <h2 class="flex items-center gap-2 text-base font-bold text-highlighted">
+          <UIcon name="i-lucide-cpu" class="size-5 text-info" />Trình duyệt của bạn tự kiểm (WebCrypto)
+        </h2>
+        <UBadge v-if="kl" :color="kl.mau" variant="subtle" size="lg" :icon="kl.icon" class="font-bold ring-1 ring-inset ring-current/30" data-testid="ket-luan-tu-kiem">{{ kl.nhan }}</UBadge>
         <UBadge v-else-if="dangKiem" color="neutral" variant="subtle" size="lg" icon="i-lucide-loader">Đang kiểm…</UBadge>
       </div>
       <p class="text-sm text-muted">
-        Không tin lời máy chủ: trang tự băm lại bản ghi và kiểm bằng chứng mật mã ngay trên máy bạn (WebCrypto).
+        Không tin lời máy chủ: trang tự băm lại bản ghi chuẩn tắc (SHA-256), dựng đường dẫn Merkle và kiểm chữ ký Ed25519 ngay trên máy bạn.
       </p>
-      <ol v-if="buoc" class="space-y-2" aria-label="Các bước tự kiểm chứng">
-        <li v-for="(b, i) in buoc" :key="b.khoa" class="flex gap-2.5">
+      <ol v-if="buoc" class="divide-y divide-default border-t border-default pt-1" aria-label="Các bước tự kiểm chứng">
+        <li
+          v-for="(b, i) in buoc" :key="b.khoa"
+          class="flex gap-3 py-2.5"
+        >
           <UIcon :name="iconBuoc(b.ok)" class="mt-0.5 size-5 shrink-0" :class="mauBuoc(b.ok)" />
-          <div class="min-w-0">
-            <p class="text-sm font-medium text-highlighted">
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-bold text-highlighted">
               {{ i + 1 }}. {{ b.ten }}
               <span class="sr-only">: {{ b.ok === true ? 'đạt' : b.ok === false ? 'không đạt' : 'không kiểm được' }}</span>
             </p>
-            <p class="break-all text-xs text-muted">{{ b.chiTiet }}</p>
+            <p class="mt-0.5 break-all font-mono text-xs text-muted">{{ b.chiTiet }}</p>
           </div>
         </li>
       </ol>
     </div>
 
-    <UCollapsible class="border-t border-default">
-      <UButton color="neutral" variant="ghost" block trailing-icon="i-lucide-chevron-down" class="min-h-12 justify-between px-5 font-semibold">
-        Bằng chứng (dành cho người kỹ thuật)
+    <UCollapsible class="border-t border-default bg-muted/40">
+      <UButton color="neutral" variant="ghost" block icon="i-lucide-terminal" trailing-icon="i-lucide-chevron-down" class="min-h-12 justify-between px-5 font-bold text-highlighted">
+        Bằng chứng mật mã &amp; lệnh kiểm độc lập (dành cho người kỹ thuật)
       </UButton>
       <template #content>
         <div class="space-y-4 px-5 pb-5 text-xs">
-          <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
-            <dt class="text-muted">SHA-256 bản ghi</dt><dd class="break-all font-mono">{{ kq.sha256 }}</dd>
+          <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-lg bg-elevated p-3.5 ring-1 ring-inset ring-default">
+            <dt class="text-muted">SHA-256 bản ghi</dt><dd class="break-all font-mono text-highlighted">{{ kq.sha256 }}</dd>
             <template v-if="kq.bang_chung">
-              <dt class="text-muted">Chỉ số lá</dt><dd class="so font-mono">{{ kq.bang_chung.leaf_index }}</dd>
+              <dt class="text-muted">Chỉ số lá</dt><dd class="so font-mono font-bold text-highlighted">{{ kq.bang_chung.leaf_index }}</dd>
               <dt class="text-muted">Leaf hash</dt><dd class="break-all font-mono">{{ kq.bang_chung.leaf_hash }}</dd>
               <dt class="text-muted">Kích thước cây</dt><dd class="so font-mono">{{ kq.bang_chung.tree_size }}</dd>
             </template>
@@ -94,15 +99,15 @@ const laDep = computed(() => {
           </div>
           <div v-if="kq.bang_chung">
             <p class="mb-1 font-semibold text-muted">Checkpoint đã ký (nguyên văn)</p>
-            <pre class="overflow-x-auto rounded-md bg-elevated p-3 font-mono leading-5">{{ kq.bang_chung.checkpoint }}</pre>
+            <pre class="overflow-x-auto rounded-md bg-elevated p-3 font-mono leading-5 ring-1 ring-inset ring-default">{{ kq.bang_chung.checkpoint }}</pre>
           </div>
           <div v-if="laDep">
             <p class="mb-1 font-semibold text-muted">Lá trên sổ cái</p>
-            <pre class="overflow-x-auto rounded-md bg-elevated p-3 font-mono leading-5">{{ laDep }}</pre>
+            <pre class="overflow-x-auto rounded-md bg-elevated p-3 font-mono leading-5 ring-1 ring-inset ring-default">{{ laDep }}</pre>
           </div>
           <div v-if="chuanTac">
             <p class="mb-1 font-semibold text-muted">Bản ghi chuẩn tắc (đầu vào của SHA-256)</p>
-            <pre class="overflow-x-auto whitespace-pre-wrap break-all rounded-md bg-elevated p-3 font-mono leading-5">{{ chuanTac }}</pre>
+            <pre class="overflow-x-auto whitespace-pre-wrap break-all rounded-md bg-elevated p-3 font-mono leading-5 ring-1 ring-inset ring-default">{{ chuanTac }}</pre>
           </div>
           <div>
             <p class="mb-1 font-semibold text-muted">Kiểm lại bằng công cụ dòng lệnh</p>

@@ -99,12 +99,19 @@
   --color-thap: #475569;
 }
 
-/* Chữ đậm hơn mặc định Nuxt UI để đọc được ngoài nắng; chữ phụ không nhạt hơn slate-600 */
+/* Định hướng Sáng sủa & Hiện đại (Light Admin): nền sáng tinh tế, chữ sắc nét, viền rõ ràng */
 :root:not(.dark) {
-  --ui-text: var(--ui-color-neutral-800);
+  --ui-bg: #FFFFFF;
+  --ui-bg-muted: #F8FAFC;
+  --ui-bg-elevated: #FFFFFF;
+  --ui-bg-accented: #F1F5F9;
+  --ui-border: #E2E8F0;
+  --ui-border-muted: #F1F5F9;
+  --ui-border-accented: #CBD5E1;
+  --ui-text: var(--ui-color-neutral-900);
   --ui-text-muted: var(--ui-color-neutral-600);
   --ui-text-dimmed: var(--ui-color-neutral-500);
-  --ui-bg-muted: #F3F6F9;
+  color-scheme: light;
 }
 :root {
   --ui-radius: 0.375rem;
@@ -121,10 +128,24 @@
   --ui-text-dimmed: var(--ui-color-neutral-400);
   /* Nút cam giữ đúng màu nhận diện ở chế độ tối */
   --ui-secondary: var(--ui-color-secondary-500);
+  color-scheme: dark;
 }
 
 html, body, #__nuxt { height: 100%; }
-body { @apply bg-default text-default antialiased; }
+html {
+  scrollbar-color: var(--ui-border-accented) transparent;
+}
+body {
+  @apply bg-default text-default antialiased;
+  caret-color: var(--color-cam-500);
+}
+::selection {
+  background: color-mix(in oklab, var(--color-nuoc-400) 26%, transparent);
+  color: var(--ui-text-highlighted);
+}
+a {
+  text-underline-offset: 3px;
+}
 
 /* Một vòng focus thống nhất, thấy được trên nền trắng, navy và cam */
 :focus-visible { outline: 3px solid var(--ui-info); outline-offset: 2px; }
@@ -133,7 +154,7 @@ body { @apply bg-default text-default antialiased; }
 .so { font-variant-numeric: tabular-nums; }
 
 /* MapLibre: nút điều khiển và chú thích theo theme */
-.maplibregl-ctrl-group { border-radius: var(--ui-radius) !important; box-shadow: 0 1px 3px rgb(11 31 54 / 0.18) !important; }
+.maplibregl-ctrl-group { border-radius: var(--ui-radius) !important; box-shadow: 0 2px 6px rgb(11 31 54 / 0.22) !important; }
 .maplibregl-ctrl-group button { width: 36px !important; height: 36px !important; }
 .dark .maplibregl-ctrl-group { background: var(--ui-bg-elevated); }
 .dark .maplibregl-ctrl-group button + button { border-top-color: var(--ui-border); }
@@ -141,3 +162,11 @@ body { @apply bg-default text-default antialiased; }
 .maplibregl-ctrl-scale, .maplibregl-ctrl-attrib { font-size: 12px !important; }
 .dark .maplibregl-ctrl-attrib, .dark .maplibregl-ctrl-scale { background: rgb(11 22 38 / 0.85) !important; color: var(--ui-text-muted); }
 .dark .maplibregl-ctrl-attrib a { color: var(--ui-text-muted); }
+.maplibregl-popup-content {
+  border-radius: 0.5rem !important;
+  padding: 0.75rem !important;
+  box-shadow: 0 10px 25px -5px rgb(11 31 54 / 0.25) !important;
+  border: 1px solid var(--ui-border) !important;
+  background: var(--ui-bg-elevated) !important;
+  color: var(--ui-text) !important;
+}

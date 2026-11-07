@@ -74,47 +74,63 @@ useHead({ title: 'Minh bạch cứu trợ · Disaster DX-OS' })
 
 <template>
   <div class="flex min-h-full flex-col bg-muted">
-    <header class="border-b border-default bg-default">
+    <header class="border-b border-navy-800 bg-navy-950 text-white">
       <div class="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4">
-        <span class="grid size-10 shrink-0 place-items-center rounded-md bg-white ring ring-default">
-          <img src="/logo/mark-64.png" alt="" width="32" height="32" class="size-8">
-        </span>
-        <div class="min-w-0 leading-tight">
-          <p class="truncate text-base font-bold text-highlighted">Minh bạch cứu trợ</p>
-          <p class="truncate text-xs text-muted">Disaster DX-OS · Ứng phó Thiên tai &amp; Cứu trợ Cộng đồng</p>
+        <NuxtLink to="/minh-bach" class="flex min-w-0 items-center gap-3" aria-label="Cổng Minh bạch cứu trợ Disaster DX-OS">
+          <span class="grid size-10 shrink-0 place-items-center rounded-md bg-white shadow-xs ring-1 ring-white/20">
+            <img src="/logo/mark-64.png" alt="" width="32" height="32" class="size-8">
+          </span>
+          <span class="min-w-0 leading-tight">
+            <span class="block truncate text-base font-bold tracking-tight text-white">Sổ Cái Niêm Yết Cứu Trợ</span>
+            <span class="block truncate text-xs text-navy-200">Disaster DX-OS · Kiểm chứng mật mã công khai (Trillian + Ed25519)</span>
+          </span>
+        </NuxtLink>
+        <div class="ms-auto flex items-center gap-2">
+          <UButton to="/" color="neutral" variant="ghost" size="sm" icon="i-lucide-map" class="text-navy-100 hover:bg-navy-800 hover:text-white max-sm:hidden">
+            Bản đồ điều phối
+          </UButton>
+          <UColorModeButton size="lg" class="text-navy-100 hover:bg-navy-800 hover:text-white" />
         </div>
-        <UColorModeButton class="ms-auto" size="lg" />
+      </div>
+
+      <div class="mx-auto max-w-6xl px-4 pb-6 pt-3 sm:pb-8 sm:pt-4">
+        <div class="grid items-end gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-10">
+          <div>
+            <h1 id="tieu-de-tra" class="text-balance text-2xl font-bold leading-tight text-white sm:text-3xl">
+              Mỗi phiếu kho, mỗi đồng cứu trợ đều tự kiểm chứng được
+            </h1>
+            <p class="mt-2.5 max-w-prose text-sm leading-relaxed text-navy-200 sm:text-base">
+              Mọi lần nhập, xuất hàng và mọi khoản thu, chi tiền cứu trợ được ghi vào sổ cái chỉ-thêm có chữ ký số.
+              Nhập mã UUID dưới mã QR trên phiếu để đối chiếu và tự băm kiểm lại ngay trên trình duyệt. Sổ cái không chứa thông tin cá nhân.
+            </p>
+          </div>
+          <div class="rounded-lg bg-navy-900/95 p-4 shadow-lg ring-1 ring-inset ring-navy-700/80 sm:p-5">
+            <form @submit.prevent="tra">
+              <UFormField
+                label="Mã phiếu kho hoặc mã bút toán thu/chi" name="ma-phieu"
+                help="Mã gồm 36 ký tự (UUID), in dưới mã QR trên phiếu xuất kho hoặc chứng từ."
+                :ui="{ label: 'text-sm font-bold text-white', help: 'text-navy-200' }"
+              >
+                <div class="flex gap-2 max-sm:flex-col">
+                  <UInput
+                    id="ma-phieu" v-model="ma" size="xl" autocomplete="off" spellcheck="false" placeholder="vd 3f6c2a10-8b4d-…"
+                    icon="i-lucide-scan-line" class="min-w-0 flex-1" :ui="{ base: 'font-mono text-base' }"
+                  />
+                  <UButton type="submit" color="secondary" size="xl" :loading="dangTai" class="min-h-12 justify-center px-5 font-bold">
+                    {{ dangTai ? 'Đang tra…' : 'Tra và kiểm' }}
+                  </UButton>
+                </div>
+              </UFormField>
+            </form>
+            <UAlert v-if="loi" role="alert" class="mt-3" color="error" variant="solid" icon="i-lucide-circle-alert" :title="loi" />
+          </div>
+        </div>
       </div>
     </header>
 
-    <main class="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:py-10">
-      <div class="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-10">
-        <section aria-labelledby="tieu-de-tra" class="space-y-6">
-          <div>
-            <h1 id="tieu-de-tra" class="text-balance text-2xl font-bold leading-tight text-highlighted sm:text-3xl">Mỗi phiếu, mỗi đồng cứu trợ đều kiểm chứng được</h1>
-            <p class="mt-3 max-w-prose text-base text-default">
-              Mọi lần nhập, xuất hàng và mọi khoản thu, chi tiền cứu trợ được ghi vào một sổ cái chỉ-thêm, có chữ ký số.
-              Nhập mã in trên phiếu để xem hàng, tiền đã đi đâu và tự kiểm sổ cái ngay trên máy của bạn. Sổ cái không chứa thông tin cá nhân.
-            </p>
-          </div>
-          <div>
-            <UCard :ui="{ body: 'p-4 sm:p-5' }">
-              <form @submit.prevent="tra">
-                <UFormField label="Mã phiếu hoặc mã bút toán" name="ma-phieu" help="Mã gồm 36 ký tự, in dưới mã QR trên phiếu kho hoặc chứng từ thu/chi." :ui="{ label: 'text-base font-semibold' }">
-                  <div class="flex gap-2 max-sm:flex-col">
-                    <UInput
-                      id="ma-phieu" v-model="ma" size="xl" autocomplete="off" spellcheck="false" placeholder="vd 3f6c2a10-8b4d-…"
-                      icon="i-lucide-scan-line" class="min-w-0 flex-1" :ui="{ base: 'font-mono text-base' }"
-                    />
-                    <UButton type="submit" color="secondary" size="xl" :loading="dangTai" class="min-h-12 justify-center font-semibold">
-                      {{ dangTai ? 'Đang tra…' : 'Tra và kiểm' }}
-                    </UButton>
-                  </div>
-                </UFormField>
-              </form>
-            </UCard>
-            <UAlert v-if="loi" role="alert" class="mt-3" color="error" variant="subtle" icon="i-lucide-circle-alert" :title="loi" />
-          </div>
+    <main class="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:py-8">
+      <div class="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-8">
+        <section aria-label="Tổng hợp quỹ và sổ cái gần đây" class="space-y-6">
           <SoCaiGanDay :chon="kq?.ma" />
         </section>
 
@@ -129,41 +145,49 @@ useHead({ title: 'Minh bạch cứu trợ · Disaster DX-OS' })
             </UAlert>
           </div>
 
-          <UCard :ui="{ body: 'p-5' }">
-            <div class="flex flex-wrap items-center gap-2">
-              <UBadge color="neutral" variant="subtle" :icon="kq.loai === 'khoan_tien' ? 'i-lucide-banknote' : 'i-lucide-package'">{{ LOAI_MA[kq.loai] }}</UBadge>
-              <p class="text-sm font-semibold text-muted">{{ CHIEU[b.direction ?? ''] ?? b.direction }}</p>
-            </div>
-            <p class="mt-2 text-2xl font-bold leading-tight text-highlighted sm:text-3xl">
+          <UCard :ui="{ header: 'px-5 py-3 bg-muted/60', body: 'p-5' }">
+            <template #header>
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  <UBadge color="primary" variant="subtle" :icon="kq.loai === 'khoan_tien' ? 'i-lucide-banknote' : 'i-lucide-package'" class="font-semibold">{{ LOAI_MA[kq.loai] }}</UBadge>
+                  <span class="text-sm font-bold text-highlighted">{{ CHIEU[b.direction ?? ''] ?? b.direction }}</span>
+                </div>
+                <span v-if="kq.so_cai.index !== null" class="so rounded bg-elevated px-2 py-0.5 font-mono text-xs font-bold text-highlighted ring-1 ring-inset ring-default">
+                  Lá Merkle #{{ kq.so_cai.index }}
+                </span>
+              </div>
+            </template>
+
+            <p class="text-2xl font-bold leading-tight text-highlighted sm:text-3xl">
               <span class="so">{{ tieuDe.so }}</span> {{ tieuDe.donVi }} {{ tieuDe.noiDung }}
             </p>
 
-            <div v-if="kq.loai === 'phieu_kho'" class="mt-4 flex items-stretch gap-3 border-y border-default py-3 max-sm:flex-col">
-              <div class="min-w-0 flex-1">
-                <p class="flex items-center gap-1.5 text-xs font-semibold text-muted"><UIcon name="i-lucide-warehouse" class="size-4" />Từ kho</p>
-                <p class="mt-0.5 font-medium">{{ hd.kho ?? '—' }}</p>
+            <div v-if="kq.loai === 'phieu_kho'" class="mt-4 grid gap-3 border-y border-default py-3.5 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+              <div class="min-w-0">
+                <p class="flex items-center gap-1.5 text-xs font-semibold text-muted"><UIcon name="i-lucide-warehouse" class="size-4 text-info" />Từ kho xuất</p>
+                <p class="mt-0.5 font-bold text-highlighted">{{ hd.kho ?? '—' }}</p>
               </div>
-              <UIcon name="i-lucide-arrow-right" class="size-5 shrink-0 self-center text-muted max-sm:rotate-90" />
-              <div class="min-w-0 flex-1">
-                <p class="flex items-center gap-1.5 text-xs font-semibold text-muted"><UIcon name="i-lucide-map-pin" class="size-4" />Tới điểm nhận</p>
-                <p class="mt-0.5 font-medium">{{ hd.diem_nhan ?? '—' }}</p>
+              <UIcon name="i-lucide-arrow-right" class="size-5 shrink-0 text-muted max-sm:rotate-90" />
+              <div class="min-w-0">
+                <p class="flex items-center gap-1.5 text-xs font-semibold text-muted"><UIcon name="i-lucide-map-pin" class="size-4 text-cam-500" />Tới điểm nhận</p>
+                <p class="mt-0.5 font-bold text-highlighted">{{ hd.diem_nhan ?? '—' }}</p>
               </div>
             </div>
-            <dl v-else class="mt-4 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 border-y border-default py-3 text-base">
-              <dt class="text-muted">Hạng mục</dt><dd>{{ HANG_MUC[b.category ?? ''] ?? b.category }}</dd>
-              <template v-if="b.purpose"><dt class="text-muted">Mục đích</dt><dd>{{ b.purpose }}</dd></template>
-              <template v-if="hd.diem_nhan"><dt class="text-muted">Điểm nhận</dt><dd>{{ hd.diem_nhan }}</dd></template>
+            <dl v-else class="mt-4 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 border-y border-default py-3.5 text-base">
+              <dt class="text-muted">Hạng mục</dt><dd class="font-semibold text-highlighted">{{ HANG_MUC[b.category ?? ''] ?? b.category }}</dd>
+              <template v-if="b.purpose"><dt class="text-muted">Mục đích</dt><dd class="font-medium text-highlighted">{{ b.purpose }}</dd></template>
+              <template v-if="hd.diem_nhan"><dt class="text-muted">Điểm nhận</dt><dd class="font-medium text-highlighted">{{ hd.diem_nhan }}</dd></template>
               <template v-if="b.supply_movement_id">
                 <dt class="text-muted">Phiếu kho kèm</dt>
-                <dd><NuxtLink :to="`/minh-bach/${b.supply_movement_id}`" class="font-mono text-sm text-primary underline">{{ b.supply_movement_id }}</NuxtLink></dd>
+                <dd><NuxtLink :to="`/minh-bach/${b.supply_movement_id}`" class="font-mono text-sm font-semibold text-primary underline">{{ b.supply_movement_id }}</NuxtLink></dd>
               </template>
             </dl>
 
-            <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-base">
-              <dt class="text-muted">Lập lúc</dt><dd class="so">{{ gio(b.created_at) }}</dd>
-              <dt class="text-muted">Ghi sổ cái</dt><dd class="so">{{ gio(kq.so_cai.logged_at) }}<template v-if="kq.so_cai.index !== null"> · lá số {{ kq.so_cai.index }}</template></dd>
+            <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm sm:text-base">
+              <dt class="text-muted">Lập chứng từ</dt><dd class="so font-medium text-highlighted">{{ gio(b.created_at) }}</dd>
+              <dt class="text-muted">Niêm phong sổ cái</dt><dd class="so font-medium text-highlighted">{{ gio(kq.so_cai.logged_at) }}<template v-if="kq.so_cai.index !== null"> · lá số {{ kq.so_cai.index }}</template></dd>
               <template v-if="b.note"><dt class="text-muted">Ghi chú</dt><dd>{{ b.note }}</dd></template>
-              <dt class="text-muted">Mã</dt><dd class="break-all font-mono text-sm">{{ kq.ma }}</dd>
+              <dt class="text-muted">Định danh UUID</dt><dd class="break-all font-mono text-xs text-muted sm:text-sm">{{ kq.ma }}</dd>
             </dl>
           </UCard>
 
@@ -171,12 +195,12 @@ useHead({ title: 'Minh bạch cứu trợ · Disaster DX-OS' })
         </section>
 
         <UEmpty
-          v-else icon="i-lucide-receipt-text" variant="outline" class="self-start bg-default"
-          title="Chưa tra mã nào"
-          description="Kết quả hiện ở đây: hàng gì, bao nhiêu tiền, từ đâu tới điểm nhận nào, sổ cái có xác nhận không, và trình duyệt tự kiểm lại bằng chứng."
+          v-else icon="i-lucide-shield-check" variant="outline" class="self-start bg-elevated py-12"
+          title="Chọn một mục bên trái hoặc nhập mã chứng từ"
+          description="Kết quả hiện ở đây: hàng gì, bao nhiêu tiền, từ kho nào tới điểm nhận nào, sổ cái có xác nhận không, và trình duyệt tự kiểm lại bằng chứng mật mã."
         />
       </div>
     </main>
-    <footer class="border-t border-default px-4 py-3 text-center text-xs text-muted">DTU_DZ_1 · OLP PMNM 2026 · Dữ liệu minh họa là dữ liệu giả</footer>
+    <footer class="border-t border-default bg-elevated px-4 py-3 text-center text-xs text-muted">DTU_DZ_1 · OLP PMNM 2026 · Dữ liệu minh họa là dữ liệu giả</footer>
   </div>
 </template>
