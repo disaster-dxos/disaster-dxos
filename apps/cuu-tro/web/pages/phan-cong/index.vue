@@ -23,11 +23,19 @@ const canXuLy = computed(() => new Set(
 const nhom: ComputedRef<Record<Nhom, TinPhanCong[]>> = computed(() => nhomTin(ds.value, canXuLy.value))
 const dsNhom: ComputedRef<Nhom[]> = computed(() => (vai.value ? NHOM_THEO_VAI[vai.value] : []))
 const tieuDe = computed(() => (vai.value === 'cuu-ho' ? 'Nhiệm vụ của đội' : 'Phân công cứu hộ'))
+const soKhanCap = computed(() => ds.value.filter((t) => t.urgency === 'khan_cap' || t.urgency === 'cao').length)
+const tongNguoi = computed(() => ds.value.reduce((s, t) => s + (t.people_count || 0), 0))
 const ICON: Record<Nhom, string> = {
   can_xu_ly: 'i-lucide-siren',
   cho_phan_cong: 'i-lucide-inbox',
   cho_doi_nhan: 'i-lucide-timer',
   dang_cuu: 'i-lucide-life-buoy',
+}
+const THANH_NHOM: Record<Nhom, string> = {
+  can_xu_ly: 'bg-khan-500',
+  cho_phan_cong: 'bg-cam-500',
+  cho_doi_nhan: 'bg-nuoc-400',
+  dang_cuu: 'bg-ok-500',
 }
 
 async function tai() {
@@ -72,11 +80,19 @@ useHead({ title: () => `${tieuDe.value} · Disaster DX-OS` })
           <UDashboardSidebarCollapse />
         </template>
         <template #trailing>
-          <UBadge color="neutral" variant="subtle" class="so">{{ ds.length }} tin</UBadge>
+          <UBadge color="primary" variant="subtle" class="so font-mono font-semibold">{{ ds.length }} tin đang mở</UBadge>
         </template>
         <template #right>
+          <div v-if="ds.length > 0" class="flex items-center gap-1.5 max-md:hidden">
+            <UBadge v-if="soKhanCap > 0" color="error" variant="subtle" size="md" class="so gap-1 font-semibold">
+              <UIcon name="i-lucide-flame" class="size-3.5" />{{ soKhanCap }} khẩn/cao
+            </UBadge>
+            <UBadge color="info" variant="subtle" size="md" class="so gap-1 font-semibold">
+              <UIcon name="i-lucide-users" class="size-3.5" />{{ tongNguoi }} người
+            </UBadge>
+          </div>
           <UButton
-            color="neutral" variant="outline" icon="i-lucide-refresh-cw" class="min-h-10"
+            color="neutral" variant="outline" icon="i-lucide-refresh-cw" class="min-h-10 font-semibold"
             :loading="dangTai" :disabled="dangTai || !vai" @click="tai"
           >
             <span class="max-sm:sr-only">{{ dangTai ? 'Đang tải…' : 'Tải lại' }}</span>
@@ -100,28 +116,31 @@ useHead({ title: () => `${tieuDe.value} · Disaster DX-OS` })
         <div class="grid min-h-0 flex-1 gap-4" :class="vai === 'dieu-phoi' ? 'lg:grid-cols-4 md:grid-cols-2' : 'md:grid-cols-2'">
           <section
             v-for="n in dsNhom" :key="n" :aria-labelledby="`nhom-${n}`"
-            class="flex min-w-0 flex-col rounded-lg p-3 ring ring-inset"
-            :class="n === 'can_xu_ly' && nhom[n].length ? 'bg-error/5 ring-error/30 dark:bg-error/10' : 'bg-muted ring-default'"
+            class="flex min-w-0 flex-col overflow-hidden rounded-lg ring-1 ring-inset"
+            :class="n === 'can_xu_ly' && nhom[n].length ? 'bg-error/5 ring-error/35 dark:bg-error/10' : 'bg-muted/80 ring-default'"
           >
-            <header class="mb-3 px-0.5">
-              <h2 :id="`nhom-${n}`" class="flex items-center gap-2 text-base font-semibold" :class="n === 'can_xu_ly' && nhom[n].length ? 'text-error' : 'text-highlighted'">
-                <UIcon :name="ICON[n]" class="size-5 shrink-0" />
-                {{ (vai === 'cuu-ho' && NHOM_CUU_HO[n]) || NHOM[n].tieuDe }}
-                <UBadge
-                  :color="n === 'can_xu_ly' && nhom[n].length ? 'error' : 'neutral'" :variant="n === 'can_xu_ly' && nhom[n].length ? 'solid' : 'subtle'"
-                  class="so ms-auto rounded-full"
-                >
-                  {{ nhom[n].length }}
-                </UBadge>
-              </h2>
-              <p class="mt-1 text-xs leading-snug text-muted">{{ NHOM[n].moTa }}</p>
-            </header>
-            <ul class="space-y-2.5">
-              <li v-for="t in nhom[n]" :key="t.id">
-                <TheTinPhanCong :tin="t" :now="now" :can-xu-ly="n === 'can_xu_ly'" />
-              </li>
-            </ul>
-            <p v-if="nhom[n].length === 0" class="rounded-md border border-dashed border-accented px-3 py-6 text-center text-sm text-muted">Trống</p>
+            <span class="block h-1 w-full" :class="THANH_NHOM[n]" aria-hidden="true" />
+            <div class="flex flex-1 flex-col p-3">
+              <header class="mb-3 border-b border-default/80 pb-2.5">
+                <h2 :id="`nhom-${n}`" class="flex items-center gap-2 text-base font-bold" :class="n === 'can_xu_ly' && nhom[n].length ? 'text-error' : 'text-highlighted'">
+                  <UIcon :name="ICON[n]" class="size-5 shrink-0" />
+                  {{ (vai === 'cuu-ho' && NHOM_CUU_HO[n]) || NHOM[n].tieuDe }}
+                  <UBadge
+                    :color="n === 'can_xu_ly' && nhom[n].length ? 'error' : 'neutral'" :variant="n === 'can_xu_ly' && nhom[n].length ? 'solid' : 'subtle'"
+                    class="so ms-auto rounded-full font-mono font-bold"
+                  >
+                    {{ nhom[n].length }}
+                  </UBadge>
+                </h2>
+                <p class="mt-1 text-xs leading-snug text-muted">{{ NHOM[n].moTa }}</p>
+              </header>
+              <ul class="space-y-2.5">
+                <li v-for="t in nhom[n]" :key="t.id">
+                  <TheTinPhanCong :tin="t" :now="now" :can-xu-ly="n === 'can_xu_ly'" />
+                </li>
+              </ul>
+              <p v-if="nhom[n].length === 0" class="rounded-md border border-dashed border-accented px-3 py-6 text-center text-sm text-muted">Trống</p>
+            </div>
           </section>
         </div>
       </template>

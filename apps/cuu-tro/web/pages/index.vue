@@ -66,9 +66,12 @@ const suCo = computed(() => trangThai.value === 'mat-ket-noi' || trangThai.value
           <UDashboardSidebarCollapse />
         </template>
         <template #right>
-          <UBadge :color="ketNoi.mau" variant="subtle" size="lg" class="gap-2" :title="gioCapNhat ? `Cập nhật lúc ${gioCapNhat}` : undefined">
+          <UBadge v-if="demTram && demTram.nguy_hiem > 0" color="error" variant="solid" size="md" class="so gap-1 font-semibold max-xl:hidden">
+            <UIcon name="i-lucide-waves" class="size-3.5" />{{ demTram.nguy_hiem }} trạm nguy hiểm
+          </UBadge>
+          <UBadge :color="ketNoi.mau" variant="subtle" size="lg" class="gap-1.5 font-semibold ring-1 ring-inset ring-current/25" :title="gioCapNhat ? `Cập nhật lúc ${gioCapNhat}` : undefined">
             <span class="size-2 rounded-full bg-current" aria-hidden="true" />
-            {{ ketNoi.nhan }}<span v-if="gioCapNhat" class="so font-normal max-sm:hidden"> · {{ gioCapNhat }}</span>
+            {{ ketNoi.nhan }}<span v-if="gioCapNhat" class="so font-mono text-xs font-normal max-xl:hidden"> · {{ gioCapNhat }}</span>
           </UBadge>
           <ThongBaoRealtime v-if="laDp" />
         </template>
@@ -111,25 +114,25 @@ const suCo = computed(() => trangThai.value === 'mat-ket-noi' || trangThai.value
     </template>
   </UDashboardPanel>
 
-  <UDashboardPanel id="tin-keu-cuu" :default-size="27" :min-size="22" :max-size="36" resizable :ui="{ body: 'p-0 sm:p-0 gap-0' }">
+  <UDashboardPanel id="tin-keu-cuu" :default-size="28" :min-size="23" :max-size="38" resizable :ui="{ body: 'p-0 sm:p-0 gap-0 bg-elevated' }">
     <template #header>
       <UDashboardNavbar :toggle="false">
         <template #title>
-          <h1 id="tieu-de-ds" class="text-base font-semibold text-highlighted">Tin kêu cứu</h1>
+          <h1 id="tieu-de-ds" class="text-base font-bold tracking-tight text-highlighted">Sổ trực tin kêu cứu</h1>
         </template>
         <template #trailing>
-          <UBadge color="neutral" variant="subtle" class="so">{{ dsHienThi.length }}/{{ ds.length }}</UBadge>
+          <UBadge color="primary" variant="subtle" class="so font-mono font-semibold">{{ dsHienThi.length }}/{{ ds.length }}</UBadge>
         </template>
       </UDashboardNavbar>
-      <div class="space-y-4 border-b border-default px-4 py-4 sm:px-5">
-        <dl class="grid grid-cols-4 gap-2">
+      <div class="space-y-3.5 border-b border-default bg-muted/50 px-4 py-3.5 sm:px-5">
+        <dl class="grid grid-cols-4 divide-x divide-default overflow-hidden rounded-lg bg-elevated shadow-2xs ring-1 ring-default">
           <div
             v-for="s in hienThi" :key="s"
-            class="flex flex-col justify-between rounded-md px-1.5 py-2 text-center ring ring-inset"
-            :class="s === 'tiep_nhan' ? 'bg-cam-50 ring-cam-200 dark:bg-cam-950/40 dark:ring-cam-900' : 'bg-elevated/50 ring-default'"
+            class="flex flex-col justify-between px-1 py-2.5 text-center"
+            :class="s === 'tiep_nhan' ? 'bg-cam-50/90 dark:bg-cam-950/40' : ''"
           >
-            <dt class="text-xs leading-tight text-muted">{{ TRANG_THAI[s] }}</dt>
-            <dd class="so text-2xl font-bold leading-8" :class="s === 'tiep_nhan' ? 'text-cam-800 dark:text-cam-300' : 'text-highlighted'">{{ dem[s] }}</dd>
+            <dt class="text-xs font-medium leading-tight text-muted">{{ TRANG_THAI[s] }}</dt>
+            <dd class="so mt-1 text-2xl font-bold leading-7" :class="s === 'tiep_nhan' ? 'text-cam-800 dark:text-cam-300' : 'text-highlighted'">{{ dem[s] }}</dd>
           </div>
         </dl>
         <BoLocTin v-model="loc" :ds="ds" />
@@ -143,7 +146,7 @@ const suCo = computed(() => trangThai.value === 'mat-ket-noi' || trangThai.value
         :title="trangThai === 'da-ket-noi' ? (ds.length ? 'Không có tin nào khớp bộ lọc' : 'Chưa có tin kêu cứu nào') : 'Đang chờ dữ liệu…'"
         variant="naked" class="py-10"
       />
-      <p class="mt-auto border-t border-default px-5 py-2.5 text-xs text-muted">DTU_DZ_1 · OLP PMNM 2026 · dữ liệu minh họa là dữ liệu giả</p>
+      <p class="mt-auto border-t border-default bg-muted/40 px-5 py-2.5 text-xs text-muted">DTU_DZ_1 · OLP PMNM 2026 · dữ liệu minh họa là dữ liệu giả</p>
     </template>
   </UDashboardPanel>
 </template>

@@ -311,8 +311,9 @@ services:
       GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL:-http://localhost:9080}
       JAVA_OPTS_KC_HEAP: "-XX:MaxRAMPercentage=70"
     volumes:
-      # Realm (vai trò, client, người dùng mẫu) do ứng dụng cung cấp, không thuộc lõi
+      # Realm (vai trò, client, người dùng mẫu) và theme đăng nhập do ứng dụng cung cấp, không thuộc lõi
       - ./apps/${DXOS_APP:-cuu-tro}/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
+      - ./apps/${DXOS_APP:-cuu-tro}/keycloak/themes:/opt/keycloak/themes:ro
       - ./core/openbao/env-from-files.sh:/opt/dxos/env-from-files.sh:ro
       - secrets-keycloak:/run/secrets/dxos:ro
     ports:

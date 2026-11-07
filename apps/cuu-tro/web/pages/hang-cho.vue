@@ -249,7 +249,19 @@ const TRUONG_FORM: Array<{ k: TruongTin; kieu: 'input' | 'textarea' | 'muc' | 'n
       />
       <template v-else>
         <!-- Dán tin mới -->
-        <UCard :ui="{ body: 'p-4 sm:p-4' }">
+        <UCard :ui="{ header: 'px-4 py-2.5 sm:px-5 bg-muted/60', body: 'p-4 sm:p-5' }">
+          <template #header>
+            <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span class="font-bold text-highlighted">Bàn bóc tách tin nhắn thô (Human-in-the-loop)</span>
+              <ol class="flex flex-wrap items-center gap-2 text-muted max-sm:hidden" aria-label="Quy trình 3 bước">
+                <li class="flex items-center gap-1"><span class="so rounded bg-primary/15 px-1.5 py-0.5 font-mono font-bold text-primary dark:text-nuoc-300">1</span> Dán tin SMS/Zalo</li>
+                <li aria-hidden="true">→</li>
+                <li class="flex items-center gap-1"><span class="so rounded bg-primary/15 px-1.5 py-0.5 font-mono font-bold text-primary dark:text-nuoc-300">2</span> AI bóc tách &amp; Poka-yoke</li>
+                <li aria-hidden="true">→</li>
+                <li class="flex items-center gap-1"><span class="so rounded bg-primary/15 px-1.5 py-0.5 font-mono font-bold text-primary dark:text-nuoc-300">3</span> Điều phối đối chiếu &amp; duyệt</li>
+              </ol>
+            </div>
+          </template>
           <form class="grid gap-3 lg:grid-cols-[1fr_auto]" @submit.prevent="guiBocTach">
             <UFormField
               label="Dán tin nhắn kêu cứu (SMS, Zalo, ghi lại cuộc gọi)" name="van-ban" :error="loiBocTach || undefined"
@@ -265,7 +277,7 @@ const TRUONG_FORM: Array<{ k: TruongTin; kieu: 'input' | 'textarea' | 'muc' | 'n
               <UFormField label="Nguồn" name="nguon" :ui="{ label: 'text-sm font-semibold' }">
                 <USelect id="nguon" v-model="nguon" :items="DS_NGUON" class="w-full" />
               </UFormField>
-              <UButton type="submit" icon="i-lucide-sparkles" block class="min-h-10" :loading="dangBocTach" :disabled="dangBocTach">
+              <UButton type="submit" color="secondary" icon="i-lucide-sparkles" block class="min-h-10 font-bold" :loading="dangBocTach" :disabled="dangBocTach">
                 {{ dangBocTach ? 'Đang bóc tách…' : 'Bóc tách bằng AI' }}
               </UButton>
             </div>
@@ -275,10 +287,10 @@ const TRUONG_FORM: Array<{ k: TruongTin; kieu: 'input' | 'textarea' | 'muc' | 'n
         <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Lọc hàng chờ theo trạng thái">
           <UButton
             v-for="t in TAB" :key="t" :color="tab === t ? 'primary' : 'neutral'" :variant="tab === t ? 'solid' : 'outline'"
-            class="min-h-10" :aria-pressed="tab === t" @click="doiTab(t)"
+            class="min-h-10 font-semibold" :aria-pressed="tab === t" @click="doiTab(t)"
           >
             {{ TRANG_THAI_HANG_CHO[t] }}
-            <UBadge v-if="t === 'cho_duyet'" :color="tab === t ? 'neutral' : 'warning'" variant="subtle" class="so rounded-full">{{ soChoDuyet }}</UBadge>
+            <UBadge v-if="t === 'cho_duyet'" :color="tab === t ? 'neutral' : 'warning'" variant="subtle" class="so rounded-full font-mono">{{ soChoDuyet }}</UBadge>
           </UButton>
         </div>
 
@@ -294,30 +306,30 @@ const TRUONG_FORM: Array<{ k: TruongTin; kieu: 'input' | 'textarea' | 'muc' | 'n
           :title="tab === 'cho_duyet' ? 'Không có tin nào chờ duyệt.' : `Chưa có tin nào ${TRANG_THAI_HANG_CHO[tab].toLowerCase()}.`"
         />
 
-        <div v-if="ds.length" class="grid min-h-0 flex-1 gap-4 lg:grid-cols-[20rem_1fr]">
+        <div v-if="ds.length" class="grid min-h-0 flex-1 gap-4 lg:grid-cols-[21rem_1fr]">
           <!-- Danh sách -->
-          <ul class="space-y-2 lg:max-h-[calc(100dvh-20rem)] lg:overflow-y-auto lg:pe-1" aria-label="Tin trong hàng chờ">
+          <ul class="space-y-2 lg:max-h-[calc(100dvh-21rem)] lg:overflow-y-auto lg:pe-1" aria-label="Tin trong hàng chờ">
             <li v-for="m in dsSapXep" :key="m.id">
               <button
                 type="button"
-                class="w-full rounded-lg p-3 text-start ring ring-inset transition-colors focus-visible:outline-2 focus-visible:outline-primary"
-                :class="m.id === chonId ? 'bg-primary/10 ring-primary' : 'bg-default ring-default hover:bg-elevated'"
+                class="w-full rounded-lg p-3.5 text-start ring-1 ring-inset transition-colors focus-visible:outline-2 focus-visible:outline-primary"
+                :class="m.id === chonId ? 'bg-info/10 ring-2 ring-info shadow-xs' : 'bg-elevated ring-default hover:bg-muted/80'"
                 :aria-current="m.id === chonId ? 'true' : undefined" @click="chonId = m.id"
               >
                 <span class="flex items-center gap-2">
                   <NhanMucKhan :muc="m.urgency" size="sm" />
-                  <UBadge color="neutral" variant="subtle" size="sm">{{ NGUON_VAN_BAN[m.nguon] }}</UBadge>
-                  <span class="ms-auto text-xs text-muted">{{ thoiGianTruoc(m.duyetLuc ?? m.taoLuc, now) }}</span>
+                  <UBadge color="neutral" variant="subtle" size="sm" class="font-medium">{{ NGUON_VAN_BAN[m.nguon] }}</UBadge>
+                  <span class="so ms-auto text-xs font-medium text-muted">{{ thoiGianTruoc(m.duyetLuc ?? m.taoLuc, now) }}</span>
                 </span>
-                <span class="mt-2 line-clamp-2 block text-sm text-highlighted">{{ m.vanBan }}</span>
-                <span v-if="m.trangThai === 'cho_duyet'" class="mt-2 flex flex-wrap gap-1.5 text-xs">
-                  <span v-if="m.tinTrung" class="inline-flex items-center gap-1 text-error"><UIcon name="i-lucide-copy" class="size-3.5" />Có thể trùng</span>
-                  <span v-else-if="!m.hopLe" class="inline-flex items-center gap-1 text-warning"><UIcon name="i-lucide-map-pin-off" class="size-3.5" />Cần bổ sung</span>
-                  <span v-else class="inline-flex items-center gap-1 text-success"><UIcon name="i-lucide-check" class="size-3.5" />Đủ thông tin</span>
-                  <span v-if="m.ai.duPhong" class="inline-flex items-center gap-1 text-muted"><UIcon name="i-lucide-triangle-alert" class="size-3.5" />Bộ luật dự phòng</span>
+                <span class="mt-2 line-clamp-2 block text-sm font-medium leading-snug text-highlighted">{{ m.vanBan }}</span>
+                <span v-if="m.trangThai === 'cho_duyet'" class="mt-2.5 flex flex-wrap gap-1.5 text-xs font-medium">
+                  <span v-if="m.tinTrung" class="inline-flex items-center gap-1 rounded bg-error/10 px-1.5 py-0.5 text-error"><UIcon name="i-lucide-copy" class="size-3.5" />Có thể trùng</span>
+                  <span v-else-if="!m.hopLe" class="inline-flex items-center gap-1 rounded bg-warning/15 px-1.5 py-0.5 text-warning"><UIcon name="i-lucide-map-pin-off" class="size-3.5" />Cần bổ sung</span>
+                  <span v-else class="inline-flex items-center gap-1 rounded bg-success/15 px-1.5 py-0.5 text-success"><UIcon name="i-lucide-check" class="size-3.5" />Đủ thông tin</span>
+                  <span v-if="m.ai.duPhong" class="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-muted"><UIcon name="i-lucide-triangle-alert" class="size-3.5" />Bộ luật dự phòng</span>
                 </span>
                 <span v-else class="mt-2 block text-xs text-muted">
-                  {{ m.trangThai === 'da_duyet' ? 'Duyệt' : 'Hủy' }} bởi {{ m.nguoiDuyet ?? '—' }}
+                  {{ m.trangThai === 'da_duyet' ? 'Duyệt' : 'Hủy' }} bởi <b class="font-semibold text-default">{{ m.nguoiDuyet ?? '—' }}</b>
                 </span>
               </button>
             </li>
@@ -325,13 +337,16 @@ const TRUONG_FORM: Array<{ k: TruongTin; kieu: 'input' | 'textarea' | 'muc' | 'n
 
           <!-- Chi tiết -->
           <section v-if="muc" class="min-w-0 space-y-4" aria-labelledby="muc-tieu-de">
-            <header class="flex flex-wrap items-center gap-2">
-              <h2 id="muc-tieu-de" class="text-lg font-semibold text-highlighted">Tin {{ maNgan(muc.id) }}</h2>
-              <UBadge color="neutral" variant="subtle">{{ NGUON_VAN_BAN[muc.nguon] }}</UBadge>
+            <header class="flex flex-wrap items-center gap-2 rounded-lg bg-elevated px-4 py-3 ring-1 ring-inset ring-default">
+              <h2 id="muc-tieu-de" class="flex items-center gap-2 text-base font-bold text-highlighted">
+                <span>Mục hàng chờ</span>
+                <span class="rounded bg-muted px-1.5 py-0.5 font-mono text-xs font-semibold ring-1 ring-inset ring-default">{{ maNgan(muc.id) }}</span>
+              </h2>
+              <UBadge color="neutral" variant="subtle" class="font-medium">{{ NGUON_VAN_BAN[muc.nguon] }}</UBadge>
               <span class="text-sm text-muted">
-                gửi {{ thoiGianTruoc(muc.taoLuc, now) }} bởi {{ muc.nguoiGui ?? '—' }}{{ muc.vaiGui === 'tinh-nguyen' ? ' (tình nguyện viên)' : '' }}
+                gửi {{ thoiGianTruoc(muc.taoLuc, now) }} bởi <b class="font-medium text-default">{{ muc.nguoiGui ?? '—' }}</b>{{ muc.vaiGui === 'tinh-nguyen' ? ' (tình nguyện viên)' : '' }}
               </span>
-              <span class="ms-auto text-xs text-muted">
+              <span class="so ms-auto rounded bg-muted px-2 py-0.5 font-mono text-xs text-muted ring-1 ring-inset ring-default">
                 AI: {{ muc.ai.moHinh ?? muc.ai.nhaCungCap }} · {{ (muc.ai.thoiGianMs / 1000).toFixed(1) }} s
               </span>
             </header>
@@ -339,15 +354,15 @@ const TRUONG_FORM: Array<{ k: TruongTin; kieu: 'input' | 'textarea' | 'muc' | 'n
             <div class="grid gap-4 xl:grid-cols-2">
               <!-- Văn bản gốc -->
               <div class="space-y-3">
-                <UCard :ui="{ header: 'p-3 sm:p-3', body: 'p-3 sm:p-3' }">
+                <UCard :ui="{ header: 'px-3.5 py-2.5 bg-muted/50', body: 'p-3.5 sm:p-4' }">
                   <template #header>
-                    <h3 class="flex items-center gap-2 text-sm font-semibold"><UIcon name="i-lucide-message-square-text" class="size-4" />Văn bản gốc</h3>
+                    <h3 class="flex items-center gap-2 text-sm font-bold text-highlighted"><UIcon name="i-lucide-message-square-text" class="size-4 text-info" />Văn bản gốc người dân gửi</h3>
                   </template>
                   <p class="whitespace-pre-wrap break-words text-base leading-relaxed text-highlighted">{{ muc.vanBan }}</p>
                 </UCard>
                 <div v-if="muc.nhuCau.length" class="flex flex-wrap items-center gap-1.5">
-                  <span class="text-sm text-muted">Nhu cầu:</span>
-                  <UBadge v-for="n in muc.nhuCau" :key="n" color="info" variant="subtle">{{ NHU_CAU[n] ?? n }}</UBadge>
+                  <span class="text-sm font-medium text-muted">Nhu cầu nhận diện:</span>
+                  <UBadge v-for="n in muc.nhuCau" :key="n" color="info" variant="subtle" class="font-semibold">{{ NHU_CAU[n] ?? n }}</UBadge>
                 </div>
                 <UAlert
                   v-if="muc.ai.duPhong" color="warning" variant="subtle" icon="i-lucide-triangle-alert"
@@ -363,12 +378,12 @@ const TRUONG_FORM: Array<{ k: TruongTin; kieu: 'input' | 'textarea' | 'muc' | 'n
                   :actions="[{ label: 'Xem tin đang mở', to: `/?tin=${muc.tinTrung.incident_id}`, color: 'neutral', variant: 'outline' }]"
                 />
                 <!-- Vị trí: cạnh văn bản gốc để người duyệt đối chiếu địa chỉ trong tin với điểm trên bản đồ -->
-                <div v-if="muc.trangThai === 'cho_duyet'" class="space-y-1.5">
-                  <h3 class="flex items-center gap-2 text-sm font-semibold">
-                    <UIcon name="i-lucide-map-pin" class="size-4" />Vị trí
+                <div v-if="muc.trangThai === 'cho_duyet'" class="space-y-1.5 rounded-lg bg-elevated p-3.5 ring-1 ring-inset ring-default">
+                  <h3 class="flex items-center gap-2 text-sm font-bold text-highlighted">
+                    <UIcon name="i-lucide-map-pin" class="size-4 text-cam-500" />Vị trí trên bản đồ
                     <UBadge v-if="!diem" color="warning" variant="subtle" size="sm">chưa có, bấm bản đồ để chọn</UBadge>
                   </h3>
-                  <div class="h-72">
+                  <div class="h-72 overflow-hidden rounded-md ring-1 ring-default">
                     <ChonViTri :diem="diem" @chon="chonViTri" />
                   </div>
                   <p class="text-xs text-muted">Bấm vào bản đồ hoặc kéo ghim cam để đặt vị trí. AI không đoán tọa độ từ địa chỉ: tin không ghi tọa độ thì người duyệt chọn.</p>
@@ -376,10 +391,10 @@ const TRUONG_FORM: Array<{ k: TruongTin; kieu: 'input' | 'textarea' | 'muc' | 'n
               </div>
 
               <!-- Chờ duyệt: form sửa đề xuất -->
-              <form v-if="muc.trangThai === 'cho_duyet'" class="space-y-3" novalidate @submit.prevent="guiDuyet">
-                <div class="flex min-h-8 flex-wrap items-center gap-2">
-                  <h3 class="text-sm font-semibold">Đề xuất của AI, sửa trước khi duyệt</h3>
-                  <UBadge v-if="daSua.size" color="warning" variant="subtle" class="so whitespace-nowrap">đã sửa {{ daSua.size }}</UBadge>
+              <form v-if="muc.trangThai === 'cho_duyet'" class="space-y-3 rounded-lg bg-elevated p-4 ring-1 ring-inset ring-default" novalidate @submit.prevent="guiDuyet">
+                <div class="flex min-h-8 flex-wrap items-center gap-2 border-b border-default pb-2.5">
+                  <h3 class="text-sm font-bold text-highlighted">Đề xuất của AI — sửa trước khi duyệt</h3>
+                  <UBadge v-if="daSua.size" color="warning" variant="subtle" class="so whitespace-nowrap font-semibold">đã sửa {{ daSua.size }}</UBadge>
                   <UButton v-if="daSua.size" size="sm" color="neutral" variant="ghost" icon="i-lucide-undo-2" class="ms-auto" @click="khoiPhuc">
                     Khôi phục
                   </UButton>
@@ -387,7 +402,7 @@ const TRUONG_FORM: Array<{ k: TruongTin; kieu: 'input' | 'textarea' | 'muc' | 'n
                 <div class="grid gap-3 sm:grid-cols-2">
                   <UFormField
                     v-for="f in TRUONG_FORM" :key="f.k" :name="f.k" :class="f.cot" :error="loiCua(f.k)"
-                    :ui="{ label: 'text-sm font-medium' }"
+                    :ui="{ label: 'text-sm font-semibold' }"
                   >
                     <template #label>
                       {{ NHAN_TRUONG[f.k] }}
@@ -409,44 +424,44 @@ const TRUONG_FORM: Array<{ k: TruongTin; kieu: 'input' | 'textarea' | 'muc' | 'n
                 <UAlert v-if="loiForm.body && loiCua('description') === undefined" color="error" variant="subtle" icon="i-lucide-circle-alert" :title="loiForm.body" />
 
                 <div class="flex flex-wrap gap-2 border-t border-default pt-3">
-                  <UButton type="submit" size="lg" icon="i-lucide-check" class="min-h-11" :loading="dangGui === 'duyet'" :disabled="!!dangGui">
+                  <UButton type="submit" color="secondary" size="lg" icon="i-lucide-check" class="min-h-11 font-bold" :loading="dangGui === 'duyet'" :disabled="!!dangGui">
                     Duyệt và tạo tin
                   </UButton>
-                  <UButton size="lg" color="error" variant="outline" icon="i-lucide-x" class="min-h-11" :disabled="!!dangGui" @click="moHuy = !moHuy">
+                  <UButton size="lg" color="error" variant="outline" icon="i-lucide-x" class="min-h-11 font-semibold" :disabled="!!dangGui" @click="moHuy = !moHuy">
                     Hủy tin…
                   </UButton>
                 </div>
-                <UCard v-if="moHuy" :ui="{ body: 'p-3 sm:p-3 space-y-2' }">
+                <div v-if="moHuy" class="space-y-2.5 rounded-lg bg-error/5 p-3.5 ring-1 ring-inset ring-error/30">
                   <UFormField label="Lý do hủy (lưu vào vết duyệt)" name="ly-do" :ui="{ label: 'text-sm font-semibold' }">
                     <UTextarea id="ly-do" v-model="lyDo" :rows="2" :maxlength="LY_DO_TOI_DA" class="w-full" />
                   </UFormField>
                   <div class="flex flex-wrap gap-1.5">
                     <UButton v-for="l in LY_DO_HUY_NHANH" :key="l" size="xs" color="neutral" variant="subtle" @click="lyDo = l">{{ l }}</UButton>
                   </div>
-                  <UButton color="error" icon="i-lucide-trash-2" :loading="dangGui === 'huy'" :disabled="!!dangGui" @click="guiHuy">
+                  <UButton color="error" icon="i-lucide-trash-2" class="font-semibold" :loading="dangGui === 'huy'" :disabled="!!dangGui" @click="guiHuy">
                     Xác nhận hủy, không tạo tin
                   </UButton>
-                </UCard>
+                </div>
               </form>
 
               <!-- Đã xử lý: vết duyệt -->
-              <UCard v-else :ui="{ header: 'p-3 sm:p-3', body: 'p-3 sm:p-3 space-y-3' }">
+              <UCard v-else :ui="{ header: 'px-4 py-3 bg-muted/50', body: 'p-4 space-y-3' }">
                 <template #header>
-                  <h3 class="flex items-center gap-2 text-sm font-semibold">
+                  <h3 class="flex items-center gap-2 text-sm font-bold text-highlighted">
                     <UIcon :name="muc.trangThai === 'da_duyet' ? 'i-lucide-badge-check' : 'i-lucide-ban'" class="size-4" />
-                    Vết duyệt
+                    Vết duyệt lưu sổ
                   </h3>
                 </template>
                 <dl class="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1.5 text-sm">
                   <dt class="text-muted">Kết quả</dt>
-                  <dd class="font-semibold">{{ TRANG_THAI_HANG_CHO[muc.trangThai] }}</dd>
+                  <dd class="font-bold text-highlighted">{{ TRANG_THAI_HANG_CHO[muc.trangThai] }}</dd>
                   <dt class="text-muted">Người duyệt</dt>
-                  <dd>{{ muc.nguoiDuyet ?? '—' }}</dd>
+                  <dd class="font-medium">{{ muc.nguoiDuyet ?? '—' }}</dd>
                   <dt class="text-muted">Thời điểm</dt>
-                  <dd>{{ muc.duyetLuc ? new Date(muc.duyetLuc).toLocaleString('vi-VN') : '—' }}</dd>
+                  <dd class="so">{{ muc.duyetLuc ? new Date(muc.duyetLuc).toLocaleString('vi-VN') : '—' }}</dd>
                   <template v-if="muc.incidentId">
                     <dt class="text-muted">Tin đã tạo</dt>
-                    <dd><NuxtLink :to="`/?tin=${muc.incidentId}`" class="font-mono text-primary underline">{{ maNgan(muc.incidentId) }}</NuxtLink></dd>
+                    <dd><NuxtLink :to="`/?tin=${muc.incidentId}`" class="font-mono font-semibold text-primary underline">{{ maNgan(muc.incidentId) }}</NuxtLink></dd>
                   </template>
                   <template v-if="muc.trangThai === 'da_huy'">
                     <dt class="text-muted">Lý do</dt>
@@ -456,15 +471,15 @@ const TRUONG_FORM: Array<{ k: TruongTin; kieu: 'input' | 'textarea' | 'muc' | 'n
                 <div v-if="muc.truongDaSua">
                   <p v-if="Object.keys(muc.truongDaSua).length === 0" class="text-sm text-muted">Duyệt nguyên đề xuất của AI, không sửa trường nào.</p>
                   <table v-else class="w-full text-sm">
-                    <caption class="mb-1 text-start text-sm font-semibold">Trường người duyệt đã sửa</caption>
+                    <caption class="mb-1 text-start text-sm font-semibold text-highlighted">Trường người duyệt đã sửa</caption>
                     <thead>
                       <tr class="text-start text-muted"><th class="py-1 text-start font-medium">Trường</th><th class="py-1 text-start font-medium">AI đề xuất</th><th class="py-1 text-start font-medium">Người duyệt</th></tr>
                     </thead>
                     <tbody>
                       <tr v-for="(v, k) in muc.truongDaSua" :key="k" class="border-t border-default align-top">
-                        <td class="py-1 pe-2">{{ NHAN_TRUONG[k as TruongTin] ?? k }}</td>
-                        <td class="py-1 pe-2 text-muted line-through decoration-error/60">{{ hienGiaTri(v.ai) }}</td>
-                        <td class="py-1 font-medium">{{ hienGiaTri(v.nguoi) }}</td>
+                        <td class="py-1.5 pe-2 font-medium">{{ NHAN_TRUONG[k as TruongTin] ?? k }}</td>
+                        <td class="py-1.5 pe-2 text-muted line-through decoration-error/60">{{ hienGiaTri(v.ai) }}</td>
+                        <td class="py-1.5 font-semibold text-highlighted">{{ hienGiaTri(v.nguoi) }}</td>
                       </tr>
                     </tbody>
                   </table>

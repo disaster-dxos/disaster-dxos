@@ -35,6 +35,19 @@ const ketQua = ref<{ ok: boolean; thongBao: string } | null>(null)
 
 const nut: ComputedRef<HanhDong[]> = computed(() => (tin.value ? hanhDongDuoc(vai.value, tin.value, wf.value) : []))
 const cho = computed(() => (tin.value ? giaoDangCho(tin.value) : null))
+const CAC_BUOC_WF = [
+  { ma: 'tim_doi', nhan: 'Tìm đội' },
+  { ma: 'cho_doi_nhan', nhan: 'Chờ đội nhận' },
+  { ma: 'dang_cuu', nhan: 'Đang cứu' },
+  { ma: 'ket_thuc', nhan: 'Hoàn tất' },
+] as const
+const chiSoBuoc = computed(() => {
+  const b = wf.value?.buoc
+  if (b === 'ket_thuc' || tin.value?.status === 'da_cuu') return 3
+  if (b === 'dang_cuu' || tin.value?.status === 'dang_cuu') return 2
+  if (b === 'cho_doi_nhan' || b === 'doi_phan_hoi' || cho.value) return 1
+  return 0
+})
 
 async function tai() {
   loiTai.value = ''
@@ -130,10 +143,13 @@ const gio = (iso: string | null) => (iso
           />
         </template>
         <template #title>
-          <span class="truncate">Tin <span class="font-mono">{{ maNgan(id) }}</span></span>
+          <span class="flex items-center gap-2 truncate">
+            <span>Lệnh điều động</span>
+            <span class="rounded bg-muted px-2 py-0.5 font-mono text-sm font-bold text-highlighted ring-1 ring-inset ring-default">{{ maNgan(id) }}</span>
+          </span>
         </template>
         <template #right>
-          <UButton :to="`/?tin=${id}`" color="neutral" variant="outline" icon="i-lucide-map" class="min-h-10">
+          <UButton :to="`/?tin=${id}`" color="neutral" variant="outline" icon="i-lucide-map" class="min-h-10 font-semibold">
             <span class="max-sm:sr-only">Xem trên bản đồ</span>
           </UButton>
           <ThongBaoRealtime v-if="vai === 'dieu-phoi'" />
@@ -169,27 +185,44 @@ const gio = (iso: string | null) => (iso
           <section v-if="cho" aria-labelledby="tieu-de-doi" class="space-y-2">
             <h2 id="tieu-de-doi" class="sr-only">Đội và hạn nhận</h2>
             <DongHoHanNhan :giao="cho" :now="now" lon />
-            <p class="flex flex-wrap items-baseline gap-x-2 px-1 text-base">
-              <strong class="text-highlighted">{{ cho.doiTen ?? tin.doiTen ?? 'Đội khác' }}</strong>
-              <span class="text-muted">cách hiện trường {{ khoangCach(cho.khoangCachM) }} · lần giao {{ cho.lan }}</span>
-            </p>
+            <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-elevated px-3.5 py-2.5 text-base ring-1 ring-inset ring-default">
+              <strong class="flex items-center gap-2 text-highlighted">
+                <UIcon name="i-lucide-shield-alert" class="size-5 text-cam-600 dark:text-cam-400" />
+                {{ cho.doiTen ?? tin.doiTen ?? 'Đội khác' }}
+              </strong>
+              <span class="so text-sm font-medium text-muted">Cách hiện trường <b class="text-highlighted">{{ khoangCach(cho.khoangCachM) }}</b> · Lần giao {{ cho.lan }}</span>
+            </div>
           </section>
 
           <UCard :ui="{ body: 'p-4 sm:p-5' }" aria-labelledby="tieu-de-tin" as="section">
-            <div class="flex flex-wrap items-center gap-1.5">
-              <NhanMucKhan :muc="tin.urgency" size="lg" />
-              <NhanTrangThai :tt="tin.status" size="lg" />
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex flex-wrap items-center gap-1.5">
+                <NhanMucKhan :muc="tin.urgency" size="lg" />
+                <NhanTrangThai :tt="tin.status" size="lg" />
+              </div>
+              <span class="so text-xs font-medium text-muted">
+                Tiếp nhận <time :datetime="tin.created_at">{{ thoiGianTruoc(tin.created_at, now) }}</time>
+              </span>
             </div>
             <h1 id="tieu-de-tin" class="mt-3 text-xl font-bold leading-snug text-highlighted">{{ tin.description || 'Không có mô tả' }}</h1>
-            <p class="mt-1 text-sm text-muted">
-              Tin <span class="font-mono">{{ maNgan(tin.id) }}</span> · tiếp nhận <time :datetime="tin.created_at">{{ thoiGianTruoc(tin.created_at, now) }}</time>
-            </p>
+
+            <div class="mt-4 grid grid-cols-2 gap-3 border-t border-default pt-3.5 sm:grid-cols-3">
+              <div>
+                <p class="text-xs text-muted">Số người cần cứu</p>
+                <p class="so mt-0.5 flex items-center gap-1.5 text-lg font-bold text-highlighted">
+                  <UIcon name="i-lucide-users" class="size-4 text-info" />{{ tin.people_count }} người
+                </p>
+              </div>
+              <div class="col-span-1 sm:col-span-2">
+                <p class="text-xs text-muted">Tọa độ hiện trường</p>
+                <p class="so mt-0.5 font-mono text-sm font-semibold leading-6 text-highlighted">{{ tin.location[1].toFixed(5) }}°B, {{ tin.location[0].toFixed(5) }}°Đ</p>
+              </div>
+            </div>
+
             <dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 border-t border-default pt-4 text-base">
-              <dt class="flex items-center gap-1.5 text-muted"><UIcon name="i-lucide-map-pin" class="size-4" />Địa chỉ</dt><dd class="font-medium">{{ tin.address_text || 'Chưa có' }}</dd>
-              <dt class="flex items-center gap-1.5 text-muted"><UIcon name="i-lucide-users" class="size-4" />Số người</dt><dd class="so font-semibold">{{ tin.people_count }}</dd>
-              <dt class="flex items-center gap-1.5 text-muted"><UIcon name="i-lucide-locate" class="size-4" />Tọa độ</dt><dd class="so font-mono text-sm leading-6">{{ tin.location[1].toFixed(5) }}, {{ tin.location[0].toFixed(5) }}</dd>
+              <dt class="flex items-center gap-1.5 text-muted"><UIcon name="i-lucide-map-pin" class="size-4" />Địa chỉ</dt><dd class="font-medium text-highlighted">{{ tin.address_text || 'Chưa có' }}</dd>
               <template v-if="tin.reporter_phone !== undefined">
-                <dt class="flex items-center gap-1.5 text-muted"><UIcon name="i-lucide-user" class="size-4" />Người báo</dt><dd class="font-medium">{{ tin.reporter_name || 'Không rõ tên' }}</dd>
+                <dt class="flex items-center gap-1.5 text-muted"><UIcon name="i-lucide-user" class="size-4" />Người báo</dt><dd class="font-medium text-highlighted">{{ tin.reporter_name || 'Không rõ tên' }}</dd>
               </template>
             </dl>
             <div v-if="tin.reporter_phone !== undefined" class="mt-4">
@@ -199,40 +232,60 @@ const gio = (iso: string | null) => (iso
               >
                 Gọi {{ tin.reporter_phone }}
               </UButton>
-              <UButton v-else color="info" variant="outline" size="xl" block icon="i-lucide-eye" class="min-h-12" @click="hienSo = true">
+              <UButton v-else color="info" variant="outline" size="xl" block icon="i-lucide-eye" class="min-h-12 font-semibold" @click="hienSo = true">
                 Hiện số <span class="so font-mono">{{ cheSdt(tin.reporter_phone) }}</span>
               </UButton>
             </div>
           </UCard>
 
           <UCard :ui="{ body: 'p-4 sm:p-5' }" as="section" aria-labelledby="tieu-de-luong">
-            <h2 id="tieu-de-luong" class="text-sm font-semibold text-muted">Luồng phân công</h2>
-            <p v-if="!cho && tin.status === 'dang_cuu'" class="mt-2 text-base">
-              <strong class="text-highlighted">{{ tin.doiTen ?? wf?.doiTen ?? 'Đội được giao' }}</strong> đã nhận, đang đến / đang cứu.
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h2 id="tieu-de-luong" class="text-sm font-bold text-highlighted">Tiến trình điều phối (Workflow)</h2>
+              <UBadge v-if="wf" :color="dangChay(wf) ? 'success' : 'neutral'" variant="subtle" class="font-semibold">
+                {{ TRANG_THAI_WF[wf.trangThai] ?? wf.trangThai }}
+              </UBadge>
+            </div>
+
+            <ol class="mt-3 grid grid-cols-4 gap-1.5 text-center text-xs" aria-label="Các chặng xử lý">
+              <li
+                v-for="(b, idx) in CAC_BUOC_WF" :key="b.ma"
+                class="rounded-md px-2 py-2 font-semibold ring-1 ring-inset"
+                :class="idx === chiSoBuoc
+                  ? 'bg-primary text-white ring-primary dark:bg-nuoc-400 dark:text-navy-950'
+                  : idx < chiSoBuoc
+                    ? 'bg-ok-50 text-ok-700 ring-ok-200 dark:bg-ok-950/50 dark:text-ok-300 dark:ring-ok-800'
+                    : 'bg-muted text-muted ring-default'"
+              >
+                <span class="so block font-mono text-xs opacity-75">0{{ idx + 1 }}</span>
+                <span class="mt-0.5 block truncate">{{ b.nhan }}</span>
+              </li>
+            </ol>
+
+            <p v-if="!cho && tin.status === 'dang_cuu'" class="mt-3 text-base">
+              <strong class="text-highlighted">{{ tin.doiTen ?? wf?.doiTen ?? 'Đội được giao' }}</strong> đã nhận nhiệm vụ, đang cơ động cứu hộ.
             </p>
-            <p v-else-if="!cho" class="mt-2 text-base text-muted">Chưa có đội nào đang được giao.</p>
+            <p v-else-if="!cho" class="mt-3 text-base text-muted">Chưa có đội nào đang được giao.</p>
             <UAlert v-if="loiWf" role="alert" class="mt-3" color="error" variant="subtle" icon="i-lucide-circle-alert" :title="loiWf" />
             <p v-else-if="!wf" class="mt-2 text-base text-muted">Chưa có luồng phân công cho tin này.</p>
             <template v-else>
-              <p class="mt-2 flex flex-wrap items-center gap-2 text-base">
-                <strong class="text-highlighted">{{ BUOC[wf.buoc] ?? wf.buoc }}</strong>
-                <UBadge :color="dangChay(wf) ? 'success' : 'neutral'" variant="subtle">{{ TRANG_THAI_WF[wf.trangThai] ?? wf.trangThai }}</UBadge>
+              <p class="mt-2 text-sm text-default">
+                Bước máy chủ: <strong class="text-highlighted">{{ BUOC[wf.buoc] ?? wf.buoc }}</strong>
+                <template v-if="wf.ketQua"> · Kết quả: <strong class="text-highlighted">{{ KET_QUA_WF[wf.ketQua] ?? wf.ketQua }}</strong><template v-if="wf.nguoiXacNhan"> ({{ wf.nguoiXacNhan }})</template></template>
               </p>
-              <p v-if="wf.ketQua" class="mt-1 text-sm"><span class="text-muted">Kết quả:</span> {{ KET_QUA_WF[wf.ketQua] ?? wf.ketQua }}<template v-if="wf.nguoiXacNhan"> ({{ wf.nguoiXacNhan }})</template></p>
               <UAlert v-if="wf.daBaoDieuPhoi" class="mt-3" color="error" variant="subtle" icon="i-lucide-siren" title="Đã báo điều phối: cần xử lý tay." />
             </template>
           </UCard>
 
           <UCard :ui="{ body: 'p-4 sm:p-5' }" as="section" aria-labelledby="tieu-de-ls">
-            <h2 id="tieu-de-ls" class="text-sm font-semibold text-muted">Lịch sử giao ({{ tin.giao.length }})</h2>
+            <h2 id="tieu-de-ls" class="text-sm font-bold text-highlighted">Lịch sử giao nhiệm vụ ({{ tin.giao.length }})</h2>
             <p v-if="tin.giao.length === 0" class="mt-2 text-base text-muted">Chưa giao đội nào.</p>
-            <ol v-else class="mt-3 space-y-3">
-              <li v-for="g in [...tin.giao].reverse()" :key="`${g.lan}-${g.giaoLuc}`" class="rounded-md bg-elevated/50 px-3 py-2.5 ring ring-inset ring-default">
-                <p class="flex flex-wrap items-center gap-2">
-                  <span class="font-semibold text-highlighted">Lần {{ g.lan }} · {{ g.doiTen ?? 'Đội khác' }}</span>
-                  <UBadge :color="MAU_KQ[g.ketQua]" variant="subtle">{{ KET_QUA_GIAO[g.ketQua] }}</UBadge>
+            <ol v-else class="mt-3 space-y-2.5">
+              <li v-for="g in [...tin.giao].reverse()" :key="`${g.lan}-${g.giaoLuc}`" class="rounded-md bg-muted px-3.5 py-2.5 ring-1 ring-inset ring-default">
+                <p class="flex flex-wrap items-center justify-between gap-2">
+                  <span class="font-bold text-highlighted">Lần {{ g.lan }} · {{ g.doiTen ?? 'Đội khác' }}</span>
+                  <UBadge :color="MAU_KQ[g.ketQua]" variant="subtle" class="font-semibold">{{ KET_QUA_GIAO[g.ketQua] }}</UBadge>
                 </p>
-                <p class="so mt-0.5 text-sm text-muted">
+                <p class="so mt-1 text-sm text-muted">
                   Cách {{ khoangCach(g.khoangCachM) }} · giao {{ gio(g.giaoLuc) }} · hạn {{ gio(g.hanLuc) }}<template v-if="g.phanHoiLuc"> · trả lời {{ gio(g.phanHoiLuc) }}</template><template v-if="g.nguoi"> · {{ g.nguoi }}</template>
                 </p>
                 <p v-if="g.ghiChu" class="mt-1 text-sm text-default">“{{ g.ghiChu }}”</p>
@@ -243,7 +296,7 @@ const gio = (iso: string | null) => (iso
                 Nhật ký luồng phân công ({{ wf.lichSu.length }})
               </UButton>
               <template #content>
-                <ol class="mt-1 space-y-0.5 font-mono text-xs text-muted">
+                <ol class="mt-1.5 space-y-1 rounded-md bg-muted p-2.5 font-mono text-xs text-muted ring-1 ring-inset ring-default">
                   <li v-for="(dong, i) in wf.lichSu" :key="i">{{ dong }}</li>
                 </ol>
               </template>
@@ -253,7 +306,7 @@ const gio = (iso: string | null) => (iso
           <!-- Nút theo vai: thanh cố định dưới màn hình điện thoại để bấm bằng một tay -->
           <section
             v-if="nut.length"
-            class="fixed inset-x-0 bottom-0 z-20 border-t border-default bg-default/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-6px_16px_rgb(11_31_54/0.10)] backdrop-blur sm:static sm:rounded-lg sm:p-4 sm:shadow-none sm:ring sm:ring-default"
+            class="fixed inset-x-0 bottom-0 z-20 border-t border-default bg-elevated/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-6px_16px_rgb(11_31_54/0.12)] backdrop-blur sm:static sm:rounded-lg sm:p-4 sm:shadow-xs sm:ring-1 sm:ring-default"
             aria-label="Thao tác"
           >
             <form v-if="moForm" class="mx-auto max-w-2xl space-y-3" @submit.prevent="bam(moForm)">
@@ -263,17 +316,17 @@ const gio = (iso: string | null) => (iso
               <div class="flex gap-2">
                 <UButton
                   type="submit" size="xl" block :loading="!!dangGui" :disabled="!!dangGui"
-                  :color="moForm === 'xac_nhan' ? 'success' : 'error'" class="min-h-14 flex-1 text-lg font-semibold"
+                  :color="moForm === 'xac_nhan' ? 'success' : 'error'" class="min-h-14 flex-1 text-lg font-bold"
                 >
                   {{ dangGui ? 'Đang gửi…' : `Xác nhận: ${HANH_DONG[moForm].nhan.toLowerCase()}` }}
                 </UButton>
-                <UButton type="button" size="xl" color="neutral" variant="outline" class="min-h-14 text-lg" @click="huyForm">Thôi</UButton>
+                <UButton type="button" size="xl" color="neutral" variant="outline" class="min-h-14 text-lg font-semibold" @click="huyForm">Thôi</UButton>
               </div>
             </form>
-            <div v-else class="mx-auto flex max-w-2xl gap-2">
+            <div v-else class="mx-auto flex max-w-2xl gap-2.5">
               <UButton
                 v-for="hd in nut" :key="hd" size="xl" block :disabled="!!dangGui" :loading="dangGui === hd"
-                v-bind="kieuNut(hd)" class="min-h-14 flex-1 text-lg font-semibold" :class="HANH_DONG[hd].chinh ? '' : 'ring-2 ring-current'"
+                v-bind="kieuNut(hd)" class="min-h-14 flex-1 text-lg font-bold" :class="HANH_DONG[hd].chinh ? '' : 'ring-2 ring-current'"
                 @click="bam(hd)"
               >
                 {{ dangGui === hd ? 'Đang gửi…' : HANH_DONG[hd].nhan }}

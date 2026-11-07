@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### Added
+- Web điều phối: trang `/login` (công khai, nút đăng nhập OIDC/PKCE qua Keycloak, lối vào trang Minh bạch, danh sách 3 tài khoản mẫu của realm `disaster` theo vai, không hiện mật khẩu, ghi rõ bản demo dùng dữ liệu minh họa) (#153).
+- Theme đăng nhập Keycloak `disaster-dxos` (logo, màu, nhãn tiếng Việt) ở `apps/cuu-tro/keycloak/themes/`, realm `disaster` đặt `loginTheme`, bật đa ngôn ngữ (`vi` mặc định, `en`). Theme thuộc Tầng 2: `docker-compose.yml` gắn `./apps/${DXOS_APP}/keycloak/themes`, `apps/muon-thiet-bi` có thư mục theme rỗng. Realm chỉ import khi CSDL Keycloak trống: máy đã có realm cũ đặt bằng `kcadm.sh update realms/disaster -s loginTheme=disaster-dxos -s internationalizationEnabled=true -s 'supportedLocales=["vi","en"]' -s defaultLocale=vi` (#153).
+
+### Changed
+- Web điều phối làm mới giao diện: mặc định giao diện sáng, thanh điều hướng, thẻ, bộ lọc, danh sách và chi tiết tin, hàng chờ duyệt AI, phân công, đồng hồ hạn nhận, trang Minh bạch và trang lỗi (#153).
+
 ### Fixed
 - `docs/architecture.md`: lý do tuân thủ giấy phép của Grafana trỏ tới `CONTRIBUTING.md` mục 6 và `DEPENDENCIES.md` thay cho tệp không có trong repo (#151).
 
