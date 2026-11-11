@@ -889,6 +889,8 @@ services:
       BI_DB_NAME: ${POSTGRES_DB:-disaster}
       BI_DB_USER: ${APP_BI_DB_USER:-cuu_tro_bi}
     volumes:
+      # Khóa không đặt được bằng biến GF_* (vd tắt hộp thoại giới thiệu splashScreen)
+      - ./core/grafana/grafana.ini:/etc/grafana/grafana.ini:ro
       - ./core/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./apps/${DXOS_APP:-cuu-tro}/grafana/dashboards:/etc/dxos/dashboards:ro
       - grafanadata:/var/lib/grafana

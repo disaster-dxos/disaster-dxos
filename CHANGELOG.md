@@ -12,6 +12,7 @@
 - Web điều phối làm mới giao diện: mặc định giao diện sáng, thanh điều hướng, thẻ, bộ lọc, danh sách và chi tiết tin, hàng chờ duyệt AI, phân công, đồng hồ hạn nhận, trang Minh bạch và trang lỗi (#153).
 
 ### Fixed
+- Grafana: tắt hộp thoại giới thiệu tính năng mới ("Grafana Assistant is now available to OSS users") che dashboard điều hành ở lần mở đầu. Feature flag `splashScreen = false` trong `core/grafana/grafana.ini` (gắn vào `/etc/grafana/grafana.ini`), vì biến `GF_*` không tạo được khóa không có trong `defaults.ini` (#155).
 - `docs/architecture.md`: lý do tuân thủ giấy phép của Grafana trỏ tới `CONTRIBUTING.md` mục 6 và `DEPENDENCIES.md` thay cho tệp không có trong repo (#151).
 
 ## [0.6.0] - 2026-11-03
